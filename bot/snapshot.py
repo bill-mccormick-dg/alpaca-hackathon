@@ -1,19 +1,21 @@
 """Builds the state the decision loop and risk checks consume each cycle.
 
-This module has two halves, added incrementally: account/position state
-(deterministic — "what do we currently hold") and market/options research
-("what's out there" — added in a later step). Response shapes here are
-Alpaca's own REST objects, which the MCP server proxies close to 1:1
-(confirmed against live get_account_info/get_all_positions output) —
-fields follow https://docs.alpaca.markets/reference/getaccount and
+Two halves: account/position state (deterministic — "what do we currently
+hold") and market/options research ("what's out there"). Response shapes
+here are Alpaca's own REST/market-data objects, which the MCP server
+proxies close to 1:1 (confirmed against live tool output, not just docs) —
+account/position fields follow
+https://docs.alpaca.markets/reference/getaccount and
 https://docs.alpaca.markets/reference/getallopenpositions.
 """
 
 import json
+from datetime import date, datetime, timedelta
 
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.models import AccountState, Position
 from bot.occ import parse_occ_symbol
+from bot.risk import EASTERN
 
 
 def _data(result) -> dict:
@@ -64,3 +66,38 @@ async def build_account_state(client: AlpacaMCPClient) -> AccountState:
         cash=float(data["cash"]),
         positions=await build_positions(client),
     )
+
+
+async def build_option_research(client: AlpacaMCPClient, config: dict, today: date | None = None) -> dict:
+    """Option chain snapshots for each underlying in config's whitelist,
+    filtered to the configured expiration window. Returns
+    {underlying: {occ_symbol: {snapshot fields...}}}.
+
+    feed="indicative" is explicit, not incidental: this project's accounts
+    have no OPRA subscription (confirmed live — feed="opra" returns 403
+    "subscription does not permit querying OPRA data"), and the indicative
+    feed carries no Greeks/IV at all, only price/volume data (also
+    confirmed live against a real contract). The decision loop works from
+    price action, moneyness, and days-to-expiration instead of Greeks.
+    """
+    # US/Eastern, not the host's local date — the CT runs in America/Chicago
+    # (an hour behind), which could read "today" as still-yesterday during
+    # the CDT/EDT evening gap otherwise.
+    today = today or datetime.now(EASTERN).date()
+    min_exp = today + timedelta(days=config["min_days_to_expiration"])
+    max_exp = today + timedelta(days=config["max_days_to_expiration"])
+
+    research = {}
+    for underlying in config["underlyings"]:
+        result = await client.call_tool(
+            "get_option_chain",
+            {
+                "underlying_symbol": underlying,
+                "feed": "indicative",
+                "expiration_date_gte": min_exp.isoformat(),
+                "expiration_date_lte": max_exp.isoformat(),
+            },
+        )
+        data = _data(result)
+        research[underlying] = data.get("snapshots", {})
+    return research

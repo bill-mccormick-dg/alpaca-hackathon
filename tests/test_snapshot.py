@@ -1,5 +1,6 @@
 import json
 import unittest
+from datetime import date
 
 from bot import snapshot
 
@@ -39,6 +40,19 @@ SHORT_STOCK_POSITION_RESPONSE = {
         "result": [
             {"symbol": "AAPL", "asset_class": "us_equity", "qty": "-5", "market_value": "-750.00"},
         ]
+    }
+}
+
+
+OPTION_CHAIN_RESPONSE = {
+    "data": {
+        "snapshots": {
+            "AAPL260204C00200000": {
+                "latestQuote": {"ap": 5.5, "bp": 5.2},
+                "latestTrade": {"p": 5.35},
+                "dailyBar": {"c": 5.3, "h": 5.6, "l": 5.1, "v": 120},
+            }
+        }
     }
 }
 
@@ -133,6 +147,59 @@ class BuildAccountStateTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(account.open_position_count, 1)
         self.assertIn("AAPL", account.positions)
+
+
+def _research_config(**overrides):
+    config = {
+        "underlyings": ["AAPL"],
+        "min_days_to_expiration": 1,
+        "max_days_to_expiration": 45,
+    }
+    config.update(overrides)
+    return config
+
+
+class BuildOptionResearchTest(unittest.IsolatedAsyncioTestCase):
+    async def test_fetches_chain_with_indicative_feed_not_opra(self):
+        # feed="opra" 403s for accounts without an OPRA subscription
+        # (confirmed live) — this must always request "indicative".
+        client = FakeMCPClient({"get_option_chain": OPTION_CHAIN_RESPONSE})
+        research = await snapshot.build_option_research(
+            client, _research_config(), today=date(2026, 1, 15)
+        )
+
+        self.assertIn("AAPL", research)
+        self.assertIn("AAPL260204C00200000", research["AAPL"])
+        tool_name, args = client.calls[0]
+        self.assertEqual(tool_name, "get_option_chain")
+        self.assertEqual(args["underlying_symbol"], "AAPL")
+        self.assertEqual(args["feed"], "indicative")
+
+    async def test_expiration_window_derived_from_config_and_today(self):
+        client = FakeMCPClient({"get_option_chain": OPTION_CHAIN_RESPONSE})
+        await snapshot.build_option_research(client, _research_config(), today=date(2026, 1, 15))
+
+        _, args = client.calls[0]
+        self.assertEqual(args["expiration_date_gte"], "2026-01-16")  # today + min(1)
+        self.assertEqual(args["expiration_date_lte"], "2026-03-01")  # today + max(45)
+
+    async def test_calls_once_per_underlying_in_whitelist(self):
+        client = FakeMCPClient({"get_option_chain": OPTION_CHAIN_RESPONSE})
+        config = _research_config(underlyings=["AAPL", "SPY", "QQQ"])
+
+        research = await snapshot.build_option_research(client, config, today=date(2026, 1, 15))
+
+        self.assertEqual(len(client.calls), 3)
+        called_symbols = [args["underlying_symbol"] for _, args in client.calls]
+        self.assertEqual(called_symbols, ["AAPL", "SPY", "QQQ"])
+        self.assertEqual(set(research.keys()), {"AAPL", "SPY", "QQQ"})
+
+    async def test_underlying_with_no_contracts_gets_empty_dict_not_a_crash(self):
+        client = FakeMCPClient({"get_option_chain": {"data": {"snapshots": {}}}})
+        research = await snapshot.build_option_research(
+            client, _research_config(), today=date(2026, 1, 15)
+        )
+        self.assertEqual(research["AAPL"], {})
 
 
 if __name__ == "__main__":
