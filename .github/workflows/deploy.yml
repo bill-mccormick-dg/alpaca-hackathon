@@ -23,6 +23,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Sanity-check the checkout before syncing
+        # The network this runner sits on has intermittently flaky DNS
+        # (documented elsewhere) - seen once to leave $GITHUB_WORKSPACE
+        # incomplete without actually failing the checkout step outright,
+        # which then let `rsync --delete` propagate the incomplete tree
+        # onto a previously-good deployment. Refuse to sync rather than
+        # risk repeating that.
+        run: |
+          count=$(find "$GITHUB_WORKSPACE" -name '*.py' | wc -l)
+          if [ "$count" -lt 5 ]; then
+            echo "::error::Checkout looks incomplete ($count .py files found) — refusing to sync"
+            exit 1
+          fi
+
       - name: Sync to /opt/alpaca-hackathon
         run: |
           rsync -a --delete \
