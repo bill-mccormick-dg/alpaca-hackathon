@@ -1,0 +1,34 @@
+name: Deploy
+
+# Redeploys CT 108 (alpaca-hackathon, on the home LAN) on every push to main.
+# The runner joins the tailnet ephemerally (tag:ci) to reach it — CT 108 is
+# only reachable over Tailscale, tagged tag:hackathon-bot. See
+# homenetwork/ansible/roles/alpaca-hackathon/README.md ("CI deploy") for the
+# one-time setup this depends on and why the SSH key is scoped the way it is:
+# it's forced through a single script (git fetch + reset --hard to main) with
+# no shell, no pty, no forwarding — this is a public repo, so a leaked key
+# should never be able to do more than trigger a pull.
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Connect to tailnet
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_CLIENT_SECRET }}
+          tags: tag:ci
+
+      - name: Trigger redeploy on CT 108
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=accept-new \
+            ghdeploy@alpaca-hackathon
