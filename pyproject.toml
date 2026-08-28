@@ -1,0 +1,5 @@
+[tool.ruff.lint.per-file-ignores]
+# Tests deliberately use naive datetimes as Eastern-time shorthand — see
+# bot/risk.py's _eastern_time() docstring. Production code should still use
+# tz-aware datetimes, so this stays scoped to tests/ only.
+"tests/*" = ["DTZ001"]
