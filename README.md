@@ -20,18 +20,22 @@ platform, with a testable strategy.
 
 ## Account
 
-Alpaca requires the official measurement to run on a **fresh** $100k paper
-account — untouched by test trades. Account `PA3VS39Y5LE2` (created
-2026-08-28) serves as both: it's had read-only queries only (Step 1's
-`verify_connection.py` — `get_account_info`/`get_clock`), zero trades, zero
-positions, so it still qualifies as fresh. It **doubles as the official
-account** — no second account needed, as long as this rule holds:
+Two separate $100k Alpaca paper accounts, per Alpaca's rules (a testing
+account can't be used for the official measurement):
 
-**No orders get placed on this account before Monday, Aug 31, 9:30 AM ET.**
-Read-only development (querying account/positions/option chains, dry-run
-proposals that never call a placing tool) is fine any time. Only equity from
-Mon 9:30 AM ET → Thu Sep 3 EOD counts toward scoring (snapshot Fri Sep 4,
-9:30 AM ET).
+- **`PA3VS39Y5LE2`** (created 2026-08-28) — the **official/judging**
+  account. **No orders get placed on this account before Monday, Aug 31,
+  9:30 AM ET.** Only equity from Mon 9:30 AM ET → Thu Sep 3 EOD counts
+  toward scoring (snapshot Fri Sep 4, 9:30 AM ET). Read-only queries
+  (account/positions/option chains) are fine any time.
+- **`hackathon_test`** — safe to place real orders on for all development
+  between now and Monday.
+
+`bot/credentials.py:load_credentials()` defaults to `account="test"` for
+exactly this reason — using the official account requires explicitly
+passing `account="official"`, so an accidental order can't land on the
+judging account. `scripts/verify_connection.py` mirrors this: defaults to
+`--account test`, needs `--account official` to check the other one.
 
 ## Pre-event infrastructure (disclosure)
 
@@ -69,10 +73,12 @@ Paper-only throughout — no live-trading code path exists.
    model inference — see event page for claiming instructions
 3. `pip install -r requirements.txt`
 4. `cp .env.example .env` and fill in `ALPACA_API_KEY` / `ALPACA_SECRET_KEY`
-   (from the account above) and `FEATHERLESS_API_KEY`
+   (from the **`hackathon_test`** account — never the official one locally)
+   and `FEATHERLESS_API_KEY`
 5. Test: `python -m unittest discover -s tests` (credential-free unit tests),
-   then `python scripts/verify_connection.py` (live connectivity check —
-   **read-only tools only until Monday 9:30 AM ET**, see [Account](#account))
+   then `python scripts/verify_connection.py` (live check against the test
+   account by default; `--account official` for the judging account, which
+   should only ever get read-only calls before Monday — see [Account](#account))
 
 ## Submission checklist
 

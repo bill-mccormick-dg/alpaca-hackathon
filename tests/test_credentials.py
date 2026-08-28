@@ -16,16 +16,32 @@ class LoadCredentialsTest(unittest.TestCase):
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
         tmp = Path(tmpdir.name)
-        self._prod_file = tmp / "credentials.env"
+        self._prod_dir = tmp / "prod"
+        self._prod_dir.mkdir()
         self._dotenv_file = tmp / ".env"
 
-        prod_patch = mock.patch.object(credentials, "PRODUCTION_CREDENTIALS_FILE", self._prod_file)
+        prod_patch = mock.patch.object(credentials, "PRODUCTION_CREDENTIALS_DIR", self._prod_dir)
         prod_patch.start()
         self.addCleanup(prod_patch.stop)
 
         dotenv_patch = mock.patch.object(credentials, "DOTENV_FILE", self._dotenv_file)
         dotenv_patch.start()
         self.addCleanup(dotenv_patch.stop)
+
+    def _write_prod_file(self, name, **overrides):
+        values = {
+            "ALPACA_API_KEY": "file-key",
+            "ALPACA_SECRET_KEY": "file-secret",
+            "ALPACA_BASE_URL": "https://paper-api.alpaca.markets",
+            "FEATHERLESS_API_KEY": "file-featherless",
+        }
+        values.update(overrides)
+        content = "\n".join(f"{k}={v}" for k, v in values.items())
+        (self._prod_dir / name).write_text(content + "\n")
+
+    def test_rejects_unknown_account(self):
+        with self.assertRaises(ValueError):
+            credentials.load_credentials("live")
 
     def test_environment_variables_take_priority_over_file(self):
         os.environ.update(
@@ -36,27 +52,23 @@ class LoadCredentialsTest(unittest.TestCase):
                 "FEATHERLESS_API_KEY": "env-featherless",
             }
         )
-        self._prod_file.write_text("ALPACA_API_KEY=file-key\n")
+        self._write_prod_file("credentials-test.env", ALPACA_API_KEY="file-key")
 
-        result = credentials.load_credentials()
+        result = credentials.load_credentials("test")
 
         self.assertEqual(result["ALPACA_API_KEY"], "env-key")
 
-    def test_falls_back_to_production_credentials_file(self):
-        self._prod_file.write_text(
-            "# comment\n"
-            "ALPACA_API_KEY=file-key\n"
-            "ALPACA_SECRET_KEY=file-secret\n"
-            "ALPACA_BASE_URL=https://paper-api.alpaca.markets\n"
-            "FEATHERLESS_API_KEY=file-featherless\n"
-        )
+    def test_falls_back_to_matching_production_file(self):
+        self._write_prod_file("credentials-test.env", ALPACA_API_KEY="test-key")
+        self._write_prod_file("credentials.env", ALPACA_API_KEY="official-key")
 
-        result = credentials.load_credentials()
+        test_result = credentials.load_credentials("test")
+        official_result = credentials.load_credentials("official")
 
-        self.assertEqual(result["ALPACA_API_KEY"], "file-key")
-        self.assertEqual(result["FEATHERLESS_API_KEY"], "file-featherless")
+        self.assertEqual(test_result["ALPACA_API_KEY"], "test-key")
+        self.assertEqual(official_result["ALPACA_API_KEY"], "official-key")
 
-    def test_falls_back_to_local_dotenv(self):
+    def test_falls_back_to_local_dotenv_for_test_account_only(self):
         self._dotenv_file.write_text(
             "ALPACA_API_KEY=dev-key\n"
             "ALPACA_SECRET_KEY=dev-secret\n"
@@ -64,30 +76,40 @@ class LoadCredentialsTest(unittest.TestCase):
             "FEATHERLESS_API_KEY=dev-featherless\n"
         )
 
-        result = credentials.load_credentials()
+        result = credentials.load_credentials("test")
 
         self.assertEqual(result["ALPACA_API_KEY"], "dev-key")
 
-    def test_partial_env_falls_through_to_file_for_missing_keys(self):
-        os.environ["ALPACA_API_KEY"] = "env-key"
-        self._prod_file.write_text(
-            "ALPACA_API_KEY=file-key\n"
-            "ALPACA_SECRET_KEY=file-secret\n"
+    def test_official_account_never_falls_back_to_dotenv(self):
+        self._dotenv_file.write_text(
+            "ALPACA_API_KEY=dev-key\n"
+            "ALPACA_SECRET_KEY=dev-secret\n"
             "ALPACA_BASE_URL=https://paper-api.alpaca.markets\n"
-            "FEATHERLESS_API_KEY=file-featherless\n"
+            "FEATHERLESS_API_KEY=dev-featherless\n"
         )
 
-        result = credentials.load_credentials()
+        with self.assertRaises(RuntimeError) as ctx:
+            credentials.load_credentials("official")
+
+        self.assertIn("ALPACA_API_KEY", str(ctx.exception))
+
+    def test_partial_env_falls_through_to_file_for_missing_keys(self):
+        os.environ["ALPACA_API_KEY"] = "env-key"
+        self._write_prod_file("credentials-test.env")
+
+        result = credentials.load_credentials("test")
 
         self.assertEqual(result["ALPACA_API_KEY"], "env-key")
         self.assertEqual(result["ALPACA_SECRET_KEY"], "file-secret")
 
-    def test_raises_with_missing_key_names_when_nothing_resolves(self):
+    def test_raises_with_missing_key_names_and_account_when_nothing_resolves(self):
         with self.assertRaises(RuntimeError) as ctx:
-            credentials.load_credentials()
+            credentials.load_credentials("test")
 
-        self.assertIn("ALPACA_API_KEY", str(ctx.exception))
-        self.assertIn("FEATHERLESS_API_KEY", str(ctx.exception))
+        message = str(ctx.exception)
+        self.assertIn("ALPACA_API_KEY", message)
+        self.assertIn("FEATHERLESS_API_KEY", message)
+        self.assertIn("'test'", message)
 
 
 if __name__ == "__main__":
