@@ -101,3 +101,40 @@ async def build_option_research(client: AlpacaMCPClient, config: dict, today: da
         data = _data(result)
         research[underlying] = data.get("snapshots", {})
     return research
+
+
+def _serialize_account(account: AccountState) -> dict:
+    return {
+        "equity": account.equity,
+        "start_of_day_equity": account.start_of_day_equity,
+        "cash": account.cash,
+        "positions": [
+            {
+                "symbol": p.symbol,
+                "instrument": p.instrument,
+                "qty": p.qty,
+                "market_value": p.market_value,
+                "underlying": p.underlying,
+            }
+            for p in account.positions.values()
+        ],
+    }
+
+
+async def build_snapshot(client: AlpacaMCPClient, config: dict, now: datetime | None = None) -> dict:
+    """Everything the decision loop needs for one cycle, in one
+    JSON-serializable dict — this is what eventually gets embedded in the
+    LLM prompt (a later step), mirroring alpaca-trader's build_snapshot()
+    shape even though the exact consumer doesn't exist yet."""
+    now = now or datetime.now(EASTERN)
+    clock_data = _data(await client.call_tool("get_clock"))
+    account = await build_account_state(client)
+    options = await build_option_research(client, config, today=now.date())
+
+    return {
+        "market_open": clock_data.get("is_open", False),
+        "next_open": clock_data.get("next_open"),
+        "next_close": clock_data.get("next_close"),
+        "account": _serialize_account(account),
+        "options": options,
+    }

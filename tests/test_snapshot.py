@@ -1,8 +1,17 @@
 import json
 import unittest
-from datetime import date
+from datetime import date, datetime
 
 from bot import snapshot
+from bot.risk import EASTERN
+
+CLOCK_RESPONSE = {
+    "data": {
+        "is_open": True,
+        "next_open": "2026-01-16T09:30:00-05:00",
+        "next_close": "2026-01-15T16:00:00-05:00",
+    }
+}
 
 ACCOUNT_RESPONSE = {
     "data": {
@@ -200,6 +209,45 @@ class BuildOptionResearchTest(unittest.IsolatedAsyncioTestCase):
             client, _research_config(), today=date(2026, 1, 15)
         )
         self.assertEqual(research["AAPL"], {})
+
+
+class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
+    def _client(self, positions=STOCK_POSITION_RESPONSE):
+        return FakeMCPClient(
+            {
+                "get_clock": CLOCK_RESPONSE,
+                "get_account_info": ACCOUNT_RESPONSE,
+                "get_all_positions": positions,
+                "get_option_chain": OPTION_CHAIN_RESPONSE,
+            }
+        )
+
+    async def test_assembles_clock_account_and_options(self):
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)
+        snap = await snapshot.build_snapshot(self._client(), _research_config(), now=now)
+
+        self.assertTrue(snap["market_open"])
+        self.assertEqual(snap["next_close"], "2026-01-15T16:00:00-05:00")
+        self.assertEqual(snap["account"]["equity"], 100000.0)
+        self.assertEqual(snap["account"]["start_of_day_equity"], 99500.0)
+        self.assertEqual(len(snap["account"]["positions"]), 1)
+        self.assertEqual(snap["account"]["positions"][0]["symbol"], "AAPL")
+        self.assertIn("AAPL", snap["options"])
+        self.assertIn("AAPL260204C00200000", snap["options"]["AAPL"])
+
+    async def test_snapshot_is_json_serializable(self):
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)
+        snap = await snapshot.build_snapshot(
+            self._client(positions=EMPTY_POSITIONS_RESPONSE), _research_config(), now=now
+        )
+        json.dumps(snap)  # must not raise
+
+    async def test_empty_account_has_empty_positions_list_not_a_crash(self):
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)
+        snap = await snapshot.build_snapshot(
+            self._client(positions=EMPTY_POSITIONS_RESPONSE), _research_config(), now=now
+        )
+        self.assertEqual(snap["account"]["positions"], [])
 
 
 if __name__ == "__main__":
