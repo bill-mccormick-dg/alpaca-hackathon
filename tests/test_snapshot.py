@@ -1,0 +1,139 @@
+import json
+import unittest
+
+from bot import snapshot
+
+ACCOUNT_RESPONSE = {
+    "data": {
+        "equity": "100000",
+        "last_equity": "99500",
+        "cash": "50000",
+    }
+}
+
+EMPTY_POSITIONS_RESPONSE = {"data": {"result": []}}
+
+STOCK_POSITION_RESPONSE = {
+    "data": {
+        "result": [
+            {"symbol": "AAPL", "asset_class": "us_equity", "qty": "10", "market_value": "1500.00"},
+        ]
+    }
+}
+
+OPTION_POSITION_RESPONSE = {
+    "data": {
+        "result": [
+            {
+                "symbol": "AAPL260204C00200000",
+                "asset_class": "us_option",
+                "qty": "2",
+                "market_value": "400.00",
+            },
+        ]
+    }
+}
+
+SHORT_STOCK_POSITION_RESPONSE = {
+    "data": {
+        "result": [
+            {"symbol": "AAPL", "asset_class": "us_equity", "qty": "-5", "market_value": "-750.00"},
+        ]
+    }
+}
+
+
+class FakeContent:
+    def __init__(self, text):
+        self.text = text
+
+
+class FakeResult:
+    def __init__(self, text):
+        self.content = [FakeContent(text)]
+
+
+class FakeMCPClient:
+    """Hand-written stub, not a mocking library — mirrors test_execute.py's
+    FakeMCPClient. Maps tool name -> canned response, since a single
+    snapshot build calls multiple tools."""
+
+    def __init__(self, responses: dict):
+        self.responses = responses
+        self.calls = []
+
+    async def call_tool(self, name, arguments=None):
+        self.calls.append((name, arguments))
+        return FakeResult(json.dumps(self.responses[name]))
+
+
+class BuildPositionsTest(unittest.IsolatedAsyncioTestCase):
+    async def test_empty_positions(self):
+        client = FakeMCPClient({"get_all_positions": EMPTY_POSITIONS_RESPONSE})
+        positions = await snapshot.build_positions(client)
+        self.assertEqual(positions, {})
+
+    async def test_stock_position_parsed_correctly(self):
+        client = FakeMCPClient({"get_all_positions": STOCK_POSITION_RESPONSE})
+        positions = await snapshot.build_positions(client)
+
+        pos = positions["AAPL"]
+        self.assertEqual(pos.instrument, "stock")
+        self.assertEqual(pos.qty, 10.0)
+        self.assertEqual(pos.market_value, 1500.0)
+        self.assertIsNone(pos.underlying)
+
+    async def test_option_position_derives_underlying_from_occ_symbol(self):
+        client = FakeMCPClient({"get_all_positions": OPTION_POSITION_RESPONSE})
+        positions = await snapshot.build_positions(client)
+
+        pos = positions["AAPL260204C00200000"]
+        self.assertEqual(pos.instrument, "option")
+        self.assertEqual(pos.underlying, "AAPL")
+        self.assertEqual(pos.qty, 2.0)
+        self.assertEqual(pos.market_value, 400.0)
+
+    async def test_short_position_qty_and_value_are_absolute_magnitudes(self):
+        client = FakeMCPClient({"get_all_positions": SHORT_STOCK_POSITION_RESPONSE})
+        positions = await snapshot.build_positions(client)
+
+        self.assertEqual(positions["AAPL"].qty, 5.0)
+        self.assertEqual(positions["AAPL"].market_value, 750.0)
+
+    async def test_option_with_malformed_symbol_gets_no_underlying_not_a_crash(self):
+        response = {
+            "data": {
+                "result": [
+                    {"symbol": "not-occ", "asset_class": "us_option", "qty": "1", "market_value": "10"},
+                ]
+            }
+        }
+        client = FakeMCPClient({"get_all_positions": response})
+        positions = await snapshot.build_positions(client)
+        self.assertIsNone(positions["not-occ"].underlying)
+
+
+class BuildAccountStateTest(unittest.IsolatedAsyncioTestCase):
+    async def test_parses_equity_cash_and_start_of_day_equity_from_last_equity(self):
+        client = FakeMCPClient(
+            {"get_account_info": ACCOUNT_RESPONSE, "get_all_positions": EMPTY_POSITIONS_RESPONSE}
+        )
+        account = await snapshot.build_account_state(client)
+
+        self.assertEqual(account.equity, 100000.0)
+        self.assertEqual(account.start_of_day_equity, 99500.0)
+        self.assertEqual(account.cash, 50000.0)
+        self.assertEqual(account.positions, {})
+
+    async def test_includes_positions_from_build_positions(self):
+        client = FakeMCPClient(
+            {"get_account_info": ACCOUNT_RESPONSE, "get_all_positions": STOCK_POSITION_RESPONSE}
+        )
+        account = await snapshot.build_account_state(client)
+
+        self.assertEqual(account.open_position_count, 1)
+        self.assertIn("AAPL", account.positions)
+
+
+if __name__ == "__main__":
+    unittest.main()
