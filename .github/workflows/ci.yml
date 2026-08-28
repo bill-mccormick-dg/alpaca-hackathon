@@ -1,0 +1,36 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # requirements.txt/tests don't exist yet — steps are conditional so this
+      # workflow is a clean no-op today and starts enforcing the moment the
+      # bot's Python code lands, with no further edits needed here.
+      - name: Install dependencies
+        if: hashFiles('requirements.txt') != ''
+        run: pip install -r requirements.txt
+
+      - name: Install lint tooling
+        if: hashFiles('requirements.txt') != ''
+        run: pip install ruff
+
+      - name: Lint (ruff)
+        if: hashFiles('requirements.txt') != ''
+        run: ruff check .
+
+      - name: Tests
+        if: hashFiles('tests/**') != ''
+        run: python -m unittest discover -s tests
