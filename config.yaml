@@ -1,0 +1,41 @@
+# config.yaml — risk/guardrail parameters for the hackathon bot.
+#
+# Every value here is a hard cap enforced in code (bot/risk.py) — the model
+# proposes, this decides. Mirrors alpaca-trader's config.yaml philosophy:
+# the LLM never gets to negotiate a limit, only stay inside one.
+
+# Underlyings this bot is allowed to trade (stock or options on). Option
+# proposals are checked against the underlying, not the OCC option symbol.
+underlyings:
+  - SPY
+  - QQQ
+  - AAPL
+  - MSFT
+  - NVDA
+
+# Per-position notional cap, in dollars (stock market value, or option
+# contracts * qty * 100 * price).
+max_position_usd: 5000
+
+# Max concurrent open positions (stock + option combined).
+max_positions: 4
+
+# Max option contracts in a single order — a backstop against a fat-fingered
+# or hallucinated large size, independent of the dollar cap above.
+max_contracts_per_order: 10
+
+# Daily loss cutoff, % of start-of-day equity. Breaching this should flatten
+# and halt for the day (flatten logic: a later step).
+daily_loss_cutoff_pct: 2.0
+
+# Options expiration window — reject proposals for contracts outside this
+# range. Guards against 0-DTE gamma risk on one side, multi-month decay drag
+# on the other.
+min_days_to_expiration: 1
+max_days_to_expiration: 45
+
+# Trading window, US/Eastern. No new entries after last_entry; sells stay
+# legal until trade_end.
+trade_start: "09:45"
+trade_end: "15:45"
+last_entry: "15:15"
