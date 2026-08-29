@@ -190,6 +190,15 @@ and `flatten.py` refuse `--account official` before Mon Aug 31 9:30 AM ET unless
 code path exists. The model never gets an order-placing tool; every order funnels
 through `bot/execute.py::place_proposal()` → `bot/risk.py::check_order()`.
 
+## License
+
+MIT — see [LICENSE](LICENSE). The hackathon's prize terms require submissions
+to be original and MIT-compliant; everything in this repository is original
+work for the event (the pre-event infrastructure is disclosed above) and
+depends only on permissively licensed packages (`alpaca-mcp-server`, `mcp`,
+`httpx`, `PyYAML`, `python-dotenv`). Market data is Alpaca's and subject to
+Alpaca's terms; model inference is Featherless.ai's.
+
 ## Submission checklist
 
 - [ ] Project title + short/long description
@@ -202,6 +211,8 @@ through `bot/execute.py::place_proposal()` → `bot/risk.py::check_order()`.
       checklist separately requires "Public GitHub repository" as a
       submission item. **Flip back to public before the Sep 4, 10:00 AM
       CDT deadline.**
+- [x] MIT license in the repo (`LICENSE`) — prize terms require submissions to
+      be "original and MIT-compliant"
 - [ ] Demo application URL — likely N/A, UI not required (FAQ); only needed
       if we ship a demo app judges must open
 - [ ] Alpaca paper trading account ID (required for judging) — `PA3VS39Y5LE2`
