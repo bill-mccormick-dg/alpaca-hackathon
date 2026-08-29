@@ -101,6 +101,19 @@ class FakeMCPClient:
         return FakeResult(json.dumps(response))
 
 
+class DataUnwrapTest(unittest.TestCase):
+    def test_unwraps_data_envelope(self):
+        self.assertEqual(snapshot._data(FakeResult('{"data": {"x": 1}}')), {"x": 1})
+
+    def test_non_json_tool_error_text_surfaces_as_runtime_error(self):
+        # The MCP server reports upstream failures as plain text, not JSON.
+        result = FakeResult("Error calling tool 'get_clock': Request error (ConnectError): boom")
+        with self.assertRaises(RuntimeError) as ctx:
+            snapshot._data(result)
+        self.assertIn("get_clock", str(ctx.exception))
+        self.assertIn("ConnectError", str(ctx.exception))
+
+
 class BuildPositionsTest(unittest.IsolatedAsyncioTestCase):
     async def test_empty_positions(self):
         client = FakeMCPClient({"get_all_positions": EMPTY_POSITIONS_RESPONSE})
