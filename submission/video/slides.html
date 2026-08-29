@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>AI Day Trader - Long Premium, Short Leash</title>
+<style>
+  :root { --bg:#0f1720; --fg:#e6edf3; --accent:#4fb39c; --dim:#9fb0c0; --code:#182230; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font: 28px/1.35 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  section { display:none; box-sizing:border-box; height:100vh; padding:6vh 8vw; }
+  section.active { display:flex; flex-direction:column; justify-content:center; }
+  h1 { font-size:2.4em; margin:0 0 .3em; letter-spacing:-.01em; }
+  h2 { font-size:1.6em; margin:0 0 .6em; color:var(--accent); }
+  p, li { max-width: 32em; }
+  .lead { font-size:1.15em; color:var(--dim); }
+  .big { font-size:1.35em; }
+  code, pre { font-family: ui-monospace, "SF Mono", Menlo, monospace; background:var(--code);
+    border-radius:8px; padding:.1em .4em; font-size:.8em; }
+  pre { padding:.8em 1em; overflow:auto; }
+  table { border-collapse:collapse; font-size:.8em; margin-top:.5em; }
+  td, th { border-bottom:1px solid #2a3644; padding:.35em .8em; text-align:left; vertical-align:top; }
+  th { color:var(--accent); font-weight:600; }
+  .flow { display:flex; flex-wrap:wrap; gap:.5em; align-items:center; font-size:.85em; }
+  .flow span { background:var(--code); padding:.4em .7em; border-radius:8px; }
+  .flow span.code { outline:2px solid var(--accent); }
+  .flow em { color:var(--accent); font-style:normal; }
+  .foot { position:fixed; bottom:2vh; right:3vw; color:var(--dim); font-size:.5em; }
+  .fill { color:#e3b341; }
+</style>
+</head>
+<body>
+
+<section class="active">
+  <h1>AI Day Trader<br><span style="color:var(--accent)">Long Premium, Short Leash</span></h1>
+  <p class="lead">An autonomous options agent on Alpaca's MCP server.<br>
+  Alpaca AI Trading Agents Hackathon - Aug 28 to Sep 4, 2026</p>
+  <p class="lead">Bill McCormick - account <code>PA3VS39Y5LE2</code> - MIT</p>
+</section>
+
+<section>
+  <h2>The thesis, in one sentence</h2>
+  <p class="big">Buy defined-risk, short-dated options premium on the most liquid names when an
+  open-source model can <em>name a reason</em>; deterministic code sizes every trade, stops it,
+  and closes it before expiry.</p>
+  <p class="big"><strong>The model never touches an order.</strong> Open model proposes; code disposes.</p>
+  <p class="lead">Why long premium: the worst case is known before entry, which keeps every guardrail
+  simple and absolute - and it matches what a language model is good at (a directional view from
+  evidence) rather than what it is bad at (managing a position minute to minute).</p>
+</section>
+
+<section>
+  <h2>One cycle, every 10 minutes</h2>
+  <div class="flow">
+    <span class="code">exits: expiry / stop / take-profit</span><em>&rarr;</em>
+    <span>snapshot via Alpaca MCP</span><em>&rarr;</em>
+    <span>derived Greeks</span><em>&rarr;</em>
+    <span>model + read-only research tools</span><em>&rarr;</em>
+    <span>JSON proposals</span><em>&rarr;</em>
+    <span class="code">risk gate (never negotiates)</span><em>&rarr;</em>
+    <span class="code">our code places the order</span>
+  </div>
+  <p class="lead" style="margin-top:1em">Outlined boxes are code only. There is no path from the model to an order.</p>
+</section>
+
+<section>
+  <h2>Alpaca's free options feed has no Greeks</h2>
+  <p>So the agent solves implied volatility from each contract's market price (Black-Scholes,
+  bisection - robust far from the money) and derives delta, gamma, theta and vega on the fly.</p>
+  <pre>{"symbol":"SPY260831P00769000","type":"put","strike":769.0,"dte":2,
+ "bid":1.64,"ask":1.67,"last":1.67,
+ "iv":0.0827,"delta":-0.4596,"gamma":0.0843,"theta":-0.4282,"vega":0.226}</pre>
+  <p class="lead">Solved per contract from a noisy feed - so the prompt tells the model they are rough guides, not to audit them.</p>
+</section>
+
+<section>
+  <h2>The agent investigates before it acts</h2>
+  <pre>research: get_bars({'symbol': 'SPY', 'timeframe': '15Min'})        -> 3334 chars
+research: get_stock_snapshot({'symbol': 'NVDA'})                   -> 622 chars
+research: get_option_snapshot({'symbols': 'NVDA260902P00220000,...'}) -> 1339 chars
+research: get_news({'symbols': 'NVDA', 'limit': 5})                -> 1770 chars
+model output: [{"instrument":"option","symbol":"NVDA260902P00220000","side":"buy",
+  "qty":10,"order_type":"limit","limit_price":4.65,
+  "reason":"NVDA is in a clear intraday downtrend (225 -> 218.6); the 220 put with
+            4 DTE, delta -0.58, aligns with the bearish momentum"}]</pre>
+  <p class="lead">Four read-only tools mapped to Alpaca MCP calls, six calls max, every one journaled. Nothing that orders is reachable.</p>
+</section>
+
+<section>
+  <h2>The leash</h2>
+  <table>
+    <tr><th>Per proposal</th><td>whitelist - &le; $5,000 per position - &le; 4 positions - &le; 10 contracts/order - 1-45 DTE - entries 09:45-15:15 ET</td></tr>
+    <tr><th>Per cycle, before the model</th><td>close on expiry day - stop-loss -40% - take-profit +60%</td></tr>
+    <tr><th>Per day</th><td>2% loss &rarr; flatten everything and halt - <code>HALT</code> file = global kill switch</td></tr>
+    <tr><th>End of day</th><td>close contracts expiring within a day; hold the rest under the stops (judged on Thursday's close)</td></tr>
+  </table>
+  <pre>REJECTED buy 12 SPY260904C00775000: qty 12 exceeds max_contracts_per_order 10</pre>
+</section>
+
+<section>
+  <h2>Everything is journaled</h2>
+  <p>One JSONL record per event: <code>cycle_start</code>, <code>config</code> (hash + active overrides),
+  <code>decision</code> (raw output, reasoning, usage, latency, tool calls), <code>tool_call</code>,
+  <code>order_submitted</code> / <code>order_rejected</code> (with the rule), exits, halts.</p>
+  <p class="lead">The journal is what makes the loop evaluable - and what the end-of-day review reads.</p>
+</section>
+
+<section>
+  <h2>The daily loop</h2>
+  <div class="flow">
+    <span>16:05 <code>eod_review</code></span><em>&rarr;</em>
+    <span>read: round trips, exit mix, rejections by rule, model's own read</span><em>&rarr;</em>
+    <span>one change</span><em>&rarr;</em>
+    <span><code>override.py</code> (expires at close) or config PR</span><em>&rarr;</em>
+    <span>CI &rarr; self-hosted runner deploys before the open</span>
+  </div>
+  <p class="lead" style="margin-top:1em">A second paper account runs a challenger config against the same live market - the only backtest available in four days. 60 PRs, 300 tests, every merge deployed automatically.</p>
+</section>
+
+<section>
+  <h2>Results <span class="fill">(fill Thu Sep 3 after the close)</span></h2>
+  <p class="big">Equity Mon open &rarr; Thu close: <span class="fill">$___ &rarr; $___ (__%)</span></p>
+  <p>Round trips: <span class="fill">__</span> - exits: <span class="fill">__ stop / __ take-profit / __ expiry / __ model / __ flatten</span></p>
+  <p>Official vs challenger: <span class="fill">__</span></p>
+  <p class="lead">What didn't work: <span class="fill">__</span></p>
+</section>
+
+<section>
+  <h2>What's next, and thanks</h2>
+  <ul>
+    <li>Promote what the challenger proved: research tools, prediction-market prior, learning loop</li>
+    <li>Multi-leg spreads once the gates cover assignment risk</li>
+    <li>Home Assistant over MQTT: the light that goes red when the leash pulls</li>
+  </ul>
+  <p class="lead">github.com/bill-mccormick-dg/alpaca-hackathon - MIT<br>Thanks: Alpaca, lablab.ai, Featherless AI</p>
+</section>
+
+<div class="foot" id="foot"></div>
+<script>
+  const s = [...document.querySelectorAll('section')]; let i = 0;
+  const show = n => { s[i].classList.remove('active'); i = (n + s.length) % s.length; s[i].classList.add('active');
+    document.getElementById('foot').textContent = (i+1) + ' / ' + s.length; };
+  show(0);
+  addEventListener('keydown', e => { if (['ArrowRight',' ','PageDown'].includes(e.key)) show(i+1);
+    if (['ArrowLeft','PageUp'].includes(e.key)) show(i-1); if (e.key === 'Home') show(0); });
+  addEventListener('click', e => show(e.clientX > innerWidth/2 ? i+1 : i-1));
+</script>
+</body>
+</html>

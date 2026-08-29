@@ -1,5 +1,10 @@
 # Video script — AI Day Trader - Long Premium, Short Leash
 
+**First cut lives in `submission/video/`**: `demo.sh` (the terminal footage as a
+runnable, captioned script for CT 108 - `PAUSE=0` to rehearse), `narration.md`
+(word-for-word voice-over, timed to ~4:30), `slides.html` (open in a browser,
+arrow keys). The outline below is the original plan the first cut follows.
+
 **Format:** MP4, 1080p, ≤ 5:00 (target 3:30–4:30). Screen recording + voice.
 Terminal font ≥ 16 pt, dark theme, window ~1600×900. Record Wed or Thu after a
 day with real trades. Dry-run the whole command sequence once first.
