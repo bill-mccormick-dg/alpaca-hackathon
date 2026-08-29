@@ -87,7 +87,11 @@ Paper-only throughout — no live-trading code path exists.
 - [ ] Cover image
 - [ ] Video presentation
 - [ ] Slide presentation
-- [x] Public GitHub repository
+- [ ] Public GitHub repository — currently **private** (fine during the
+      build phase per Alpaca's own FAQ), but lablab.ai's submission
+      checklist separately requires "Public GitHub repository" as a
+      submission item. **Flip back to public before the Sep 4, 10:00 AM
+      CDT deadline.**
 - [ ] Demo application URL — likely N/A, UI not required (FAQ); only needed
       if we ship a demo app judges must open
 - [ ] Alpaca paper trading account ID (required for judging) — `PA3VS39Y5LE2`
