@@ -34,6 +34,15 @@ daily_loss_cutoff_pct: 2.0
 min_days_to_expiration: 1
 max_days_to_expiration: 45
 
+# Option chain research is bounded to strikes within this fraction of the
+# current underlying price (e.g. 0.08 = strikes from -8% to +8% of spot).
+# Without a strike bound, get_option_chain returns whatever the API's
+# default page happens to contain sorted by strike ascending, which (for a
+# high-priced underlying like SPY) is deep out-of-the-money calls only, no
+# puts at all - confirmed live. This keeps the research set relevant and
+# small enough to reason about.
+option_strike_band_pct: 0.08
+
 # Trading window, US/Eastern. No new entries after last_entry; sells stay
 # legal until trade_end.
 trade_start: "09:45"

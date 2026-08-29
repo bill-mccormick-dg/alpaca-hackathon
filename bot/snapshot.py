@@ -68,17 +68,34 @@ async def build_account_state(client: AlpacaMCPClient) -> AccountState:
     )
 
 
+async def get_underlying_price(client: AlpacaMCPClient, symbol: str) -> float:
+    """Mid of the latest bid/ask for a stock symbol — used both as the
+    option chain's strike-price anchor and as the fill-price estimate for
+    stock proposals."""
+    result = await client.call_tool("get_stock_latest_quote", {"symbols": symbol})
+    quote = _data(result)["quotes"][symbol]
+    return (float(quote["bp"]) + float(quote["ap"])) / 2
+
+
 async def build_option_research(client: AlpacaMCPClient, config: dict, today: date | None = None) -> dict:
     """Option chain snapshots for each underlying in config's whitelist,
-    filtered to the configured expiration window. Returns
-    {underlying: {occ_symbol: {snapshot fields...}}}.
+    filtered to the configured expiration window and a strike-price band
+    around the current underlying price. Returns
+    {underlying: {"underlying_price": float, "contracts": {occ_symbol: {...}}}}.
+
+    The strike band is not optional: get_option_chain with no strike bound
+    returns whatever the API's default page happens to contain sorted by
+    strike ascending, which for a high-priced underlying is deep
+    out-of-the-money calls only and zero puts (confirmed live against SPY at
+    ~$769 — an unbounded call returned only $420-$675 strike calls with no
+    puts at all). Anchoring the band to the real current price via
+    get_stock_latest_quote is what makes the fetched chain relevant.
 
     feed="indicative" is explicit, not incidental: this project's accounts
     have no OPRA subscription (confirmed live — feed="opra" returns 403
-    "subscription does not permit querying OPRA data"), and the indicative
-    feed carries no Greeks/IV at all, only price/volume data (also
-    confirmed live against a real contract). The decision loop works from
-    price action, moneyness, and days-to-expiration instead of Greeks.
+    "subscription does not permit querying OPRA data"). The indicative feed
+    carries no Greeks/IV — bot/greeks.py derives them from this price data
+    instead.
     """
     # US/Eastern, not the host's local date — the CT runs in America/Chicago
     # (an hour behind), which could read "today" as still-yesterday during
@@ -86,9 +103,11 @@ async def build_option_research(client: AlpacaMCPClient, config: dict, today: da
     today = today or datetime.now(EASTERN).date()
     min_exp = today + timedelta(days=config["min_days_to_expiration"])
     max_exp = today + timedelta(days=config["max_days_to_expiration"])
+    band = config["option_strike_band_pct"]
 
     research = {}
     for underlying in config["underlyings"]:
+        price = await get_underlying_price(client, underlying)
         result = await client.call_tool(
             "get_option_chain",
             {
@@ -96,10 +115,16 @@ async def build_option_research(client: AlpacaMCPClient, config: dict, today: da
                 "feed": "indicative",
                 "expiration_date_gte": min_exp.isoformat(),
                 "expiration_date_lte": max_exp.isoformat(),
+                "strike_price_gte": round(price * (1 - band), 2),
+                "strike_price_lte": round(price * (1 + band), 2),
+                "limit": 500,
             },
         )
         data = _data(result)
-        research[underlying] = data.get("snapshots", {})
+        research[underlying] = {
+            "underlying_price": price,
+            "contracts": data.get("snapshots", {}),
+        }
     return research
 
 
