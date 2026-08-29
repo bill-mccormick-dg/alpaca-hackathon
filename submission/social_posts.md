@@ -40,7 +40,7 @@ METADATA.md as they go up.
    + screenshot: equity curve from logs/equity.jsonl.
 
 Links:
-1.
+1. https://www.linkedin.com/feed/update/urn:li:activity:7499502032853037056/ (LinkedIn, Sat Aug 29)
 2.
 3.
 4.

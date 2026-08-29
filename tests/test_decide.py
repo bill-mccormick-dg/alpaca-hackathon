@@ -156,6 +156,13 @@ class BuildPromptTest(unittest.TestCase):
         prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
         self.assertIn("(none)", prompt)
 
+    def test_learning_block_is_embedded_before_the_snapshot_when_given(self):
+        block = "RECENT OUTCOMES (facts):\n- 2 closed trades in the window: net +80\n\n"
+        prompt = decide.build_prompt(_snapshot(), _config(), TODAY, learning=block)
+        self.assertIn("RECENT OUTCOMES", prompt)
+        self.assertLess(prompt.index("RECENT OUTCOMES"), prompt.index("SNAPSHOT:"))
+        self.assertNotIn("RECENT OUTCOMES", decide.build_prompt(_snapshot(), _config(), TODAY))
+
     def test_prediction_prior_block_only_when_snapshot_has_it(self):
         snap = _snapshot()
         self.assertNotIn("PREDICTION MARKETS", decide.build_prompt(snap, _config(), TODAY))
