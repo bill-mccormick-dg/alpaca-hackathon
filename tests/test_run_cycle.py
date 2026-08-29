@@ -24,6 +24,19 @@ class OfficialAccountGateTest(unittest.TestCase):
         self.assertTrue(run_cycle.official_account_may_trade(now))
 
 
+class DescribeErrorTest(unittest.TestCase):
+    def test_includes_type_and_message(self):
+        self.assertEqual(run_cycle.describe_error(ValueError("bad json")), "ValueError: bad json")
+
+    def test_empty_message_still_names_the_type(self):
+        # httpx timeouts stringify to "" - the first live Featherless
+        # timeout journaled as detail="" before this existed.
+        class ReadTimeout(Exception):
+            pass
+
+        self.assertEqual(run_cycle.describe_error(ReadTimeout()), "ReadTimeout")
+
+
 class AccountFromSnapshotTest(unittest.TestCase):
     def test_round_trips_serialized_account(self):
         snap = {

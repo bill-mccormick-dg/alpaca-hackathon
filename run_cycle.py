@@ -40,6 +40,14 @@ def official_account_may_trade(now: datetime | None = None) -> bool:
     return now >= OFFICIAL_TRADING_STARTS
 
 
+def describe_error(exc: BaseException) -> str:
+    """str(exc) alone is empty for some exceptions (httpx timeouts, for
+    one) - the first live Featherless timeout journaled as detail="".
+    Always include the type so the record says *what* failed."""
+    text = str(exc).strip()
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
+
 def account_from_snapshot(snap: dict) -> AccountState:
     acct = snap["account"]
     positions = {
@@ -131,8 +139,9 @@ async def run(args: argparse.Namespace) -> int:
         try:
             proposals, raw = await decide(snap, config, featherless, today=now.date())
         except Exception as exc:  # noqa: BLE001 - one bad model call must not crash the cycle
-            journal.log("error", where="decide", detail=str(exc))
-            print(f"decision step failed: {exc}", file=sys.stderr)
+            detail = describe_error(exc)
+            journal.log("error", where="decide", detail=detail)
+            print(f"decision step failed: {detail}", file=sys.stderr)
             return 1
         journal.log("decision", raw=raw, count=len(proposals))
 
