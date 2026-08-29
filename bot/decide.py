@@ -54,7 +54,7 @@ broken and decide from what is plausible. Keep your reasoning brief and answer d
 
 STRATEGY (from config.yaml - the thesis you are executing; the hard limits above still win):
 {strategy_notes}
-{predictions}{tools_note}SNAPSHOT:
+{learning}{predictions}{tools_note}SNAPSHOT:
 {snapshot}
 
 Respond with ONLY a JSON array (no markdown fence, no prose) of zero or more actions:
@@ -147,7 +147,9 @@ decision; then answer with the JSON array. Tools never place orders.
 """
 
 
-def build_prompt(snapshot: dict, config: dict, today: date | None = None, tools: bool = False) -> str:
+def build_prompt(
+    snapshot: dict, config: dict, today: date | None = None, tools: bool = False, learning: str = ""
+) -> str:
     today = today or datetime.now(EASTERN).date()
     payload = {
         "account": snapshot.get("account"),
@@ -156,6 +158,7 @@ def build_prompt(snapshot: dict, config: dict, today: date | None = None, tools:
     tools_note = TOOLS_NOTE.format(n=int(config.get("research_max_tool_calls", 6))) if tools else ""
     return PROMPT_TEMPLATE.format(
         tools_note=tools_note,
+        learning=learning or "",
         predictions=predictions.prompt_block(snapshot.get("predictions") or {}),
         max_position_usd=float(config["max_position_usd"]),
         max_positions=int(config["max_positions"]),
@@ -312,15 +315,17 @@ async def _chat_with_research(client: FeatherlessClient, mcp, config: dict, prom
 
 
 async def decide(
-    snapshot: dict, config: dict, client: FeatherlessClient, today: date | None = None, mcp=None
+    snapshot: dict, config: dict, client: FeatherlessClient, today: date | None = None, mcp=None,
+    learning: str = "",
 ) -> Decision:
     """One decision. With research tools enabled (config + an MCP client),
     the model may look things up first (bounded); otherwise a single call.
+    `learning` is the optional RECENT OUTCOMES block (bot/learning.py).
     No retry - that's an operational concern for run_cycle.py. The Decision
     carries usage, latency and the tool calls made so the journal can
     attribute cost, speed and evidence to the model/config that produced it."""
     use_tools = _research_enabled(config, mcp)
-    prompt = build_prompt(snapshot, config, today, tools=use_tools)
+    prompt = build_prompt(snapshot, config, today, tools=use_tools, learning=learning)
     started = time.monotonic()
     tool_calls: list[dict] = []
     if use_tools:

@@ -15,9 +15,9 @@ Usage:
 import argparse
 import asyncio
 import sys
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 
-from bot import execute, journal, overrides
+from bot import execute, journal, learning, overrides
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import config_provenance, load_config
 from bot.credentials import load_credentials, validate_account
@@ -28,7 +28,8 @@ from bot.flatten import flatten_all
 from bot.models import AccountState, Position
 from bot.orders import INCOMPLETE
 from bot.risk import EASTERN, RiskManager
-from bot.snapshot import build_snapshot, price_for_proposal
+from bot.snapshot import _data, build_snapshot, price_for_proposal
+from bot.trades import pair_round_trips
 
 # Hackathon rule (docs/alpaca-official-guidelines.md): the judging account
 # must not trade before the official window opens. Hardcoded on purpose - a
@@ -47,6 +48,32 @@ def describe_error(exc: BaseException) -> str:
     Always include the type so the record says *what* failed."""
     text = str(exc).strip()
     return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
+
+
+async def learning_block(client: AlpacaMCPClient, config: dict, snap: dict, now: datetime) -> str:
+    """RECENT OUTCOMES block for the prompt (#31): closed round trips over
+    the last learning_days from Alpaca's fills + the journal's exit
+    reasons, open positions vs entry, today's rejections by rule. Any
+    failure -> "" (the cycle must not depend on it)."""
+    if not config.get("learning_enabled"):
+        return ""
+    try:
+        from trade_report import (  # entrypoint module, no cycle back here
+            fills_from_orders,
+            journaled_sells,
+        )
+
+        days = int(config.get("learning_days", 2))
+        after = (datetime.now(timezone.utc) - timedelta(days=days)).isoformat()
+        data = _data(await client.call_tool("get_orders", {"status": "all", "after": after, "nested": True, "limit": 500}))
+        orders = data.get("result", data) if isinstance(data, dict) else data
+        trips, _ = pair_round_trips(fills_from_orders(orders if isinstance(orders, list) else [], journaled_sells()))
+        records_today = journal.read_events(now.date().isoformat())
+        positions = (snap.get("account") or {}).get("positions") or []
+        return learning.build_learning_block(trips, positions, records_today, max_trades=int(config.get("learning_trades", 15)))
+    except Exception as exc:  # noqa: BLE001 - advisory context only
+        journal.log("error", where="learning", detail=describe_error(exc))
+        return ""
 
 
 def account_from_snapshot(snap: dict) -> AccountState:
@@ -181,8 +208,9 @@ async def run(args: argparse.Namespace) -> int:
             print(f"flat and past the {risk.last_entry} ET entry cutoff - nothing to decide")
             return 0
 
+        outcomes = await learning_block(client, config, snap, now)
         try:
-            decision = await decide(snap, config, featherless, today=now.date(), mcp=client)
+            decision = await decide(snap, config, featherless, today=now.date(), mcp=client, learning=outcomes)
         except Exception as exc:  # noqa: BLE001 - one bad model call must not crash the cycle
             detail = describe_error(exc)
             journal.log("error", where="decide", detail=detail, model=featherless.model)
@@ -199,6 +227,7 @@ async def run(args: argparse.Namespace) -> int:
             finish_reason=decision.finish_reason,
             reasoning=decision.reasoning or None,
             tool_calls=decision.tool_calls or None,
+            learning_chars=len(outcomes) or None,
         )
 
         if args.verbose:

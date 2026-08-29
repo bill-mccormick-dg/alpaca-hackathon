@@ -89,6 +89,15 @@ request_timeout_sec: 60
 research_tools_enabled: false
 research_max_tool_calls: 6
 
+# Learning loop (bot/learning.py): a FACTS-ONLY block in the prompt - the
+# last learning_trades closed round trips over learning_days sessions
+# (from Alpaca's fills + the journal's exit reasons), open positions vs
+# entry, and today's guardrail rejections grouped by rule. Windowed on
+# purpose so one bad morning can't permanently spook the model.
+learning_enabled: false
+learning_days: 2
+learning_trades: 15
+
 # Prediction-market prior (bot/predictions.py): Kalshi's public daily
 # "index close" range markets, summarized into a few crowd-implied facts
 # (implied median close, P(above prior close), P(|move|>1%)) and handed to
