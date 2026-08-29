@@ -23,7 +23,9 @@ from bot.config import load_config
 from bot.credentials import load_credentials
 from bot.decide import decide
 from bot.featherless import FeatherlessClient
+from bot.flatten import flatten_all
 from bot.models import AccountState, Position
+from bot.orders import INCOMPLETE
 from bot.risk import EASTERN, RiskManager
 from bot.snapshot import build_snapshot, price_for_proposal
 
@@ -106,13 +108,18 @@ async def run(args: argparse.Namespace) -> int:
         )
 
         if risk.daily_loss_breached(acct):
-            # Flatten-on-breach is issue #19; for now just halt the rest
-            # of the day so no new risk goes on.
-            halt = risk.daily_halt_file(now.date())
-            halt.parent.mkdir(exist_ok=True)
-            halt.write_text("daily loss cutoff breached\n")
+            # Flatten everything, then halt for the rest of the day.
             journal.log("daily_loss_halt", equity=acct.equity, start_of_day=acct.start_of_day_equity)
-            print("DAILY LOSS CUTOFF BREACHED - halted for today")
+            if not args.dry_run:
+                outcome = await flatten_all(client)
+                journal.log("daily_loss_flatten", **vars(outcome))
+                print(outcome.message)
+                if outcome.state == INCOMPLETE:
+                    print(f"WARNING: {outcome.message}", file=sys.stderr)
+                halt = risk.daily_halt_file(now.date())
+                halt.parent.mkdir(exist_ok=True)
+                halt.write_text("daily loss cutoff breached\n")
+            print("DAILY LOSS CUTOFF BREACHED - flattened and halted for today")
             return 0
 
         # --force skips this too: a rehearsal should exercise the model

@@ -34,16 +34,17 @@ def read_events(
     if not journal.exists():
         return []
     out = []
-    for line in journal.open():
-        try:
-            r = json.loads(line)
-        except json.JSONDecodeError:
-            continue
-        if day != "all" and not str(r.get("ts", "")).startswith(day):
-            continue
-        if events and r.get("event") not in events:
-            continue
-        out.append(r)
+    with journal.open() as f:
+        for line in f:
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if day != "all" and not str(r.get("ts", "")).startswith(day):
+                continue
+            if events and r.get("event") not in events:
+                continue
+            out.append(r)
     return out
 
 
