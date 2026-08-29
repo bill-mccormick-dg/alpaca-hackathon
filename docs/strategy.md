@@ -67,7 +67,13 @@ the DTE window allows multi-day holds. So the end-of-day rule is *not*
 the end-of-day backstop; everything else may be held overnight under the
 per-position stop/take-profit, and is force-closed on its expiry day
 (issue #32 implements this; until it lands the backstop flattens all).
-Everything must be flat, or deliberately held, by Fri 09:30 ET.
+
+**Hard rule for the final day:** everything — every option and every share —
+is flattened at the end-of-day backstop on **Fri Sep 4**, no exceptions and
+no overnight holds into the weekend. The scoring snapshot is Fri 09:30 ET,
+so positions held into Friday morning still count at their mark; they are
+simply closed that afternoon. This is a config date (`final_flatten_date`)
+the flatten logic keys off, not a manual step.
 
 ## What "working" looks like by Thursday
 
