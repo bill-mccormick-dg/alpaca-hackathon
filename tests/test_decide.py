@@ -218,13 +218,18 @@ class ParseProposalTest(unittest.TestCase):
 
 
 class FakeFeatherlessClient:
-    def __init__(self, content: str):
+    def __init__(self, content: str, usage=None, model="fake/model"):
         self.content = content
+        self.usage = usage
+        self.model = model
         self.calls = []
 
     async def chat(self, messages, **kwargs):
         self.calls.append((messages, kwargs))
-        return {"choices": [{"message": {"content": self.content}}]}
+        response = {"choices": [{"message": {"content": self.content}}], "model": self.model}
+        if self.usage is not None:
+            response["usage"] = self.usage
+        return response
 
 
 class DecideTest(unittest.IsolatedAsyncioTestCase):
@@ -232,17 +237,39 @@ class DecideTest(unittest.IsolatedAsyncioTestCase):
         raw = '[{"instrument": "stock", "symbol": "AAPL", "side": "buy", "qty": 3, "reason": "x"}]'
         client = FakeFeatherlessClient(raw)
 
-        proposals, returned_raw = await decide.decide(_snapshot(), _config(), client, TODAY)
+        d = await decide.decide(_snapshot(), _config(), client, TODAY)
 
-        self.assertEqual(len(proposals), 1)
-        self.assertIsInstance(proposals[0], Proposal)
-        self.assertEqual(proposals[0].symbol, "AAPL")
-        self.assertEqual(returned_raw, raw)
+        self.assertEqual(len(d.proposals), 1)
+        self.assertIsInstance(d.proposals[0], Proposal)
+        self.assertEqual(d.proposals[0].symbol, "AAPL")
+        self.assertEqual(d.raw, raw)
+
+    async def test_carries_model_usage_and_latency(self):
+        client = FakeFeatherlessClient("[]", usage={"prompt_tokens": 3000, "completion_tokens": 2, "total_tokens": 3002})
+        d = await decide.decide(_snapshot(), _config(), client, TODAY)
+        self.assertEqual(d.model, "fake/model")
+        self.assertEqual(d.usage["total_tokens"], 3002)
+        self.assertGreaterEqual(d.latency_sec, 0.0)
+
+    async def test_missing_usage_is_none_not_a_crash(self):
+        d = await decide.decide(_snapshot(), _config(), FakeFeatherlessClient("[]"), TODAY)
+        self.assertIsNone(d.usage)
+
+    async def test_passes_temperature_and_max_tokens_from_config(self):
+        client = FakeFeatherlessClient("[]")
+        await decide.decide(_snapshot(), _config(temperature=0.35, max_tokens=500), client, TODAY)
+        _, kwargs = client.calls[0]
+        self.assertEqual(kwargs, {"temperature": 0.35, "max_tokens": 500})
+
+    async def test_omits_sampling_kwargs_when_config_lacks_them(self):
+        client = FakeFeatherlessClient("[]")
+        await decide.decide(_snapshot(), _config(), client, TODAY)
+        _, kwargs = client.calls[0]
+        self.assertEqual(kwargs, {})
 
     async def test_empty_array_means_no_proposals(self):
-        client = FakeFeatherlessClient("[]")
-        proposals, _ = await decide.decide(_snapshot(), _config(), client, TODAY)
-        self.assertEqual(proposals, [])
+        d = await decide.decide(_snapshot(), _config(), FakeFeatherlessClient("[]"), TODAY)
+        self.assertEqual(d.proposals, [])
 
     async def test_sends_prompt_as_single_user_message(self):
         client = FakeFeatherlessClient("[]")
@@ -255,8 +282,8 @@ class DecideTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_non_dict_entries_in_array_are_skipped_not_a_crash(self):
         client = FakeFeatherlessClient('["hold", {"instrument": "stock", "symbol": "AAPL", "side": "buy", "qty": 1}]')
-        proposals, _ = await decide.decide(_snapshot(), _config(), client, TODAY)
-        self.assertEqual(len(proposals), 1)
+        d = await decide.decide(_snapshot(), _config(), client, TODAY)
+        self.assertEqual(len(d.proposals), 1)
 
 
 if __name__ == "__main__":

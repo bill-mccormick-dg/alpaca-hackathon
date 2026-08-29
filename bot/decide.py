@@ -9,6 +9,8 @@ proposal this produces.
 
 import json
 import re
+import time
+from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from bot import greeks
@@ -202,15 +204,45 @@ def _parse_proposal(action: dict) -> Proposal:
     )
 
 
+@dataclass
+class Decision:
+    proposals: list[Proposal]
+    raw: str
+    model: str
+    usage: dict | None = None  # Featherless/OpenAI-style {prompt_tokens, completion_tokens, total_tokens}
+    latency_sec: float = 0.0
+    extra: dict = field(default_factory=dict)
+
+
+def _sampling_kwargs(config: dict) -> dict:
+    """temperature / max_tokens from config, only when present, so a config
+    without them behaves exactly as before."""
+    kwargs = {}
+    if config.get("temperature") is not None:
+        kwargs["temperature"] = float(config["temperature"])
+    if config.get("max_tokens") is not None:
+        kwargs["max_tokens"] = int(config["max_tokens"])
+    return kwargs
+
+
 async def decide(
     snapshot: dict, config: dict, client: FeatherlessClient, today: date | None = None
-) -> tuple[list[Proposal], str]:
-    """Returns (proposals, raw_model_text). One Featherless call, no
-    retry - that's an operational concern for whatever calls this
-    (run_cycle.py), not this module."""
+) -> Decision:
+    """One Featherless call, no retry - that's an operational concern for
+    whatever calls this (run_cycle.py), not this module. The Decision
+    carries usage and latency so the journal can attribute cost and speed
+    to the model/config that produced it."""
     prompt = build_prompt(snapshot, config, today)
-    response = await client.chat([{"role": "user", "content": prompt}])
+    started = time.monotonic()
+    response = await client.chat([{"role": "user", "content": prompt}], **_sampling_kwargs(config))
+    latency = time.monotonic() - started
     raw = response["choices"][0]["message"]["content"]
     actions = _extract_json_array(raw)
     proposals = [_parse_proposal(a) for a in actions if isinstance(a, dict)]
-    return proposals, raw
+    return Decision(
+        proposals=proposals,
+        raw=raw,
+        model=response.get("model") or client.model,
+        usage=response.get("usage"),
+        latency_sec=round(latency, 3),
+    )
