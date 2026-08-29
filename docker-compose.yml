@@ -1,0 +1,36 @@
+# Local dev / experiment stack. See README "Docker quickstart".
+#
+# This is NOT how the official account trades - that is CT 108 + cron (README
+# "Operations"). Everything here defaults to a TEST paper account via .env,
+# and run_cycle.py refuses --account official before the competition window
+# regardless.
+#
+#   docker compose build
+#   docker compose run --rm bot                       # dry-run cycle, gates skipped
+#   docker compose run --rm bot -m unittest discover -s tests
+#   docker compose run --rm bot status.py
+#   docker compose run --rm bot flatten.py            # closes the TEST account's positions
+#   docker compose run --rm bot override.py show
+#
+# ./logs (journal, halt files, overrides) and config.yaml are bind-mounted so
+# state persists and config is editable without a rebuild.
+name: alpaca-hackathon
+
+services:
+  bot:
+    build: .
+    image: alpaca-hackathon:latest
+    env_file:
+      # ALPACA_API_KEY/SECRET (a TEST paper account), ALPACA_BASE_URL,
+      # FEATHERLESS_API_KEY. Optional so the tests run before you have keys.
+      - path: .env
+        required: false
+    environment:
+      TZ: ${TZ:-America/Chicago}
+    volumes:
+      - ./logs:/app/logs
+      - ./config.yaml:/app/config.yaml:ro
+    # Uncomment to hack on the code without rebuilding (tests, scripts, bot/):
+    #  - ./bot:/app/bot:ro
+    #  - ./tests:/app/tests:ro
+    #  - ./run_cycle.py:/app/run_cycle.py:ro
