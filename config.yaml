@@ -82,6 +82,13 @@ temperature: 0.2
 max_tokens: 800 # a JSON array of a few proposals, not prose
 request_timeout_sec: 60
 
+# Featherless list prices, $ per 1M tokens (2026-08-29), for eod_review's
+# cost estimate only - billing is whatever the account page says.
+model_prices:
+  moonshotai/Kimi-K2-Instruct: {in: 0.6, out: 2.5}
+  moonshotai/Kimi-K2.6: {in: 0.77, out: 3.5}
+  Qwen/Qwen3.8-Flash-Next: {in: 0.15, out: 0.5}
+
 # Deterministic exits (bot/exits.py), checked at the top of every cycle
 # BEFORE the model is consulted. Percentages are of the entry premium (or
 # entry price for stock): -40 means "close if the position has lost 40% of
