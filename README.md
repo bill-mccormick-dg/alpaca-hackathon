@@ -1,4 +1,9 @@
-# Alpaca AI Trading Agents Hackathon
+# Long Premium, Short Leash
+
+*An autonomous options agent on Alpaca's MCP server. An open-source model
+(Featherless) researches live bars, chains and news, then proposes
+defined-risk premium trades; deterministic code sizes, stops, and closes every
+one before expiry.* — Alpaca AI Trading Agents Hackathon, Aug 28–Sep 4, 2026.
 
 > **Thesis:** Buy defined-risk, short-dated options premium on the five most
 > liquid names when an open-source model sees a concrete reason; deterministic
