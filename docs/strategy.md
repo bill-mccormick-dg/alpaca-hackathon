@@ -61,19 +61,27 @@ until 15:45 ET; 2% daily-loss cutoff → flatten + halt for the day.
 
 ## Holding period and end of day
 
-Judging is on **total equity at Fri Sep 4 09:30 ET**, not on daily P&L, and
-the DTE window allows multi-day holds. So the end-of-day rule is *not*
-"flatten everything": contracts expiring the next trading day are closed at
-the end-of-day backstop; everything else may be held overnight under the
-per-position stop/take-profit, and is force-closed on its expiry day
-(issue #32 implements this; until it lands the backstop flattens all).
+Judging is on total equity, not daily P&L, and the DTE window allows
+multi-day holds. So the end-of-day rule is *not* "flatten everything":
+`flatten.py --expiring-only` (the cron backstop) closes contracts expiring
+within `eod_close_dte` days; everything else is held overnight under the
+per-position stop/take-profit (`bot/exits.py`, checked every cycle before the
+model is consulted), and any contract reaching `expiry_close_dte` is
+force-closed that day regardless of P&L.
 
-**Hard rule for the final day:** everything — every option and every share —
-is flattened at the end-of-day backstop on **Fri Sep 4**, no exceptions and
-no overnight holds into the weekend. The scoring snapshot is Fri 09:30 ET,
-so positions held into Friday morning still count at their mark; they are
-simply closed that afternoon. This is a config date (`final_flatten_date`)
-the flatten logic keys off, not a manual step.
+**The score is fixed at Thursday's close.** Per Alpaca's FAQ, the Fri Sep 4
+09:30 ET snapshot *"will look at the portfolio's total equity as of EOD
+Thursday Sep 3rd"*, with exercises/assignments of Sep 3 expiries reflected.
+Consequences:
+
+- Contracts expiring Thu Sep 3 are closed that day by the expiry rule — never
+  left to exercise into a surprise stock position.
+- Positions held through Thursday's close count at their **mark**; selling
+  them Thursday afternoon would only pay the bid/ask spread. So Thursday's
+  backstop is the normal expiring-only one, not a flatten-all.
+- **Fri Sep 4** (`final_flatten_date`): no new entries all day, and the
+  end-of-day backstop flattens *everything* so nothing is carried over the
+  weekend. That is cleanup after the snapshot, not part of the score.
 
 ## What "working" looks like by Thursday
 

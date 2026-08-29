@@ -74,6 +74,32 @@ strategy_notes: |
   - Stock is allowed only as a small directional complement, never the main
     idea.
 
+# Deterministic exits (bot/exits.py), checked at the top of every cycle
+# BEFORE the model is consulted. Percentages are of the entry premium (or
+# entry price for stock): -40 means "close if the position has lost 40% of
+# what was paid". Long premium's worst case is the premium, so the stop is
+# about not sitting in a dead trade, the take-profit about banking gains
+# that theta will otherwise erode.
+stop_loss_pct: 40
+take_profit_pct: 60
+
+# Force-close any option contract with this many days to expiration or
+# fewer, at any cycle - never carry a contract into expiration day's close.
+# 0 = close on expiry day itself.
+expiry_close_dte: 0
+
+# End-of-day backstop (flatten.py --expiring-only, from cron): close option
+# contracts expiring within this many days; hold everything else overnight
+# under the stop/take-profit above. Judging is on Friday-9:30 equity, not
+# daily P&L, so flatten-all every day is deliberately NOT the policy.
+eod_close_dte: 1
+
+# The final day of the event. The score is fixed at the PRIOR close (Alpaca
+# measures equity as of EOD Thu Sep 3), so on/after this date run_cycle
+# makes no new entries and flatten.py ignores --expiring-only and closes
+# everything - post-snapshot cleanup so nothing is held over the weekend.
+final_flatten_date: "2026-09-04"
+
 # Trading window, US/Eastern. No new entries after last_entry; sells stay
 # legal until trade_end.
 trade_start: "09:45"
