@@ -102,7 +102,8 @@ Every entrypoint takes `--account test|official` and defaults to **test**.
 |---|---|
 | `run_cycle.py [--dry-run] [--force] [--verbose]` | One cycle: gates → snapshot → decide → risk-check → execute. `--dry-run` prints orders instead of sending; `--force` skips the market-open / trading-window / entry-cutoff gates (rehearsal); `--verbose` prints the raw model output |
 | `flatten.py [--halt]` | Cancel all orders, wait for the cancels to settle, close all positions, then poll until actually flat and report what is *really* still held. `--halt` also trips the kill switch |
-| `status.py [--json]` | Halt state, account, positions, today's journal summary. Read-only — safe on the official account any time |
+| `status.py [--json]` | Halt state, runtime overrides, account, positions, today's journal summary. Read-only — safe on the official account any time |
+| `override.py show \| set <key> <value> [--until] \| clear <key>\|--all` | Intraday config tweaks without a deploy — see **Runtime overrides** below |
 | `python -m unittest discover -s tests` | Credential-free guardrail tests |
 | `scripts/verify_*.py` | Manual live checks (Alpaca connectivity, Featherless, snapshot) |
 
@@ -113,6 +114,18 @@ Every entrypoint takes `--account test|official` and defaults to **test**.
 - `logs/HALT_<YYYY-MM-DD>` — daily-loss halt, written by `run_cycle.py` after it
   breaches `daily_loss_cutoff_pct` and flattens. Expires on its own at the next
   trading day; delete it to resume early.
+
+**Runtime overrides** (`override.py`, `bot/overrides.py`): two config layers with
+explicit precedence — `config.yaml` (git) is the base; `logs/overrides.yaml`
+(runtime, on the CT, never committed) wins for an allowlisted set of
+strategy/model/exit knobs: `model`, `temperature`, `max_tokens`, `strategy_notes`,
+`research_contracts_per_underlying`, `option_strike_band_pct`, `stop_loss_pct`,
+`take_profit_pct`, `eod_close_dte`. Hard risk caps are git-only on purpose.
+Overrides **expire at 16:00 ET the same day** unless `--until` is given, so
+intraday tweaks come from here and durable changes come from a PR — tomorrow
+always starts from git. Every cycle journals a `config` event with the
+effective values, a config hash, and the active overrides, so nothing changes
+silently. The MQTT/Home Assistant bridge (#14) calls the same functions.
 
 **Journal**: `logs/journal.jsonl`, one JSON record per event with an Eastern-time
 `ts` — `cycle_start`, `decision` (raw model output), `order_submitted` /

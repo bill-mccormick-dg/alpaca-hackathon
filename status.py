@@ -69,8 +69,9 @@ async def broker_status(account: str) -> dict:
 
 
 async def run(args: argparse.Namespace) -> int:
-    risk = RiskManager(load_config())
-    report = {"account": args.account, "halt": halt_state(risk)}
+    config = load_config()
+    risk = RiskManager(config)
+    report = {"account": args.account, "halt": halt_state(risk), "overrides": config.get("_overrides", {})}
     try:
         report["broker"] = await broker_status(args.account)
     except Exception as exc:  # noqa: BLE001 - status must still print halt state + journal
@@ -85,6 +86,15 @@ async def run(args: argparse.Namespace) -> int:
     print("== Halt state ==")
     print(f"  manual HALT: {'YES' if h['manual_halt'] else 'no'}")
     print(f"  daily halt:  {'YES' if h['daily_halt'] else 'no'}")
+
+    ov = report["overrides"]
+    print(f"\n== Runtime overrides ({len(ov)}) ==")
+    for key, entry in sorted(ov.items()):
+        value = entry["value"]
+        shown = (value.strip().splitlines()[0] + " ...") if isinstance(value, str) and "\n" in value else value
+        print(f"  {key} = {shown!r}  until {entry.get('until')}  ({entry.get('set_by')})")
+    if not ov:
+        print("  (none - pure config.yaml)")
 
     b = report.get("broker")
     print(f"\n== Account ({args.account}, paper) ==")
