@@ -54,6 +54,7 @@
     <span class="code">exits: expiry / stop / take-profit</span><em>&rarr;</em>
     <span>snapshot via Alpaca MCP</span><em>&rarr;</em>
     <span>derived Greeks</span><em>&rarr;</em>
+    <span>Kalshi prior</span><em>&rarr;</em>
     <span>model + read-only research tools</span><em>&rarr;</em>
     <span>JSON proposals</span><em>&rarr;</em>
     <span class="code">risk gate (never negotiates)</span><em>&rarr;</em>
@@ -70,6 +71,18 @@
  "bid":1.64,"ask":1.67,"last":1.67,
  "iv":0.0827,"delta":-0.4596,"gamma":0.0843,"theta":-0.4282,"vega":0.226}</pre>
   <p class="lead">Solved per contract from a noisy feed - so the prompt tells the model they are rough guides, not to audit them.</p>
+</section>
+
+<section>
+  <h2>A second opinion from a prediction market</h2>
+  <p>Kalshi's daily index-close markets are a crowd-implied distribution of today's close - a
+  second, independent estimate the model can compare against what the option chain implies.</p>
+  <pre>PREDICTION MARKETS (Kalshi, crowd-implied, read-only - a PRIOR to weigh, not
+a signal to copy; compare to what the option chain implies and to today's
+price action):
+- SPY via KXINX: prior close 769; implied median 771.4 (+0.31%);
+  P(above prior close) 0.58, P(up&gt;1%) 0.21, P(down&gt;1%) 0.14</pre>
+  <p class="lead">Public API, no key, never traded - read-only, cached, and silently omitted on any failure.</p>
 </section>
 
 <section>
@@ -114,6 +127,39 @@ model output: [{"instrument":"option","symbol":"NVDA260902P00220000","side":"buy
     <span>CI &rarr; self-hosted runner deploys before the open</span>
   </div>
   <p class="lead" style="margin-top:1em">A second paper account runs a challenger config against the same live market - the only backtest available in four days. 60 PRs, 300 tests, every merge deployed automatically.</p>
+</section>
+
+<section>
+  <h2>The experiment farm - real A/B, not a backtest</h2>
+  <p>Four days isn't enough for a real backtest, and there's no historical options data on the
+  free feed anyway. So: a docker-compose farm, one container per variant, each its own
+  config and its own paper account, all trading the <em>same live market</em>.</p>
+  <pre>$ docker compose --profile farm config --services
+bot-kimi26
+
+$ diff config.yaml config-variants/kimi26.yaml
+&lt; model: moonshotai/Kimi-K2-Instruct
+&gt; model: moonshotai/Kimi-K2.6
+&gt; research_tools_enabled: true
+&gt; learning_enabled: true</pre>
+  <p class="lead">Different model, different thesis, different risk parameters - same conditions.
+  <code>eod_review</code> / <code>trade_report</code> compare them; a winner is promoted into the
+  official config with a pull request.</p>
+</section>
+
+<section>
+  <h2>Home Assistant, over MQTT - fully decoupled</h2>
+  <div class="flow">
+    <span class="code">journal.log()</span><em>&rarr;</em>
+    <span>MQTT publish (fire-and-forget)</span><em>&rarr;</em>
+    <span>HA auto-discovery: equity, day P&amp;L, positions, halt, last decision</span>
+  </div>
+  <pre>alpaca-hackathon/test/event/order_submitted   {"side":"buy","symbol":"NVDA...","qty":10,...}
+alpaca-hackathon/test/state/equity            100240.50           [retained]
+homeassistant/sensor/alpaca_test_halt/config  {"device":{"name":"AI Day Trader (test)"},...}</pre>
+  <p class="lead">No broker configured, or broker down &rarr; no-op; a publish can never delay or fail
+  a cycle. And it's two-way: <code>config/set</code> applies a runtime override through the exact
+  same validated, allowlisted path the CLI uses - expiring at the close, same as always.</p>
 </section>
 
 <section>
