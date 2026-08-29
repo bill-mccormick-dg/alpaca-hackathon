@@ -44,6 +44,16 @@ class ToMcpCallTest(unittest.TestCase):
         self.assertGreaterEqual(args["days"], 3)
         self.assertNotIn("hours", args)
 
+    def test_bars_keep_only_the_newest_max_bars_so_json_stays_intact(self):
+        bars = [{"t": f"2026-09-01T{h:02d}:{m:02d}:00Z", "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 100}
+                for h in range(9, 16) for m in (0, 15, 30, 45)]  # 28 bars
+        bars += [{"t": f"2026-09-02T{h:02d}:{m:02d}:00Z", "o": 1, "h": 2, "l": 0.5, "c": 1.5, "v": 100}
+                 for h in range(9, 16) for m in (0, 15, 30, 45)]  # 56 total
+        out = research.result_text(FakeResult({"bars": {"SPY": bars}}), "get_bars")
+        parsed = json.loads(out)  # must not be truncated mid-JSON
+        self.assertEqual(len(parsed["SPY"]), research.MAX_BARS)
+        self.assertTrue(parsed["SPY"][-1]["t"].startswith("2026-09-02T15:45"))
+
     def test_bars_trimmed_are_oldest_first_even_when_fetched_newest_first(self):
         payload = {"bars": {"SPY": [{"t": "2026-09-01T15:00:00Z", "c": 2}, {"t": "2026-09-01T14:00:00Z", "c": 1}]}}
         out = json.loads(research.result_text(FakeResult(payload), "get_bars"))
