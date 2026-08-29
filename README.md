@@ -1,4 +1,4 @@
-# Long Premium, Short Leash
+# AI Day Trader - Long Premium, Short Leash
 
 *An autonomous options agent on Alpaca's MCP server. An open-source model
 (Featherless) researches live bars, chains and news, then proposes

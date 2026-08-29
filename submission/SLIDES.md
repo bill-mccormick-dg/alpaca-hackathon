@@ -1,9 +1,9 @@
-# Slide deck outline — Long Premium, Short Leash
+# Slide deck outline — AI Day Trader - Long Premium, Short Leash
 
 Ten slides, one idea each. Export to PDF (or Google Slides, link-viewable).
 Real screenshots over diagrams wherever a screenshot exists.
 
-1. **Title** — "Long Premium, Short Leash" · autonomous options agent on Alpaca's
+1. **Title** — "AI Day Trader - Long Premium, Short Leash" · autonomous options agent on Alpaca's
    MCP server · team · account `PA3VS39Y5LE2`
 2. **The thesis in one sentence** — buy defined-risk, short-dated premium when an
    open model sees a reason; code sizes, stops, closes; the model never touches
