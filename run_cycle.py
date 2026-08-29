@@ -19,7 +19,7 @@ from datetime import date, datetime
 
 from bot import execute, journal
 from bot.alpaca_mcp import AlpacaMCPClient
-from bot.config import load_config
+from bot.config import config_provenance, load_config
 from bot.credentials import load_credentials
 from bot.decide import decide
 from bot.exits import check_exits
@@ -121,6 +121,9 @@ async def run(args: argparse.Namespace) -> int:
             positions=acct.open_position_count,
             dry_run=args.dry_run,
         )
+        # What this cycle actually ran with (git config + active overrides),
+        # so a P&L change can be attributed to the config change behind it.
+        journal.log("config", account=args.account, **config_provenance(config))
 
         if risk.daily_loss_breached(acct):
             # Flatten everything, then halt for the rest of the day.

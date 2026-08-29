@@ -100,3 +100,33 @@ After each close: `eod_review.py` (#30) → read the digest → edit
 `strategy_notes` / exits / knobs → PR → CI → deploy → the next morning runs
 the new version. Promote the test-account challenger config (#34) when it
 wins convincingly.
+
+## Runtime overrides (intraday, no deploy)
+
+`config.yaml` in git is the base. `logs/overrides.yaml` on the CT — written
+only through `bot/overrides.py` (the `override.py` CLI today, the MQTT bridge
+in #14) — wins for these keys: `model`, `temperature`, `max_tokens`,
+`strategy_notes`, `research_contracts_per_underlying`,
+`option_strike_band_pct`, `stop_loss_pct`, `take_profit_pct`,
+`eod_close_dte`. Hard risk caps are deliberately not on the list.
+
+Why the two layers never fight:
+
+- They never edit each other; `load_config()` merges them at read time,
+  every cycle.
+- Overrides **expire at 16:00 ET** by default (an evening tweak lasts through
+  the next day's close). Durable changes are PRs; tomorrow starts from git.
+- Every cycle journals a `config` event: effective values, a `config_hash`,
+  `strategy_notes` hash + first line, and the active overrides with their
+  expiry and origin. `status.py` shows the same.
+
+**MQTT contract** (implemented by #14, defined here so both sides agree):
+
+- Subscribe `alpaca-hackathon/config/set`, JSON `{"key": ..., "value": ...,
+  "until": "<ISO, optional>"}` → `set_override(key, value, until,
+  set_by="mqtt")`. A `null` value clears the key. Validation errors are
+  published to `alpaca-hackathon/config/error`.
+- After every cycle the bot publishes (retained)
+  `alpaca-hackathon/config/effective` — the same payload as the `config`
+  journal event. Home Assistant always sees what the bot is actually
+  running, which is the whole "no fight" guarantee.
