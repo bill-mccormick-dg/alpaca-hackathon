@@ -33,8 +33,21 @@ class ToMcpCallTest(unittest.TestCase):
         self.assertEqual(name, "get_stock_bars")
         self.assertEqual(args["symbols"], "SPY")
         self.assertEqual(args["feed"], "iex")
-        self.assertEqual(args["hours"], 120)
+        self.assertEqual(args["days"], 22)  # 120h capped -> 20 sessions-ish + weekend margin
         self.assertEqual(args["limit"], 120)
+        self.assertEqual(args["sort"], "desc")
+
+    def test_bars_short_lookback_still_spans_a_weekend(self):
+        # A "9 hour" lookback on a Saturday returned {} live: wall-clock hours
+        # on Alpaca's side. Always ask for at least 3 calendar days.
+        _, args = research.to_mcp_call("get_bars", {"symbol": "SPY", "timeframe": "15Min", "lookback_hours": 9})
+        self.assertGreaterEqual(args["days"], 3)
+        self.assertNotIn("hours", args)
+
+    def test_bars_trimmed_are_oldest_first_even_when_fetched_newest_first(self):
+        payload = {"bars": {"SPY": [{"t": "2026-09-01T15:00:00Z", "c": 2}, {"t": "2026-09-01T14:00:00Z", "c": 1}]}}
+        out = json.loads(research.result_text(FakeResult(payload), "get_bars"))
+        self.assertEqual([b["c"] for b in out["SPY"]], [1, 2])
 
     def test_bars_bad_timeframe_falls_back(self):
         _, args = research.to_mcp_call("get_bars", {"symbol": "SPY", "timeframe": "1Sec"})

@@ -94,14 +94,18 @@ def to_mcp_call(name: str, args: dict) -> tuple[str, dict]:
             tf = "15Min"
         hours = int(args.get("lookback_hours") or {"5Min": 8, "15Min": 24, "1Hour": 72, "1Day": 120 * 24}[tf])
         hours = max(1, min(hours, 120 if tf != "1Day" else 120 * 24))
+        # Lookback is wall-clock on Alpaca's side: "9 hours" on a weekend or
+        # overnight returns nothing. Ask for enough calendar days to span the
+        # requested market hours plus a weekend, newest first, capped at 120
+        # bars - _trim_bars flips them back to oldest-first for the model.
+        days = max(3, -(-hours // 6) + 2)
         return "get_stock_bars", {
             "symbols": _symbols(args.get("symbol"), 1),
             "timeframe": tf,
-            "hours": hours,
-            "days": 0,
+            "days": days,
             "limit": 120,
             "feed": "iex",
-            "sort": "asc",
+            "sort": "desc",
         }
     if name == "get_stock_snapshot":
         return "get_stock_snapshot", {"symbols": _symbols(args.get("symbol"), 1), "feed": "iex"}
@@ -117,8 +121,12 @@ def to_mcp_call(name: str, args: dict) -> tuple[str, dict]:
 def _trim_bars(data):
     """Bars come back verbose; keep t/o/h/l/c/v so 120 bars fit the budget."""
     if isinstance(data, dict) and isinstance(data.get("bars"), dict):
-        return {sym: [{k: b.get(k) for k in ("t", "o", "h", "l", "c", "v")} for b in bars if isinstance(b, dict)]
-                for sym, bars in data["bars"].items()}
+        out = {}
+        for sym, bars in data["bars"].items():
+            rows = [{k: b.get(k) for k in ("t", "o", "h", "l", "c", "v")} for b in (bars or []) if isinstance(b, dict)]
+            rows.sort(key=lambda r: str(r.get("t") or ""))  # oldest first for the model, whatever the fetch order
+            out[sym] = rows
+        return out
     return data
 
 
