@@ -92,6 +92,43 @@ Paper-only throughout — no live-trading code path exists.
    `--account official` is refused outright before Mon Aug 31 9:30 AM ET
    unless `--dry-run` — hardcoded in `run_cycle.py`, not configurable.
 
+## Docker quickstart (local dev, any machine)
+
+The production path is CT 108 + cron (below); this is for working on the bot
+locally with nothing installed but Docker. Everything here uses a **test**
+paper account — `run_cycle.py` refuses `--account official` before the
+competition window regardless, and the official keys never leave CT 108.
+
+```
+cp .env.example .env            # your TEST paper account keys + Featherless key
+docker compose build
+docker compose run --rm bot -m unittest discover -s tests   # 219 credential-free tests
+docker compose run --rm bot                                 # = run_cycle.py --dry-run --force
+docker compose run --rm bot run_cycle.py --dry-run --force --verbose
+docker compose run --rm bot status.py
+docker compose run --rm bot override.py show
+```
+
+`./logs` (journal, halt files, overrides) and `config.yaml` are bind-mounted,
+so state persists across runs and config edits need no rebuild. Drop
+`--dry-run` to place real paper orders **on the test account in `.env`**.
+
+## Team onboarding
+
+1. Get added as a collaborator (repo is private until submission) and create
+   your own Alpaca paper account for development — never share or use the
+   official one (`PA3VS39Y5LE2`).
+2. Follow the Docker quickstart above; confirm the tests and a dry-run cycle
+   work before changing anything.
+3. Workflow: small feature branch off `main` → push → PR → CI must be green →
+   squash-merge → the self-hosted runner deploys `main` to CT 108 within a
+   minute or two. Never commit to `main` directly; never commit `.env`,
+   `logs/`, or credentials.
+4. Read [docs/strategy.md](docs/strategy.md) (what the bot is trying to do and
+   which decisions belong to code vs the model) and the **Operations** section
+   below (how to run, stop, and read it). Open work is on the issue tracker,
+   labelled `P1-monday` → `P4-later`.
+
 ## Operations
 
 Everything runs from the repo root with the venv's Python
