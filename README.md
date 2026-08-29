@@ -97,6 +97,13 @@ Paper-only throughout — no live-trading code path exists.
    `--account official` is refused outright before Mon Aug 31 9:30 AM ET
    unless `--dry-run` — hardcoded in `run_cycle.py`, not configurable.
 
+## Documentation
+
+The onboarding and reference docs live in [`docs/`](docs/) (start at
+[docs/index.md](docs/index.md)) and render as a Docusaurus site:
+`docker compose up docs` → http://localhost:3000. Reading order: Onboarding →
+Architecture → Strategy → Operations → The daily loop.
+
 ## Docker quickstart (local dev, any machine)
 
 The production path is CT 108 + cron (below); this is for working on the bot

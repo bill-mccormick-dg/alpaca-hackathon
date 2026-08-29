@@ -1,8 +1,13 @@
+---
+sidebar_position: 7
+title: Official guidelines (Alpaca)
+---
+
 # Alpaca Official Guidelines — Alpaca AI Trading Agents Hackathon
 
 Verbatim from Alpaca (via lablab.ai event page, "Build with Alpaca" section),
 copied here 2026-08-28 for a durable, version-controlled reference. See
-[README.md](../README.md) for how this project's setup maps to these rules.
+[README.md](https://github.com/bill-mccormick-dg/alpaca-hackathon/blob/main/README.md) for how this project's setup maps to these rules.
 
 ## 📢 Official guidelines from Alpaca
 

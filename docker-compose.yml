@@ -34,3 +34,18 @@ services:
     #  - ./bot:/app/bot:ro
     #  - ./tests:/app/tests:ro
     #  - ./run_cycle.py:/app/run_cycle.py:ro
+
+  # Docs site (Docusaurus) rendering ./docs - the onboarding + reference
+  # site. `docker compose up docs` then open http://localhost:3000. The
+  # markdown is bind-mounted, so edits hot-reload; no Node on the host.
+  docs:
+    build: ./docs-site
+    image: alpaca-hackathon-docs:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./docs:/docs:ro
+      - ./docs-site/docusaurus.config.js:/site/docusaurus.config.js:ro
+      - ./docs-site/sidebars.js:/site/sidebars.js:ro
+      - ./docs-site/src:/site/src:ro
+    profiles: ["docs"]

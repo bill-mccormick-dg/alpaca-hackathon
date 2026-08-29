@@ -4,3 +4,6 @@ __pycache__/
 .env
 .DS_Store
 logs/
+docs-site/node_modules/
+docs-site/build/
+docs-site/.docusaurus/
