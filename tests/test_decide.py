@@ -1,8 +1,10 @@
 import json
+import tempfile
 import unittest
 from datetime import date
+from pathlib import Path
 
-from bot import decide
+from bot import decide, journal
 from bot.models import Proposal
 
 
@@ -325,6 +327,107 @@ class DecideTest(unittest.IsolatedAsyncioTestCase):
         client = FakeFeatherlessClient('["hold", {"instrument": "stock", "symbol": "AAPL", "side": "buy", "qty": 1}]')
         d = await decide.decide(_snapshot(), _config(), client, TODAY)
         self.assertEqual(len(d.proposals), 1)
+
+
+class ScriptedClient:
+    """Returns canned responses in order; records every request's kwargs."""
+
+    def __init__(self, responses):
+        self.responses = list(responses)
+        self.calls = []
+        self.model = "fake/model"
+
+    async def chat(self, messages, **kwargs):
+        self.calls.append((list(messages), kwargs))
+        r = self.responses.pop(0)
+        return r
+
+
+def _tool_call_response(name, args, call_id="c1"):
+    return {"choices": [{"message": {"content": "", "tool_calls": [
+        {"id": call_id, "type": "function", "function": {"name": name, "arguments": json.dumps(args)}}]},
+        "finish_reason": "tool_calls"}], "usage": {"prompt_tokens": 100, "completion_tokens": 10}}
+
+
+def _answer(content="[]"):
+    return {"choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": 200, "completion_tokens": 5}, "model": "fake/model"}
+
+
+class FakeContentBlock:
+    def __init__(self, text):
+        self.text = text
+
+
+class FakeMCP:
+    def __init__(self):
+        self.calls = []
+
+    async def call_tool(self, name, arguments=None):
+        self.calls.append((name, arguments))
+        r = type("R", (), {})()
+        r.content = [FakeContentBlock(json.dumps({"data": {"bars": {"SPY": []}}}))]
+        return r
+
+
+class ResearchLoopTest(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self._orig = journal.JOURNAL
+        journal.JOURNAL = Path(self.tmp.name) / "journal.jsonl"
+        self.addCleanup(lambda: setattr(journal, "JOURNAL", self._orig))
+        self.journal_path = journal.JOURNAL
+
+    def _cfg(self, **o):
+        return _config(research_tools_enabled=True, research_max_tool_calls=2, **o)
+
+    async def test_disabled_by_default_makes_a_single_call_without_tools(self):
+        client = ScriptedClient([_answer()])
+        d = await decide.decide(_snapshot(), _config(), client, TODAY, mcp=FakeMCP())
+        self.assertEqual(d.tool_calls, [])
+        self.assertNotIn("tools", client.calls[0][1])
+
+    async def test_no_mcp_client_means_no_tools_even_if_enabled(self):
+        client = ScriptedClient([_answer()])
+        await decide.decide(_snapshot(), self._cfg(), client, TODAY, mcp=None)
+        self.assertNotIn("tools", client.calls[0][1])
+
+    async def test_tool_call_is_executed_fed_back_and_journaled(self):
+        client = ScriptedClient([_tool_call_response("get_bars", {"symbol": "SPY", "timeframe": "15Min"}), _answer("[]")])
+        mcp = FakeMCP()
+        d = await decide.decide(_snapshot(), self._cfg(), client, TODAY, mcp=mcp)
+
+        self.assertEqual(mcp.calls[0][0], "get_stock_bars")
+        self.assertEqual(mcp.calls[0][1]["symbols"], "SPY")
+        self.assertEqual([t["name"] for t in d.tool_calls], ["get_bars"])
+        # second request carries the assistant tool_calls + the tool result
+        messages, kwargs = client.calls[1]
+        self.assertEqual(messages[-1]["role"], "tool")
+        self.assertEqual(messages[-1]["tool_call_id"], "c1")
+        self.assertIn("tools", kwargs)
+        # usage summed across both requests
+        self.assertEqual(d.usage["prompt_tokens"], 300)
+        journaled = [json.loads(line) for line in self.journal_path.read_text().splitlines()]
+        self.assertEqual([r["event"] for r in journaled], ["tool_call"])
+        self.assertEqual(journaled[0]["tool"], "get_bars")
+
+    async def test_budget_is_enforced_then_model_must_answer(self):
+        client = ScriptedClient([
+            _tool_call_response("get_news", {"symbols": "SPY"}, "c1"),
+            _tool_call_response("get_news", {"symbols": "QQQ"}, "c2"),
+            _answer("[]"),  # the final request is made without tools, so the model can only answer
+        ])
+        d = await decide.decide(_snapshot(), self._cfg(), client, TODAY, mcp=FakeMCP())
+        self.assertEqual(len(d.tool_calls), 2)
+        self.assertEqual(len(client.calls), 3)
+        # after the budget is spent the final request is made WITHOUT tools
+        self.assertNotIn("tools", client.calls[-1][1])
+        self.assertIn("Research budget used", client.calls[-1][0][-1]["content"])
+
+    async def test_prompt_mentions_tools_only_when_enabled(self):
+        self.assertIn("RESEARCH TOOLS", decide.build_prompt(_snapshot(), self._cfg(), TODAY, tools=True))
+        self.assertNotIn("RESEARCH TOOLS", decide.build_prompt(_snapshot(), self._cfg(), TODAY, tools=False))
 
 
 if __name__ == "__main__":

@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from bot import greeks
+from bot import greeks, journal, research
 from bot.featherless import FeatherlessClient
 from bot.models import Proposal
 from bot.occ import parse_occ_symbol
@@ -54,7 +54,7 @@ broken and decide from what is plausible. Keep your reasoning brief and answer d
 
 STRATEGY (from config.yaml - the thesis you are executing; the hard limits above still win):
 {strategy_notes}
-SNAPSHOT:
+{tools_note}SNAPSHOT:
 {snapshot}
 
 Respond with ONLY a JSON array (no markdown fence, no prose) of zero or more actions:
@@ -122,14 +122,14 @@ def _summarize_options(snapshot: dict, config: dict, today: date) -> dict:
     without another network round-trip."""
     limit = int(config.get("research_contracts_per_underlying", 12))
     summarized = {}
-    for underlying, research in (snapshot.get("options") or {}).items():
-        spot = research.get("underlying_price")
+    for underlying, per_name in (snapshot.get("options") or {}).items():
+        spot = per_name.get("underlying_price")
         if not spot:
             summarized[underlying] = {"underlying_price": None, "contracts": []}
             continue
 
         contracts = []
-        for symbol, raw in (research.get("contracts") or {}).items():
+        for symbol, raw in (per_name.get("contracts") or {}).items():
             entry = _summarize_contract(symbol, raw, spot, today)
             if entry is not None:
                 contracts.append(entry)
@@ -139,13 +139,23 @@ def _summarize_options(snapshot: dict, config: dict, today: date) -> dict:
     return summarized
 
 
-def build_prompt(snapshot: dict, config: dict, today: date | None = None) -> str:
+TOOLS_NOTE = """RESEARCH TOOLS: you may call the provided read-only tools (recent bars, a stock snapshot, \
+specific option contracts, news) up to {n} times before answering, to check a trend or a catalyst \
+or to look at a strike/expiry not in the snapshot. Use them only when they would change your \
+decision; then answer with the JSON array. Tools never place orders.
+
+"""
+
+
+def build_prompt(snapshot: dict, config: dict, today: date | None = None, tools: bool = False) -> str:
     today = today or datetime.now(EASTERN).date()
     payload = {
         "account": snapshot.get("account"),
         "options": _summarize_options(snapshot, config, today),
     }
+    tools_note = TOOLS_NOTE.format(n=int(config.get("research_max_tool_calls", 6))) if tools else ""
     return PROMPT_TEMPLATE.format(
+        tools_note=tools_note,
         max_position_usd=float(config["max_position_usd"]),
         max_positions=int(config["max_positions"]),
         max_contracts_per_order=int(config["max_contracts_per_order"]),
@@ -217,6 +227,7 @@ class Decision:
     latency_sec: float = 0.0
     finish_reason: str | None = None
     reasoning: str = ""  # thinking models return this separately from content; kept for the audit trail
+    tool_calls: list = field(default_factory=list)  # research calls made before answering (#43)
     extra: dict = field(default_factory=dict)
 
 
@@ -246,16 +257,75 @@ def _sampling_kwargs(config: dict) -> dict:
     return kwargs
 
 
+def _research_enabled(config: dict, mcp) -> bool:
+    return bool(config.get("research_tools_enabled")) and mcp is not None
+
+
+async def _chat_with_research(client: FeatherlessClient, mcp, config: dict, prompt: str) -> tuple[dict, list[dict], dict]:
+    """The bounded research loop (issue #43): the model may call read-only
+    tools up to research_max_tool_calls times, then must answer. Returns
+    (final response, tool_calls made, summed usage). Every call is
+    journaled as a `tool_call` event - the audit trail of what the agent
+    looked at before deciding."""
+    messages = [{"role": "user", "content": prompt}]
+    kwargs = _sampling_kwargs(config)
+    budget = int(config.get("research_max_tool_calls", 6))
+    made: list[dict] = []
+    total_usage: dict = {}
+
+    def add_usage(u):
+        for k, v in (u or {}).items():
+            if isinstance(v, (int, float)):
+                total_usage[k] = total_usage.get(k, 0) + v
+
+    while True:
+        tools_left = budget - len(made)
+        response = await client.chat(
+            messages, tools=research.TOOLS if tools_left > 0 else None, **kwargs
+        ) if tools_left > 0 else await client.chat(messages, **kwargs)
+        add_usage(response.get("usage"))
+        message = (response.get("choices") or [{}])[0].get("message") or {}
+        calls = message.get("tool_calls") or []
+        if not calls or tools_left <= 0:
+            if total_usage:
+                response["usage"] = total_usage
+            return response, made, total_usage
+
+        messages.append({"role": "assistant", "content": message.get("content") or "", "tool_calls": calls})
+        for call in calls[:tools_left]:
+            fn = (call.get("function") or {})
+            name = fn.get("name") or ""
+            try:
+                args = json.loads(fn.get("arguments") or "{}")
+            except json.JSONDecodeError:
+                args = {}
+            started = time.monotonic()
+            result = await research.execute_tool_call(mcp, name, args)
+            elapsed = round(time.monotonic() - started, 3)
+            made.append({"name": name, "args": args, "chars": len(result), "sec": elapsed})
+            journal.log("tool_call", tool=name, args=args, result_chars=len(result), latency_sec=elapsed,
+                        result_head=result[:300])
+            messages.append({"role": "tool", "tool_call_id": call.get("id"), "name": name, "content": result})
+        if len(made) >= budget:
+            messages.append({"role": "user", "content": "Research budget used. Answer now with ONLY the JSON array."})
+
+
 async def decide(
-    snapshot: dict, config: dict, client: FeatherlessClient, today: date | None = None
+    snapshot: dict, config: dict, client: FeatherlessClient, today: date | None = None, mcp=None
 ) -> Decision:
-    """One Featherless call, no retry - that's an operational concern for
-    whatever calls this (run_cycle.py), not this module. The Decision
-    carries usage and latency so the journal can attribute cost and speed
-    to the model/config that produced it."""
-    prompt = build_prompt(snapshot, config, today)
+    """One decision. With research tools enabled (config + an MCP client),
+    the model may look things up first (bounded); otherwise a single call.
+    No retry - that's an operational concern for run_cycle.py. The Decision
+    carries usage, latency and the tool calls made so the journal can
+    attribute cost, speed and evidence to the model/config that produced it."""
+    use_tools = _research_enabled(config, mcp)
+    prompt = build_prompt(snapshot, config, today, tools=use_tools)
     started = time.monotonic()
-    response = await client.chat([{"role": "user", "content": prompt}], **_sampling_kwargs(config))
+    tool_calls: list[dict] = []
+    if use_tools:
+        response, tool_calls, _ = await _chat_with_research(client, mcp, config, prompt)
+    else:
+        response = await client.chat([{"role": "user", "content": prompt}], **_sampling_kwargs(config))
     latency = time.monotonic() - started
     choice = response["choices"][0]
     message = choice.get("message") or {}
@@ -280,4 +350,5 @@ async def decide(
         latency_sec=round(latency, 3),
         finish_reason=finish,
         reasoning=reasoning[:REASONING_KEEP_CHARS],
+        tool_calls=tool_calls,
     )
