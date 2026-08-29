@@ -89,6 +89,17 @@ request_timeout_sec: 60
 research_tools_enabled: false
 research_max_tool_calls: 6
 
+# Prediction-market prior (bot/predictions.py): Kalshi's public daily
+# "index close" range markets, summarized into a few crowd-implied facts
+# (implied median close, P(above prior close), P(|move|>1%)) and handed to
+# the model as a PRIOR with an explanation. Read-only, never traded, any
+# failure -> omitted. Off on the official config until the challenger
+# shows it changes decisions for the better.
+predictions_enabled: false
+prediction_series:
+  SPY: KXINX
+  QQQ: KXNASDAQ100
+
 # Featherless list prices, $ per 1M tokens (2026-08-29), for eod_review's
 # cost estimate only - billing is whatever the account page says.
 model_prices:

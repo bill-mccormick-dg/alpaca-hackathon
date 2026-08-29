@@ -156,6 +156,17 @@ class BuildPromptTest(unittest.TestCase):
         prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
         self.assertIn("(none)", prompt)
 
+    def test_prediction_prior_block_only_when_snapshot_has_it(self):
+        snap = _snapshot()
+        self.assertNotIn("PREDICTION MARKETS", decide.build_prompt(snap, _config(), TODAY))
+        snap["predictions"] = {"SPY": {"series": "KXINX", "close_time": "2026-01-15T21:00:00Z",
+                                       "reference_close": 7400.0, "implied_median": 7425.0, "implied_move_pct": 0.34,
+                                       "p_above_reference": 0.6, "p_up_over_1pct": 0.2, "p_down_over_1pct": 0.1, "volume": 500}}
+        prompt = decide.build_prompt(snap, _config(), TODAY)
+        self.assertIn("PREDICTION MARKETS", prompt)
+        self.assertIn("SPY via KXINX", prompt)
+        self.assertLess(prompt.index("PREDICTION MARKETS"), prompt.index("SNAPSHOT:"))
+
     def test_requests_only_market_or_limit_orders(self):
         prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
         self.assertIn('"market"|"limit"', prompt)
