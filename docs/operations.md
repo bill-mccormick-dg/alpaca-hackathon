@@ -63,6 +63,27 @@ finish reason, reasoning head, tool calls), `tool_call`, `order_submitted` /
 `cycle_end`. `logs/` is git-ignored and excluded from the deploy rsync, so
 state on CT 108 survives redeploys.
 
+## Home Assistant over MQTT
+
+Publish-only from the bot, fully decoupled: `bot/mqtt.py` hangs off the
+journal's `log()`, so every journaled event is also published to
+`<prefix>/<account>/event/<event>`, and a few **retained** state topics feed
+Home Assistant sensors via MQTT discovery (`equity`, `day_pnl`, `positions`,
+`halt`, `last_decision`), plus `<prefix>/<account>/config/effective` after
+every cycle. No broker configured (`MQTT_HOST` unset) or broker down -> no-op;
+a publish can never delay or fail a cycle. `config.yaml` -> `mqtt:` block;
+broker host/credentials from `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`,
+`MQTT_PASSWORD` in the same env files that carry the API keys.
+
+Inbound: `mqtt_bridge.py` (long-running) subscribes to
+`<prefix>/config/set` and applies `{"account","key","value","until"?}` through
+the same `set_override()` the CLI uses - allowlisted keys, validated, expiring
+at the close - then republishes the effective config. Errors go to
+`<prefix>/<account>/config/error`. HA automation ideas: a light that goes
+green on `order_submitted` and red on `daily_loss_halt` / `manual_halt`; a
+dashboard card on the equity sensor; a select entity that publishes
+`config/set` for `model`.
+
 ## CT 108 cron (Central time)
 
 ```

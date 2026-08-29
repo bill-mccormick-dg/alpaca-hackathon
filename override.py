@@ -19,7 +19,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from bot import journal, overrides
+from bot import journal, mqtt, overrides
 from bot.config import load_config
 from bot.credentials import validate_account
 from bot.risk import EASTERN
@@ -76,6 +76,7 @@ def main() -> int:
     validate_account(args.account)
     journal.use_account(args.account)
     overrides.use_account(args.account)
+    mqtt.configure(load_config(args.config), args.account)
 
     if args.cmd == "show":
         return show(args.config)

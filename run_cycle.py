@@ -17,7 +17,7 @@ import asyncio
 import sys
 from datetime import date, datetime, timedelta, timezone
 
-from bot import execute, journal, learning, overrides
+from bot import execute, journal, learning, mqtt, overrides
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import config_provenance, load_config
 from bot.credentials import load_credentials, validate_account
@@ -103,6 +103,7 @@ async def run(args: argparse.Namespace) -> int:
     journal.use_account(args.account)
     overrides.use_account(args.account)
     config = load_config(args.config)
+    mqtt.configure(config, args.account)
     risk = RiskManager(config, account=args.account)
     now = datetime.now(EASTERN)
 

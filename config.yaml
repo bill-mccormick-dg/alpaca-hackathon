@@ -109,6 +109,20 @@ prediction_series:
   SPY: KXINX
   QQQ: KXNASDAQ100
 
+# MQTT side channel for Home Assistant (bot/mqtt.py, issue #14). Publish
+# only, fire-and-forget: every journaled event goes to
+# <topic_prefix>/<account>/event/<event>, a few retained state topics
+# (equity, day_pnl, positions, halt, last_decision) feed HA sensors via
+# MQTT discovery, and the effective config is republished each cycle.
+# Broker host/credentials come from the env (MQTT_HOST, MQTT_PORT,
+# MQTT_USERNAME, MQTT_PASSWORD) - the same files that carry the API keys.
+# No host, or broker down -> no-op. Inbound config/set is mqtt_bridge.py.
+mqtt:
+  enabled: true
+  topic_prefix: alpaca-hackathon
+  ha_discovery: true
+  timeout_sec: 2
+
 # Featherless list prices, $ per 1M tokens (2026-08-29), for eod_review's
 # cost estimate only - billing is whatever the account page says.
 model_prices:
