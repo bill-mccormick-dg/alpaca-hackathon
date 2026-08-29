@@ -43,6 +43,13 @@ max_days_to_expiration: 45
 # small enough to reason about.
 option_strike_band_pct: 0.08
 
+# How many of the nearest-the-money option contracts per underlying get
+# embedded in the decision prompt (bot/decide.py). Independent of, and
+# smaller than, option_strike_band_pct's fetch window above — this keeps
+# the prompt itself bounded regardless of how many contracts research
+# fetched.
+research_contracts_per_underlying: 12
+
 # Trading window, US/Eastern. No new entries after last_entry; sells stay
 # legal until trade_end.
 trade_start: "09:45"
