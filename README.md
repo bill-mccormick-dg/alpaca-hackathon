@@ -56,9 +56,11 @@ differ here, both hackathon requirements:
 
 - **[Alpaca's official MCP server](https://github.com/alpacahq/alpaca-mcp-server)**
   instead of raw SDK calls — the model gets broad *read* access (account,
-  positions, option chains/Greeks, bars) to research with, but never calls
-  the order-placing tools directly; a risk-check module (not yet built)
-  validates proposals before our own code submits anything.
+  positions, option chains, bars) to research with, but never calls the
+  order-placing tools directly; `bot/risk.py` validates every proposal
+  before our own code submits anything. Alpaca's free indicative options
+  feed carries no Greeks or IV, so `bot/greeks.py` derives them from each
+  contract's market price via Black-Scholes.
 - **[Featherless.ai](https://featherless.ai)** (OpenAI-compatible, tool-calling
   confirmed on `moonshotai/Kimi-K2-Instruct` and the Qwen 3 family) instead of
   the Claude CLI.
@@ -84,6 +86,43 @@ Paper-only throughout — no live-trading code path exists.
    gates skipped). Drop `--dry-run` to submit paper orders on the test account.
    `--account official` is refused outright before Mon Aug 31 9:30 AM ET
    unless `--dry-run` — hardcoded in `run_cycle.py`, not configurable.
+
+## Operations
+
+Everything runs from the repo root with the venv's Python
+(`./.venv/bin/python` locally; `/opt/alpaca-hackathon/.venv/bin/python` on CT 108).
+Every entrypoint takes `--account test|official` and defaults to **test**.
+
+| Command | What it does |
+|---|---|
+| `run_cycle.py [--dry-run] [--force] [--verbose]` | One cycle: gates → snapshot → decide → risk-check → execute. `--dry-run` prints orders instead of sending; `--force` skips the market-open / trading-window / entry-cutoff gates (rehearsal); `--verbose` prints the raw model output |
+| `flatten.py [--halt]` | Cancel all orders, wait for the cancels to settle, close all positions, then poll until actually flat and report what is *really* still held. `--halt` also trips the kill switch |
+| `status.py [--json]` | Halt state, account, positions, today's journal summary. Read-only — safe on the official account any time |
+| `python -m unittest discover -s tests` | Credential-free guardrail tests |
+| `scripts/verify_*.py` | Manual live checks (Alpaca connectivity, Featherless, snapshot) |
+
+**Halt files** (under `logs/`, checked at the top of every cycle):
+
+- `logs/HALT` — manual kill switch, created by `flatten.py --halt`. Nothing trades
+  until you **delete the file**.
+- `logs/HALT_<YYYY-MM-DD>` — daily-loss halt, written by `run_cycle.py` after it
+  breaches `daily_loss_cutoff_pct` and flattens. Expires on its own at the next
+  trading day; delete it to resume early.
+
+**Journal**: `logs/journal.jsonl`, one JSON record per event with an Eastern-time
+`ts` — `cycle_start`, `decision` (raw model output), `order_submitted` /
+`order_rejected` / `order_error` / `dry_run` (with the reason), `daily_loss_halt`,
+`daily_loss_flatten`, `flatten`, `manual_halt`, `error`, `cycle_end`.
+`status.py` summarizes today's; `bot/journal.py::read_events()` for anything else.
+`logs/` is git-ignored and excluded from the CI deploy rsync, so state on CT 108
+survives redeploys.
+
+**Official-account safety** (`PA3VS39Y5LE2`, see [Account](#account)): `run_cycle.py`
+and `flatten.py` refuse `--account official` before Mon Aug 31 9:30 AM ET unless
+`--dry-run` — hardcoded in `run_cycle.py`, not configurable. Paper-only throughout:
+`ALPACA_PAPER_TRADE=true` is hardcoded in `bot/alpaca_mcp.py` and no live-trading
+code path exists. The model never gets an order-placing tool; every order funnels
+through `bot/execute.py::place_proposal()` → `bot/risk.py::check_order()`.
 
 ## Submission checklist
 
