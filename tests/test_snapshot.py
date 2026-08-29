@@ -65,6 +65,12 @@ OPTION_CHAIN_RESPONSE = {
     }
 }
 
+STOCK_QUOTE_RESPONSE = {"data": {"quotes": {"AAPL": {"bp": 199.5, "ap": 200.5}}}}
+
+
+def _stock_quote_response(symbol: str, bp: float, ap: float) -> dict:
+    return {"data": {"quotes": {symbol: {"bp": bp, "ap": ap}}}}
+
 
 class FakeContent:
     def __init__(self, text):
@@ -78,8 +84,9 @@ class FakeResult:
 
 class FakeMCPClient:
     """Hand-written stub, not a mocking library — mirrors test_execute.py's
-    FakeMCPClient. Maps tool name -> canned response, since a single
-    snapshot build calls multiple tools."""
+    FakeMCPClient. Maps tool name -> canned response (or a callable taking
+    the call arguments, for tools called once per underlying with a symbol-
+    dependent answer), since a single snapshot build calls multiple tools."""
 
     def __init__(self, responses: dict):
         self.responses = responses
@@ -87,7 +94,10 @@ class FakeMCPClient:
 
     async def call_tool(self, name, arguments=None):
         self.calls.append((name, arguments))
-        return FakeResult(json.dumps(self.responses[name]))
+        response = self.responses[name]
+        if callable(response):
+            response = response(arguments)
+        return FakeResult(json.dumps(response))
 
 
 class BuildPositionsTest(unittest.IsolatedAsyncioTestCase):
@@ -163,52 +173,93 @@ def _research_config(**overrides):
         "underlyings": ["AAPL"],
         "min_days_to_expiration": 1,
         "max_days_to_expiration": 45,
+        "option_strike_band_pct": 0.08,
     }
     config.update(overrides)
     return config
 
 
+class GetUnderlyingPriceTest(unittest.IsolatedAsyncioTestCase):
+    async def test_returns_mid_of_bid_ask(self):
+        client = FakeMCPClient({"get_stock_latest_quote": STOCK_QUOTE_RESPONSE})
+        price = await snapshot.get_underlying_price(client, "AAPL")
+        self.assertEqual(price, 200.0)  # mid(199.5, 200.5)
+
+
 class BuildOptionResearchTest(unittest.IsolatedAsyncioTestCase):
+    def _client(self, price_bp=199.5, price_ap=200.5):
+        return FakeMCPClient(
+            {
+                "get_stock_latest_quote": _stock_quote_response("AAPL", price_bp, price_ap),
+                "get_option_chain": OPTION_CHAIN_RESPONSE,
+            }
+        )
+
     async def test_fetches_chain_with_indicative_feed_not_opra(self):
         # feed="opra" 403s for accounts without an OPRA subscription
         # (confirmed live) — this must always request "indicative".
-        client = FakeMCPClient({"get_option_chain": OPTION_CHAIN_RESPONSE})
+        client = self._client()
         research = await snapshot.build_option_research(
             client, _research_config(), today=date(2026, 1, 15)
         )
 
         self.assertIn("AAPL", research)
-        self.assertIn("AAPL260204C00200000", research["AAPL"])
-        tool_name, args = client.calls[0]
+        self.assertEqual(research["AAPL"]["underlying_price"], 200.0)
+        self.assertIn("AAPL260204C00200000", research["AAPL"]["contracts"])
+        tool_name, args = client.calls[1]
         self.assertEqual(tool_name, "get_option_chain")
         self.assertEqual(args["underlying_symbol"], "AAPL")
         self.assertEqual(args["feed"], "indicative")
 
+    async def test_strike_band_derived_from_underlying_price_and_config(self):
+        # Regression: an unbounded chain request returns strike-ascending
+        # results, which for a high-priced underlying is deep OTM calls
+        # only and zero puts (confirmed live against real SPY data).
+        client = self._client()
+        await snapshot.build_option_research(
+            client, _research_config(option_strike_band_pct=0.10), today=date(2026, 1, 15)
+        )
+
+        _, args = client.calls[1]
+        self.assertEqual(args["strike_price_gte"], 180.0)  # 200 * 0.90
+        self.assertEqual(args["strike_price_lte"], 220.0)  # 200 * 1.10
+
     async def test_expiration_window_derived_from_config_and_today(self):
-        client = FakeMCPClient({"get_option_chain": OPTION_CHAIN_RESPONSE})
+        client = self._client()
         await snapshot.build_option_research(client, _research_config(), today=date(2026, 1, 15))
 
-        _, args = client.calls[0]
+        _, args = client.calls[1]
         self.assertEqual(args["expiration_date_gte"], "2026-01-16")  # today + min(1)
         self.assertEqual(args["expiration_date_lte"], "2026-03-01")  # today + max(45)
 
     async def test_calls_once_per_underlying_in_whitelist(self):
-        client = FakeMCPClient({"get_option_chain": OPTION_CHAIN_RESPONSE})
+        def quote_for(arguments):
+            return _stock_quote_response(arguments["symbols"], 100.0, 101.0)
+
+        client = FakeMCPClient(
+            {"get_stock_latest_quote": quote_for, "get_option_chain": OPTION_CHAIN_RESPONSE}
+        )
         config = _research_config(underlyings=["AAPL", "SPY", "QQQ"])
 
         research = await snapshot.build_option_research(client, config, today=date(2026, 1, 15))
 
-        self.assertEqual(len(client.calls), 3)
-        called_symbols = [args["underlying_symbol"] for _, args in client.calls]
+        option_chain_calls = [args for name, args in client.calls if name == "get_option_chain"]
+        self.assertEqual(len(option_chain_calls), 3)
+        called_symbols = [args["underlying_symbol"] for args in option_chain_calls]
         self.assertEqual(called_symbols, ["AAPL", "SPY", "QQQ"])
         self.assertEqual(set(research.keys()), {"AAPL", "SPY", "QQQ"})
 
     async def test_underlying_with_no_contracts_gets_empty_dict_not_a_crash(self):
-        client = FakeMCPClient({"get_option_chain": {"data": {"snapshots": {}}}})
+        client = FakeMCPClient(
+            {
+                "get_stock_latest_quote": STOCK_QUOTE_RESPONSE,
+                "get_option_chain": {"data": {"snapshots": {}}},
+            }
+        )
         research = await snapshot.build_option_research(
             client, _research_config(), today=date(2026, 1, 15)
         )
-        self.assertEqual(research["AAPL"], {})
+        self.assertEqual(research["AAPL"]["contracts"], {})
 
 
 class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
@@ -218,6 +269,7 @@ class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
                 "get_clock": CLOCK_RESPONSE,
                 "get_account_info": ACCOUNT_RESPONSE,
                 "get_all_positions": positions,
+                "get_stock_latest_quote": STOCK_QUOTE_RESPONSE,
                 "get_option_chain": OPTION_CHAIN_RESPONSE,
             }
         )
@@ -233,7 +285,8 @@ class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(snap["account"]["positions"]), 1)
         self.assertEqual(snap["account"]["positions"][0]["symbol"], "AAPL")
         self.assertIn("AAPL", snap["options"])
-        self.assertIn("AAPL260204C00200000", snap["options"]["AAPL"])
+        self.assertEqual(snap["options"]["AAPL"]["underlying_price"], 200.0)
+        self.assertIn("AAPL260204C00200000", snap["options"]["AAPL"]["contracts"])
 
     async def test_snapshot_is_json_serializable(self):
         now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)
