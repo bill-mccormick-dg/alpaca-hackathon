@@ -1,0 +1,58 @@
+---
+# All generic defaults - nothing here assumes a particular network, host
+# path, or supervisor style. Override via inventory/group_vars/-e for your
+# own Home Assistant instance. See ansible/README.md.
+
+# Where HA's config directory lives on the target host. "/config" is the
+# path *inside* the official HA container/OS image; if you run HA some
+# other way (bare venv, a docker-compose stack with a different bind mount),
+# point this at that host path instead.
+ha_config_dir: /config
+
+# Which accounts to build a dashboard section + entities for. Must match
+# the --account names your bot runs under (config.yaml's mqtt block on
+# each). Add farm/challenger variants here too.
+ha_accounts:
+  - id: official
+    label: "Official"
+  - id: test
+    label: "Test / challenger"
+
+# Must match config.yaml's mqtt.topic_prefix (bot/mqtt.py). HA's MQTT
+# integration default discovery prefix is "homeassistant" - only change
+# ha_discovery_prefix if you changed that in HA itself.
+ha_mqtt_topic_prefix: alpaca-hackathon
+ha_discovery_prefix: homeassistant
+
+# The dashboard is deployed as a standalone YAML-mode Lovelace file. This
+# role does NOT edit configuration.yaml's `lovelace:` key - on some setups
+# that key already exists with its own dashboards, and blindly adding a
+# second top-level `lovelace:` block (or fighting an existing one) can
+# silently break the file. Instead the role prints the exact snippet to
+# add by hand (idempotent either way - re-running just re-renders the file).
+ha_dashboard_filename: dashboards/alpaca_hackathon.yaml
+ha_dashboard_dest: "{{ ha_config_dir }}/{{ ha_dashboard_filename }}"
+ha_dashboard_title: "AI Day Trader"
+ha_dashboard_url_path: alpaca-hackathon
+ha_dashboard_icon: mdi:chart-line
+
+# Automations ARE safe to auto-register: automations.yaml is a flat list,
+# so appending a marked, idempotent block never collides with existing
+# content the way a second top-level key in configuration.yaml could.
+ha_register_automations: true
+ha_automations_file: "{{ ha_config_dir }}/automations.yaml"
+
+# Optional: entity_id of a light to flash on trade/halt events. Leave
+# blank to skip that action - the notification actions still fire either
+# way, so the automations are useful with zero extra setup.
+ha_alert_light_entity: ""
+
+# How to make HA pick up the new config. "none" (default) does nothing -
+# reload via the UI (Developer Tools > YAML > "Automations" /
+# "All YAML configuration") or your own mechanism. Set to "docker" or
+# "systemd" only if that's genuinely how your instance runs, or
+# "command" with ha_restart_command for anything else.
+ha_restart_method: none
+ha_docker_container_name: homeassistant
+ha_systemd_service: home-assistant
+ha_restart_command: ""

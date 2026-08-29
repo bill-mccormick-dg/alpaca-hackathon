@@ -1,0 +1,53 @@
+# {{ ansible_managed }}
+# Home Assistant YAML-mode dashboard for the alpaca-hackathon bot(s). One
+# entities+history card per account (from bot/mqtt.py's MQTT discovery:
+# sensor.alpaca_<account>_{equity,day_pnl,positions,halt,last_decision}),
+# plus a combined equity comparison chart across every account listed in
+# ha_accounts - the A/B story: same live market, different model/thesis/
+# params, one chart.
+title: {{ ha_dashboard_title }}
+views:
+  - title: Trading
+    path: {{ ha_dashboard_url_path }}
+    icon: {{ ha_dashboard_icon }}
+    cards:
+      - type: markdown
+        content: >
+          Long Premium, Short Leash — deterministic risk gates, an
+          open-source model proposes, code disposes. Source:
+          [alpaca-hackathon](https://github.com/bill-mccormick-dg/alpaca-hackathon).
+
+      - type: history-graph
+        title: Equity — all accounts (the A/B comparison)
+        hours_to_show: 96
+        entities:
+{% for acct in ha_accounts %}
+          - entity: sensor.alpaca_{{ acct.id }}_equity
+            name: {{ acct.label }}
+{% endfor %}
+
+{% for acct in ha_accounts %}
+      - type: vertical-stack
+        cards:
+          - type: heading
+            heading: {{ acct.label }}
+            icon: mdi:robot
+          - type: entities
+            title: State
+            entities:
+              - entity: sensor.alpaca_{{ acct.id }}_equity
+                name: Equity
+              - entity: sensor.alpaca_{{ acct.id }}_day_pnl
+                name: Day P&L
+              - entity: sensor.alpaca_{{ acct.id }}_positions
+                name: Open positions
+              - entity: sensor.alpaca_{{ acct.id }}_halt
+                name: Halt state
+              - entity: sensor.alpaca_{{ acct.id }}_last_decision
+                name: Last decision
+          - type: history-graph
+            title: Day P&L
+            hours_to_show: 24
+            entities:
+              - entity: sensor.alpaca_{{ acct.id }}_day_pnl
+{% endfor %}

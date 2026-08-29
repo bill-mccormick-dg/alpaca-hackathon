@@ -75,6 +75,13 @@ a publish can never delay or fail a cycle. `config.yaml` -> `mqtt:` block;
 broker host/credentials from `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`,
 `MQTT_PASSWORD` in the same env files that carry the API keys.
 
+**Dashboard**: [`ansible/`](../ansible/) (host-agnostic - no hardcoded network,
+path or container name) deploys a Lovelace dashboard - an equity chart
+comparing every account side by side plus a per-account card - and two
+alert automations (order submitted; halted), driven entirely by the MQTT
+topics above. `cd ansible && cp inventory.example.ini inventory.ini` (fill
+in your HA host) `&& ansible-playbook site.yml`. See `ansible/README.md`.
+
 Inbound: `mqtt_bridge.py` (long-running) subscribes to
 `<prefix>/config/set` and applies `{"account","key","value","until"?}` through
 the same `set_override()` the CLI uses - allowlisted keys, validated, expiring

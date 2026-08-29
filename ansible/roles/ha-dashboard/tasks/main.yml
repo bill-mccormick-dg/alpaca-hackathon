@@ -1,0 +1,54 @@
+---
+- name: Ensure the dashboard's parent directory exists
+  ansible.builtin.file:
+    path: "{{ ha_dashboard_dest | dirname }}"
+    state: directory
+    mode: "0755"
+
+- name: Deploy the AI Day Trader dashboard (standalone YAML-mode file)
+  ansible.builtin.template:
+    src: dashboard.yaml.j2
+    dest: "{{ ha_dashboard_dest }}"
+    mode: "0644"
+  register: alpaca_hackathon_dashboard_file
+  notify: restart home assistant
+
+- name: Show the one-time manual step to register the dashboard
+  ansible.builtin.debug:
+    msg: >-
+      Dashboard file written to {{ ha_dashboard_dest }}. If configuration.yaml
+      does not already reference it, add this under its `lovelace:` key (create
+      the key if you don't have one - this role will not edit configuration.yaml
+      itself, since a second top-level `lovelace:` key can silently clobber an
+      existing one):
+        lovelace:
+          mode: storage
+          dashboards:
+            {{ ha_dashboard_url_path }}:
+              mode: yaml
+              title: {{ ha_dashboard_title }}
+              icon: {{ ha_dashboard_icon }}
+              show_in_sidebar: true
+              filename: {{ ha_dashboard_filename }}
+      Then reload (ha_restart_method, or Developer Tools > YAML > Restart).
+  when: alpaca_hackathon_dashboard_file.changed
+
+- name: Register the alert automations (idempotent, marked block)
+  ansible.builtin.blockinfile:
+    path: "{{ ha_automations_file }}"
+    create: true
+    mode: "0644"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK (alpaca-hackathon ha-dashboard)"
+    block: "{{ lookup('template', 'automations_block.yaml.j2') }}"
+  register: alpaca_hackathon_automations_file
+  notify: restart home assistant
+  when: ha_register_automations
+
+- name: Remove the alert automations when disabled
+  ansible.builtin.blockinfile:
+    path: "{{ ha_automations_file }}"
+    marker: "# {mark} ANSIBLE MANAGED BLOCK (alpaca-hackathon ha-dashboard)"
+    state: absent
+  notify: restart home assistant
+  when: not ha_register_automations
+  failed_when: false

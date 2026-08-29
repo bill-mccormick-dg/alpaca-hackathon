@@ -1,0 +1,18 @@
+---
+- name: restart home assistant
+  ansible.builtin.command:
+    cmd: "docker restart {{ ha_docker_container_name }}"
+  changed_when: true
+  when: ha_restart_method == "docker"
+
+- name: restart home assistant
+  ansible.builtin.systemd:
+    name: "{{ ha_systemd_service }}"
+    state: restarted
+  when: ha_restart_method == "systemd"
+
+- name: restart home assistant
+  ansible.builtin.command:
+    cmd: "{{ ha_restart_command }}"
+  changed_when: true
+  when: ha_restart_method == "command" and ha_restart_command | length > 0

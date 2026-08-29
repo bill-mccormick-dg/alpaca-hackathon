@@ -1,0 +1,13 @@
+---
+# Deploys the AI Day Trader dashboard + alert automations to a Home
+# Assistant instance. Generic on purpose - see ansible/README.md for the
+# variables and ansible/inventory.example.ini for a starting point.
+#
+#   ansible-playbook -i inventory.ini site.yml
+#   ansible-playbook -i inventory.ini site.yml -e ha_alert_light_entity=light.office
+#
+- name: Deploy the AI Day Trader Home Assistant dashboard
+  hosts: home_assistant
+  gather_facts: false
+  roles:
+    - ha-dashboard

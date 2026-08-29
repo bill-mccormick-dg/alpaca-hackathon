@@ -1,9 +1,14 @@
 # Video script — AI Day Trader - Long Premium, Short Leash
 
-**First cut lives in `submission/video/`**: `demo.sh` (the terminal footage as a
-runnable, captioned script for CT 108 - `PAUSE=0` to rehearse), `narration.md`
-(word-for-word voice-over, timed to ~4:30), `slides.html` (open in a browser,
-arrow keys). The outline below is the original plan the first cut follows.
+**First cut lives in `submission/video/`**: `demo.sh` (the CT 108 terminal
+footage - live cycle, kill switch, eod_review, override - captioned,
+`PAUSE=0` to rehearse), `demo_local.sh` + `mqtt_watch.py` (the local half:
+the docker-compose farm/A-B comparison, and a genuine live MQTT capture -
+subscribe locally, trigger a cycle on CT 108, watch the messages arrive),
+`narration.md` (word-for-word voice-over with director's notes on which
+footage each block sits over, timed to ~4:58 under the 5:00 cap),
+`slides.html` (twelve slides, arrow keys, real journal/tool-call/MQTT
+excerpts). The outline below is the original plan the first cut follows.
 
 **Format:** MP4, 1080p, ≤ 5:00 (target 3:30–4:30). Screen recording + voice.
 Terminal font ≥ 16 pt, dark theme, window ~1600×900. Record Wed or Thu after a
