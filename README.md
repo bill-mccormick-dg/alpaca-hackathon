@@ -133,7 +133,18 @@ so state persists across runs and config edits need no rebuild. Drop
 
 Everything runs from the repo root with the venv's Python
 (`./.venv/bin/python` locally; `/opt/alpaca-hackathon/.venv/bin/python` on CT 108).
-Every entrypoint takes `--account test|official` and defaults to **test**.
+Every entrypoint takes `--account <name>` (default **test**) and `--config <file>`
+(default `config.yaml`).
+
+**Named accounts** (A/B, issue #34): `official` reads `credentials.env` on CT 108
+and *only* there; any other name reads `credentials-<name>.env` on CT 108, else
+a local `.env.<name>`, else `.env`. Each account gets its own journal
+(`logs/journal-<name>.jsonl`; the official account keeps `logs/journal.jsonl`),
+its own overrides file, and its own daily-loss halt file — a challenger
+breaching its cutoff never halts the official account. The manual `logs/HALT`
+kill switch is global on purpose. `config-test.yaml` is the current challenger
+config (Qwen3.8-Flash-Next); run it with
+`run_cycle.py --account test --config config-test.yaml`.
 
 | Command | What it does |
 |---|---|

@@ -11,10 +11,10 @@ import asyncio
 import json
 import sys
 
-from bot import journal
+from bot import journal, overrides
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import load_config
-from bot.credentials import load_credentials
+from bot.credentials import load_credentials, validate_account
 from bot.risk import RiskManager
 from bot.snapshot import _data
 
@@ -69,9 +69,17 @@ async def broker_status(account: str) -> dict:
 
 
 async def run(args: argparse.Namespace) -> int:
-    config = load_config()
-    risk = RiskManager(config)
-    report = {"account": args.account, "halt": halt_state(risk), "overrides": config.get("_overrides", {})}
+    validate_account(args.account)
+    journal.use_account(args.account)
+    overrides.use_account(args.account)
+    config = load_config(args.config)
+    risk = RiskManager(config, account=args.account)
+    report = {
+        "account": args.account,
+        "config_file": config.get("_config_file"),
+        "halt": halt_state(risk),
+        "overrides": config.get("_overrides", {}),
+    }
     try:
         report["broker"] = await broker_status(args.account)
     except Exception as exc:  # noqa: BLE001 - status must still print halt state + journal
@@ -126,7 +134,8 @@ async def run(args: argparse.Namespace) -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--account", choices=("test", "official"), default="test")
+    ap.add_argument("--account", default="test", help="named account: official, test, or any credentials-<name>.env")
+    ap.add_argument("--config", default=None, help="config file (default config.yaml)")
     ap.add_argument("--json", action="store_true")
     return asyncio.run(run(ap.parse_args()))
 

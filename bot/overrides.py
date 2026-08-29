@@ -34,6 +34,23 @@ OVERRIDES_FILE = LOGS_DIR / "overrides.yaml"
 END_OF_TRADING_DAY = time(16, 0)
 
 
+def overrides_file(account: str | None) -> Path:
+    """One overrides file per account, so a challenger's intraday tweaks
+    never leak into the official account: logs/overrides.yaml for
+    official (and no account), logs/overrides-<name>.yaml otherwise."""
+    if not account or account == "official":
+        return LOGS_DIR / "overrides.yaml"
+    return LOGS_DIR / f"overrides-{account}.yaml"
+
+
+def use_account(account: str | None) -> Path:
+    """Point this process's default overrides file at the account's.
+    Called once by each entrypoint after parsing --account."""
+    global OVERRIDES_FILE
+    OVERRIDES_FILE = overrides_file(account)
+    return OVERRIDES_FILE
+
+
 def _float_in(lo: float, hi: float):
     def parse(value):
         v = float(value)
@@ -98,7 +115,8 @@ def default_until(now: datetime | None = None) -> datetime:
     return until
 
 
-def _read_raw(path: Path = OVERRIDES_FILE) -> dict:
+def _read_raw(path: Path | None = None) -> dict:
+    path = path or OVERRIDES_FILE
     if not path.exists():
         return {}
     try:
@@ -108,9 +126,10 @@ def _read_raw(path: Path = OVERRIDES_FILE) -> dict:
     return data if isinstance(data, dict) else {}
 
 
-def _write_raw(data: dict, path: Path = OVERRIDES_FILE) -> None:
+def _write_raw(data: dict, path: Path | None = None) -> None:
     """Atomic: a cron cycle reading mid-write must see the old file or the
     new one, never a truncated one."""
+    path = path or OVERRIDES_FILE
     path.parent.mkdir(exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".overrides.", suffix=".tmp")
     try:
@@ -138,7 +157,7 @@ def _is_active(entry: dict, now: datetime) -> bool:
     return now < until_dt
 
 
-def active_overrides(now: datetime | None = None, path: Path = OVERRIDES_FILE) -> dict:
+def active_overrides(now: datetime | None = None, path: Path | None = None) -> dict:
     """{key: {"value", "until", "set_by", "set_at"}} for every unexpired,
     allowlisted entry. Expired or non-allowlisted entries are ignored here
     and pruned on the next write."""
@@ -163,7 +182,7 @@ def set_override(
     until: datetime | None = None,
     set_by: str = "cli",
     now: datetime | None = None,
-    path: Path = OVERRIDES_FILE,
+    path: Path | None = None,
 ) -> dict:
     """Validate, then write. Returns the stored entry."""
     now = now or datetime.now(EASTERN)
@@ -183,7 +202,7 @@ def set_override(
     return entry
 
 
-def clear_override(key: str, path: Path = OVERRIDES_FILE) -> bool:
+def clear_override(key: str, path: Path | None = None) -> bool:
     data = _read_raw(path)
     existed = key in data
     data.pop(key, None)
@@ -191,7 +210,7 @@ def clear_override(key: str, path: Path = OVERRIDES_FILE) -> bool:
     return existed
 
 
-def clear_all(path: Path = OVERRIDES_FILE) -> int:
+def clear_all(path: Path | None = None) -> int:
     data = _read_raw(path)
     _write_raw({}, path)
     return len(data)

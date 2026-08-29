@@ -17,10 +17,10 @@ import asyncio
 import sys
 from datetime import date, datetime
 
-from bot import execute, journal
+from bot import execute, journal, overrides
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import config_provenance, load_config
-from bot.credentials import load_credentials
+from bot.credentials import load_credentials, validate_account
 from bot.decide import decide
 from bot.exits import check_exits
 from bot.featherless import DEFAULT_MODEL, FeatherlessClient
@@ -72,8 +72,11 @@ def account_from_snapshot(snap: dict) -> AccountState:
 
 
 async def run(args: argparse.Namespace) -> int:
-    config = load_config()
-    risk = RiskManager(config)
+    validate_account(args.account)
+    journal.use_account(args.account)
+    overrides.use_account(args.account)
+    config = load_config(args.config)
+    risk = RiskManager(config, account=args.account)
     now = datetime.now(EASTERN)
 
     if args.account == "official" and not args.dry_run and not official_account_may_trade(now):
@@ -237,7 +240,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--force", action="store_true")
-    ap.add_argument("--account", choices=("test", "official"), default="test")
+    ap.add_argument("--account", default="test", help="named account: official, test, or any credentials-<name>.env")
+    ap.add_argument("--config", default=None, help="config file (default config.yaml); e.g. config-<name>.yaml for a variant")
     ap.add_argument("--verbose", action="store_true", help="print the raw model output")
     args = ap.parse_args()
     return asyncio.run(run(args))

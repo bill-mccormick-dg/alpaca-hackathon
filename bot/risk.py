@@ -32,7 +32,11 @@ def _eastern_time(now: datetime) -> time:
 
 
 class RiskManager:
-    def __init__(self, config: dict, logs_dir: Path = LOGS_DIR):
+    def __init__(self, config: dict, logs_dir: Path = LOGS_DIR, account: str | None = None):
+        # account: scopes the DAILY-loss halt file (a challenger breaching
+        # its cutoff must not halt the official account). The manual HALT
+        # kill switch stays global on purpose - it stops everything.
+        self.account = account if account and account != "official" else None
         self.underlyings = set(config["underlyings"])
         self.max_position_usd = config["max_position_usd"]
         self.max_positions = config["max_positions"]
@@ -52,7 +56,8 @@ class RiskManager:
 
     def daily_halt_file(self, day: date | None = None) -> Path:
         day = day or datetime.now(EASTERN).date()
-        return self.logs_dir / f"HALT_{day.isoformat()}"
+        suffix = f"_{self.account}" if self.account else ""
+        return self.logs_dir / f"HALT{suffix}_{day.isoformat()}"
 
     def halted(self, now: datetime | None = None) -> str | None:
         if self.manual_halt_file().exists():

@@ -84,5 +84,23 @@ class JournalTest(unittest.TestCase):
         self.assertIsNone(s["equity"])
 
 
+class PerAccountJournalTest(unittest.TestCase):
+    def test_official_and_default_share_the_plain_journal(self):
+        self.assertEqual(journal.journal_file("official").name, "journal.jsonl")
+        self.assertEqual(journal.journal_file(None).name, "journal.jsonl")
+
+    def test_other_accounts_get_their_own_file(self):
+        self.assertEqual(journal.journal_file("test").name, "journal-test.jsonl")
+        self.assertEqual(journal.journal_file("qwen-a").name, "journal-qwen-a.jsonl")
+
+    def test_use_account_repoints_the_module_default(self):
+        original = journal.JOURNAL
+        try:
+            self.assertEqual(journal.use_account("qwen-a").name, "journal-qwen-a.jsonl")
+            self.assertEqual(journal.JOURNAL.name, "journal-qwen-a.jsonl")
+        finally:
+            journal.JOURNAL = original
+
+
 if __name__ == "__main__":
     unittest.main()
