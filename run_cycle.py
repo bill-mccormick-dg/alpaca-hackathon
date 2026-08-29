@@ -182,7 +182,7 @@ async def run(args: argparse.Namespace) -> int:
             return 0
 
         try:
-            decision = await decide(snap, config, featherless, today=now.date())
+            decision = await decide(snap, config, featherless, today=now.date(), mcp=client)
         except Exception as exc:  # noqa: BLE001 - one bad model call must not crash the cycle
             detail = describe_error(exc)
             journal.log("error", where="decide", detail=detail, model=featherless.model)
@@ -198,6 +198,7 @@ async def run(args: argparse.Namespace) -> int:
             latency_sec=decision.latency_sec,
             finish_reason=decision.finish_reason,
             reasoning=decision.reasoning or None,
+            tool_calls=decision.tool_calls or None,
         )
 
         if args.verbose:
@@ -205,6 +206,8 @@ async def run(args: argparse.Namespace) -> int:
                 f"model {decision.model} in {decision.latency_sec}s, finish={decision.finish_reason}, "
                 f"usage {decision.usage}"
             )
+            for tc in decision.tool_calls:
+                print(f"  research: {tc['name']}({tc['args']}) -> {tc['chars']} chars in {tc['sec']}s")
             if decision.reasoning:
                 print(f"model reasoning (head): {decision.reasoning[:600]!r}")
             print(f"model output: {raw}")

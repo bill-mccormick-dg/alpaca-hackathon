@@ -55,6 +55,11 @@ option_strike_band_pct: 0.08
 # fetched.
 research_contracts_per_underlying: 12
 
+# Challenger gets the research tools first (#43); promote to config.yaml
+# once eod_review shows they help.
+research_tools_enabled: true
+research_max_tool_calls: 6
+
 # The strategy, in the model's own prompt (bot/decide.py appends this block
 # verbatim). This is the highest-leverage end-of-day knob: change the
 # thesis or its tactics here, no code change. Keep it short and factual -

@@ -82,6 +82,13 @@ temperature: 0.2
 max_tokens: 800 # a JSON array of a few proposals, not prose
 request_timeout_sec: 60
 
+# Research tools (bot/research.py): let the model call a few READ-ONLY
+# Alpaca tools (bars, stock snapshot, option snapshot, news) before it
+# answers, up to research_max_tool_calls per cycle. Every call is
+# journaled. Off on the official config until the challenger proves it.
+research_tools_enabled: false
+research_max_tool_calls: 6
+
 # Featherless list prices, $ per 1M tokens (2026-08-29), for eod_review's
 # cost estimate only - billing is whatever the account page says.
 model_prices:
