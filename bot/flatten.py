@@ -19,8 +19,10 @@ import asyncio
 import json
 import time
 from dataclasses import dataclass, field
+from datetime import date
 
 from bot.alpaca_mcp import AlpacaMCPClient
+from bot.occ import parse_occ_symbol
 from bot.orders import (
     classify_close_results,
     describe_flatten_outcome,
@@ -70,6 +72,65 @@ class FlattenOutcome:
     state: str
     message: str
     extra: dict = field(default_factory=dict)
+
+
+async def flatten_expiring(
+    client: AlpacaMCPClient,
+    today: date,
+    max_dte: int,
+    verify_timeout_sec: float = 30.0,
+    poll_sec: float = 0.5,
+) -> FlattenOutcome:
+    """End-of-day backstop for the overnight-hold policy: close only option
+    contracts expiring within max_dte days (stock and later-dated options
+    are held), then verify those specific symbols are gone. Uses
+    close_position per symbol rather than close_all_positions; open orders
+    are left alone (there are none resting overnight by design - every
+    order is day-only)."""
+    held = await position_symbols(client)
+    attempted = []
+    for symbol in held:
+        try:
+            dte = (parse_occ_symbol(symbol).expiration - today).days
+        except ValueError:
+            continue  # stock or unparseable - not an expiring option
+        if dte <= max_dte:
+            attempted.append(symbol)
+
+    closed, failed = [], []
+    for symbol in attempted:
+        result = _result_list(await client.call_tool("close_position", {"symbol_or_asset_id": symbol}))
+        entry = {"symbol": symbol, "status": 200 if isinstance(result, dict) and result.get("id") else None,
+                 "body": result if not isinstance(result, dict) else None}
+        (closed if entry["status"] else failed).append(entry)
+
+    start = time.monotonic()
+    while True:
+        remaining = [s for s in await position_symbols(client) if s in attempted]
+        waited = time.monotonic() - start
+        if not remaining or waited >= verify_timeout_sec:
+            break
+        await asyncio.sleep(poll_sec)
+    pending = {s for s in await open_order_symbols(client) if s in attempted} if remaining else set()
+    market_open = await market_is_open(client) if remaining else None
+    state, message = describe_flatten_outcome(remaining, pending, market_open, waited, len(attempted))
+    if not attempted:
+        message = f"nothing expiring within {max_dte} day(s); holding {len(held)} position(s) overnight"
+
+    return FlattenOutcome(
+        attempted=attempted,
+        cancels_settled=True,
+        closed=closed,
+        failed=failed,
+        remaining=remaining,
+        pending_close=sorted(pending),
+        unprotected=unprotected_positions(remaining, pending),
+        market_open=market_open,
+        verify_wait_sec=round(waited, 2),
+        state=state,
+        message=message,
+        extra={"held": held, "max_dte": max_dte},
+    )
 
 
 async def flatten_all(

@@ -42,6 +42,8 @@ class Position:
     qty: float
     market_value: float
     underlying: str | None = None
+    avg_entry_price: float | None = None  # per share / per contract-share, as Alpaca reports
+    current_price: float | None = None
 
 
 @dataclass

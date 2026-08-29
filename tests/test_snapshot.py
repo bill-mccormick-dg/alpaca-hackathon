@@ -130,6 +130,21 @@ class BuildPositionsTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(pos.market_value, 1500.0)
         self.assertIsNone(pos.underlying)
 
+    async def test_carries_entry_and_current_price_for_exit_rules(self):
+        response = {
+            "data": {
+                "result": [
+                    {"symbol": "AAPL", "asset_class": "us_equity", "qty": "10", "market_value": "1500",
+                     "avg_entry_price": "140.25", "current_price": "150.00"},
+                    {"symbol": "SPY", "asset_class": "us_equity", "qty": "1", "market_value": "1"},
+                ]
+            }
+        }
+        positions = await snapshot.build_positions(FakeMCPClient({"get_all_positions": response}))
+        self.assertEqual(positions["AAPL"].avg_entry_price, 140.25)
+        self.assertEqual(positions["AAPL"].current_price, 150.0)
+        self.assertIsNone(positions["SPY"].avg_entry_price)  # missing -> None, not a crash
+
     async def test_option_position_derives_underlying_from_occ_symbol(self):
         client = FakeMCPClient({"get_all_positions": OPTION_POSITION_RESPONSE})
         positions = await snapshot.build_positions(client)

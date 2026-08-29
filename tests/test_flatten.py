@@ -1,5 +1,6 @@
 import json
 import unittest
+from datetime import date
 
 from bot import flatten, orders
 
@@ -20,12 +21,14 @@ class FakeMCPClient:
     entry per poll (last entry repeats), so a test can script "still held
     for two polls, then flat"."""
 
-    def __init__(self, positions, open_orders, close_results=None, clock_open=True):
+    def __init__(self, positions, open_orders, close_results=None, clock_open=True, close_position_ok=True):
         self.positions = list(positions)
         self.open_orders = list(open_orders)
         self.close_results = close_results if close_results is not None else []
         self.clock_open = clock_open
+        self.close_position_ok = close_position_ok
         self.calls = []
+        self.closed_symbols = []
 
     def _next(self, seq):
         return seq.pop(0) if len(seq) > 1 else seq[0]
@@ -40,6 +43,11 @@ class FakeMCPClient:
             return FakeResult([])
         if name == "close_all_positions":
             return FakeResult(self.close_results)
+        if name == "close_position":
+            self.closed_symbols.append(arguments["symbol_or_asset_id"])
+            if self.close_position_ok:
+                return FakeResult(json.dumps({"data": {"id": "ord-1", "symbol": arguments["symbol_or_asset_id"]}}))
+            return FakeResult("Error calling tool 'close_position': HTTP 422 insufficient qty")
         if name == "get_clock":
             return FakeResult(json.dumps({"data": {"is_open": self.clock_open}}))
         raise AssertionError(f"unexpected tool {name}")
@@ -119,6 +127,36 @@ class FlattenAllTest(unittest.IsolatedAsyncioTestCase):
         out = await flatten.flatten_all(client, **FAST)
         self.assertEqual(out.failed[0]["symbol"], "*")
         self.assertEqual(out.state, orders.INCOMPLETE)
+
+
+TODAY = date(2026, 9, 2)
+HELD = ["SPY260903C00770000", "QQQ260911P00700000", "AAPL"]  # 1 DTE option, 9 DTE option, stock
+
+
+class FlattenExpiringTest(unittest.IsolatedAsyncioTestCase):
+    async def test_closes_only_contracts_within_max_dte(self):
+        client = FakeMCPClient(positions=[HELD, ["QQQ260911P00700000", "AAPL"]], open_orders=[[]])
+        out = await flatten.flatten_expiring(client, TODAY, max_dte=1, **{k: v for k, v in FAST.items() if k != "settle_timeout_sec"})
+
+        self.assertEqual(client.closed_symbols, ["SPY260903C00770000"])
+        self.assertEqual(out.attempted, ["SPY260903C00770000"])
+        self.assertEqual(out.state, orders.FLAT)
+        self.assertEqual(out.extra["held"], HELD)
+        self.assertNotIn("cancel_all_orders", client.calls)  # nothing rests overnight by design
+
+    async def test_nothing_expiring_holds_everything(self):
+        client = FakeMCPClient(positions=[["QQQ260911P00700000", "AAPL"]], open_orders=[[]])
+        out = await flatten.flatten_expiring(client, TODAY, max_dte=1, verify_timeout_sec=0.2, poll_sec=0.01)
+        self.assertEqual(client.closed_symbols, [])
+        self.assertIn("holding 2 position(s) overnight", out.message)
+        self.assertEqual(out.state, orders.FLAT)
+
+    async def test_failed_close_is_incomplete(self):
+        client = FakeMCPClient(positions=[HELD], open_orders=[[]], close_position_ok=False)
+        out = await flatten.flatten_expiring(client, TODAY, max_dte=1, verify_timeout_sec=0.2, poll_sec=0.01)
+        self.assertEqual([f["symbol"] for f in out.failed], ["SPY260903C00770000"])
+        self.assertEqual(out.state, orders.INCOMPLETE)
+        self.assertEqual(out.remaining, ["SPY260903C00770000"])  # only the attempted symbol counts
 
 
 if __name__ == "__main__":

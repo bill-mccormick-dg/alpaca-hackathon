@@ -15,13 +15,14 @@ Usage:
 import argparse
 import asyncio
 import sys
-from datetime import datetime
+from datetime import date, datetime
 
 from bot import execute, journal
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import load_config
 from bot.credentials import load_credentials
 from bot.decide import decide
+from bot.exits import check_exits
 from bot.featherless import FeatherlessClient
 from bot.flatten import flatten_all
 from bot.models import AccountState, Position
@@ -57,6 +58,8 @@ def account_from_snapshot(snap: dict) -> AccountState:
             qty=p["qty"],
             market_value=p["market_value"],
             underlying=p.get("underlying"),
+            avg_entry_price=p.get("avg_entry_price"),
+            current_price=p.get("current_price"),
         )
         for p in acct["positions"]
     }
@@ -128,6 +131,38 @@ async def run(args: argparse.Namespace) -> int:
                 halt.parent.mkdir(exist_ok=True)
                 halt.write_text("daily loss cutoff breached\n")
             print("DAILY LOSS CUTOFF BREACHED - flattened and halted for today")
+            return 0
+
+        # Deterministic exits first - code decides when a position is done,
+        # before the model is asked about anything new. If any fire, the
+        # cycle ends there: the snapshot is stale once positions changed,
+        # and the next cycle is minutes away.
+        exit_proposals = check_exits(acct.positions, now.date(), config)
+        for p in exit_proposals:
+            price = price_for_proposal(snap, p) or acct.positions[p.symbol].current_price or 0.0
+            r = await execute.place_proposal(client, risk, acct, price, p, dry_run=args.dry_run, now=now)
+            fields = {"side": "sell", "qty": p.qty, "symbol": p.symbol, "instrument": p.instrument,
+                      "price": price, "reason": p.reason}
+            if r.status == execute.SUBMITTED:
+                journal.log("order_submitted", order_id=r.order_id, exit=True, **fields)
+                print(f"EXIT {p.symbol} x{p.qty} (order {r.order_id}): {p.reason}")
+            elif r.status == execute.DRY_RUN:
+                journal.log("dry_run", exit=True, **fields)
+                print(f"DRY-RUN exit {p.symbol} x{p.qty}: {p.reason}")
+            else:
+                journal.log("order_error" if r.status == execute.ERROR else "order_rejected",
+                            exit=True, detail=r.detail, **fields)
+                print(f"EXIT FAILED {p.symbol}: {r.detail}", file=sys.stderr)
+        if exit_proposals:
+            journal.log("cycle_end", actions=len(exit_proposals), exits_only=True)
+            return 0
+
+        # The final day of the event: the score is fixed at the prior close,
+        # so there is nothing to gain from a new position - only exits run.
+        final_day = config.get("final_flatten_date")
+        if final_day and now.date() >= date.fromisoformat(str(final_day)):
+            print(f"final day ({final_day}) - no new entries")
+            journal.log("cycle_end", actions=0, skipped="final day")
             return 0
 
         # --force skips this too: a rehearsal should exercise the model

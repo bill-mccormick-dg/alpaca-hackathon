@@ -33,6 +33,13 @@ def _data(result) -> dict:
     return payload.get("data", payload) if isinstance(payload, dict) else payload
 
 
+def _optional_float(value) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
+
+
 async def build_positions(client: AlpacaMCPClient) -> dict:
     result = await client.call_tool("get_all_positions")
     data = _data(result)
@@ -59,6 +66,8 @@ async def build_positions(client: AlpacaMCPClient) -> dict:
             qty=abs(float(raw["qty"])),
             market_value=abs(float(raw.get("market_value", 0))),
             underlying=underlying,
+            avg_entry_price=_optional_float(raw.get("avg_entry_price")),
+            current_price=_optional_float(raw.get("current_price")),
         )
     return positions
 
@@ -170,6 +179,8 @@ def _serialize_account(account: AccountState) -> dict:
                 "qty": p.qty,
                 "market_value": p.market_value,
                 "underlying": p.underlying,
+                "avg_entry_price": p.avg_entry_price,
+                "current_price": p.current_price,
             }
             for p in account.positions.values()
         ],
