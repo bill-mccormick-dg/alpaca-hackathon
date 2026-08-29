@@ -1,3 +1,8 @@
+---
+sidebar_position: 4
+title: Strategy
+---
+
 # Strategy
 
 > **Thesis:** Buy defined-risk, short-dated options premium on the five most
