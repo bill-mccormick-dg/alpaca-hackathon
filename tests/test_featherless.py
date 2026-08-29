@@ -63,6 +63,10 @@ class ChatTest(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(captured["body"]["model"], "Qwen/Qwen3-8B")
 
+    async def test_timeout_is_configurable_and_defaults_to_60(self):
+        self.assertEqual(FeatherlessClient("k").timeout, 60)
+        self.assertEqual(FeatherlessClient("k", timeout=12.5).timeout, 12.5)
+
 
 if __name__ == "__main__":
     unittest.main()

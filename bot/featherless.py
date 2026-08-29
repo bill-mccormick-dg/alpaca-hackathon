@@ -19,16 +19,23 @@ DEFAULT_MODEL = "moonshotai/Kimi-K2-Instruct"
 
 
 class FeatherlessClient:
-    def __init__(self, api_key: str, model: str = DEFAULT_MODEL, transport: httpx.AsyncBaseTransport | None = None):
+    def __init__(
+        self,
+        api_key: str,
+        model: str = DEFAULT_MODEL,
+        timeout: float = 60,
+        transport: httpx.AsyncBaseTransport | None = None,
+    ):
         self._api_key = api_key
         self.model = model
+        self.timeout = timeout
         self._transport = transport
 
     async def chat(self, messages: list[dict], **kwargs) -> dict:
         """POST /chat/completions. Extra kwargs (tools, tool_choice,
         temperature, ...) pass straight through to the request body."""
         async with httpx.AsyncClient(
-            base_url=BASE_URL, transport=self._transport, timeout=60
+            base_url=BASE_URL, transport=self._transport, timeout=self.timeout
         ) as client:
             response = await client.post(
                 "/chat/completions",

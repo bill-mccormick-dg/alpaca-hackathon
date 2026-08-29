@@ -23,7 +23,7 @@ from bot.config import load_config
 from bot.credentials import load_credentials
 from bot.decide import decide
 from bot.exits import check_exits
-from bot.featherless import FeatherlessClient
+from bot.featherless import DEFAULT_MODEL, FeatherlessClient
 from bot.flatten import flatten_all
 from bot.models import AccountState, Position
 from bot.orders import INCOMPLETE
@@ -90,7 +90,11 @@ async def run(args: argparse.Namespace) -> int:
         return 0
 
     creds = load_credentials(args.account)
-    featherless = FeatherlessClient(creds["FEATHERLESS_API_KEY"])
+    featherless = FeatherlessClient(
+        creds["FEATHERLESS_API_KEY"],
+        model=config.get("model") or DEFAULT_MODEL,
+        timeout=float(config.get("request_timeout_sec", 60)),
+    )
 
     async with AlpacaMCPClient(creds["ALPACA_API_KEY"], creds["ALPACA_SECRET_KEY"]) as client:
         snap = await build_snapshot(client, config, now=now)
@@ -172,15 +176,24 @@ async def run(args: argparse.Namespace) -> int:
             return 0
 
         try:
-            proposals, raw = await decide(snap, config, featherless, today=now.date())
+            decision = await decide(snap, config, featherless, today=now.date())
         except Exception as exc:  # noqa: BLE001 - one bad model call must not crash the cycle
             detail = describe_error(exc)
-            journal.log("error", where="decide", detail=detail)
+            journal.log("error", where="decide", detail=detail, model=featherless.model)
             print(f"decision step failed: {detail}", file=sys.stderr)
             return 1
-        journal.log("decision", raw=raw, count=len(proposals))
+        proposals, raw = decision.proposals, decision.raw
+        journal.log(
+            "decision",
+            raw=raw,
+            count=len(proposals),
+            model=decision.model,
+            usage=decision.usage,
+            latency_sec=decision.latency_sec,
+        )
 
         if args.verbose:
+            print(f"model {decision.model} in {decision.latency_sec}s, usage {decision.usage}")
             print(f"model output: {raw}")
         if not proposals:
             print("decision: hold (no actions)")

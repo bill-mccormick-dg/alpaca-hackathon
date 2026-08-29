@@ -74,6 +74,14 @@ strategy_notes: |
   - Stock is allowed only as a small directional complement, never the main
     idea.
 
+# Model - the Featherless model id and sampling for the decide call. Also
+# runtime-overridable (see bot/overrides.py) for intraday A/B without a
+# deploy; a change here in git is the durable version.
+model: moonshotai/Kimi-K2-Instruct
+temperature: 0.2
+max_tokens: 800 # a JSON array of a few proposals, not prose
+request_timeout_sec: 60
+
 # Deterministic exits (bot/exits.py), checked at the top of every cycle
 # BEFORE the model is consulted. Percentages are of the entry premium (or
 # entry price for stock): -40 means "close if the position has lost 40% of
@@ -101,7 +109,9 @@ eod_close_dte: 1
 final_flatten_date: "2026-09-04"
 
 # Trading window, US/Eastern. No new entries after last_entry; sells stay
-# legal until trade_end.
+# legal until trade_end. Cycle cadence is NOT set here - cron drives it
+# (homenetwork: alpaca_hackathon_cycle_schedule, every 10 min inside market
+# hours); run_cycle.py just gates itself on the window below.
 trade_start: "09:45"
 trade_end: "15:45"
 last_entry: "15:15"
