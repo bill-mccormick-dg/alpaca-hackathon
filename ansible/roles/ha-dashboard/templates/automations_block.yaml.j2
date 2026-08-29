@@ -1,49 +1,49 @@
-  - id: alpaca_hackathon_order_submitted
-    alias: "AI Day Trader - order submitted"
-    description: "Managed by ansible/roles/ha-dashboard - edit the role, not this block."
-    triggers:
-      - trigger: mqtt
-        topic: "{{ ha_mqtt_topic_prefix }}/+/event/order_submitted"
-    actions:
-      - action: persistent_notification.create
-        data:
-          title: "AI Day Trader - order submitted"
-          message: >-
-            {% raw %}{{ trigger.payload_json.side }} {{ trigger.payload_json.qty }}
-            {{ trigger.payload_json.symbol }} - {{ trigger.payload_json.reason }}{% endraw %}
+- id: alpaca_hackathon_order_submitted
+  alias: "AI Day Trader - order submitted"
+  description: "Managed by ansible/roles/ha-dashboard - edit the role, not this block."
+  triggers:
+    - trigger: mqtt
+      topic: "{{ ha_mqtt_topic_prefix }}/+/event/order_submitted"
+  actions:
+    - action: persistent_notification.create
+      data:
+        title: "AI Day Trader - order submitted"
+        message: >-
+          {% raw %}{{ trigger.payload_json.side }} {{ trigger.payload_json.qty }}
+          {{ trigger.payload_json.symbol }} - {{ trigger.payload_json.reason }}{% endraw %}
 
 {% if ha_alert_light_entity %}
-      - action: light.turn_on
-        target:
-          entity_id: {{ ha_alert_light_entity }}
-        data:
-          rgb_color: [0, 200, 0]
-          brightness_pct: 60
+    - action: light.turn_on
+      target:
+        entity_id: {{ ha_alert_light_entity }}
+      data:
+        rgb_color: [0, 200, 0]
+        brightness_pct: 60
 {% endif %}
-    mode: queued
+  mode: queued
 
-  - id: alpaca_hackathon_halted
-    alias: "AI Day Trader - halted"
-    description: "Managed by ansible/roles/ha-dashboard - edit the role, not this block."
-    triggers:
-      - trigger: mqtt
-        topic: "{{ ha_mqtt_topic_prefix }}/+/event/manual_halt"
-      - trigger: mqtt
-        topic: "{{ ha_mqtt_topic_prefix }}/+/event/daily_loss_halt"
-    actions:
-      - action: persistent_notification.create
-        data:
-          title: "AI Day Trader - HALTED"
-          message: >-
-            {% raw %}{{ trigger.topic.split('/')[1] }} account halted
-            ({{ trigger.topic.split('/')[-1] }}). Check status.py / logs/HALT.{% endraw %}
+- id: alpaca_hackathon_halted
+  alias: "AI Day Trader - halted"
+  description: "Managed by ansible/roles/ha-dashboard - edit the role, not this block."
+  triggers:
+    - trigger: mqtt
+      topic: "{{ ha_mqtt_topic_prefix }}/+/event/manual_halt"
+    - trigger: mqtt
+      topic: "{{ ha_mqtt_topic_prefix }}/+/event/daily_loss_halt"
+  actions:
+    - action: persistent_notification.create
+      data:
+        title: "AI Day Trader - HALTED"
+        message: >-
+          {% raw %}{{ trigger.topic.split('/')[1] }} account halted
+          ({{ trigger.topic.split('/')[-1] }}). Check status.py / logs/HALT.{% endraw %}
 
 {% if ha_alert_light_entity %}
-      - action: light.turn_on
-        target:
-          entity_id: {{ ha_alert_light_entity }}
-        data:
-          rgb_color: [220, 0, 0]
-          brightness_pct: 80
+    - action: light.turn_on
+      target:
+        entity_id: {{ ha_alert_light_entity }}
+      data:
+        rgb_color: [220, 0, 0]
+        brightness_pct: 80
 {% endif %}
-    mode: queued
+  mode: queued
