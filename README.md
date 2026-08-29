@@ -79,6 +79,11 @@ Paper-only throughout — no live-trading code path exists.
    then `python scripts/verify_connection.py` (live check against the test
    account by default; `--account official` for the judging account, which
    should only ever get read-only calls before Monday — see [Account](#account))
+6. Run a cycle: `python run_cycle.py --dry-run --force` (full snapshot →
+   decide → risk-check on the test account, orders printed not sent, market
+   gates skipped). Drop `--dry-run` to submit paper orders on the test account.
+   `--account official` is refused outright before Mon Aug 31 9:30 AM ET
+   unless `--dry-run` — hardcoded in `run_cycle.py`, not configurable.
 
 ## Submission checklist
 

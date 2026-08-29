@@ -3,6 +3,7 @@ import unittest
 from datetime import date, datetime
 
 from bot import snapshot
+from bot.models import Proposal
 from bot.risk import EASTERN
 
 CLOCK_RESPONSE = {
@@ -260,6 +261,48 @@ class BuildOptionResearchTest(unittest.IsolatedAsyncioTestCase):
             client, _research_config(), today=date(2026, 1, 15)
         )
         self.assertEqual(research["AAPL"]["contracts"], {})
+
+
+PRICE_SNAPSHOT = {
+    "options": {
+        "AAPL": {
+            "underlying_price": 200.0,
+            "contracts": {
+                "AAPL260204C00200000": {"latestQuote": {"bp": 5.0, "ap": 6.0}},
+                "AAPL260204P00200000": {"latestQuote": {"bp": 0, "ap": 0}, "latestTrade": {"p": 4.4}},
+                "AAPL260204C00210000": {},
+            },
+        }
+    }
+}
+
+
+class PriceForProposalTest(unittest.TestCase):
+    SNAP = PRICE_SNAPSHOT
+
+    def test_option_uses_bid_ask_mid(self):
+        p = Proposal("option", "AAPL260204C00200000", "buy", 1, underlying="AAPL")
+        self.assertEqual(snapshot.price_for_proposal(self.SNAP, p), 5.5)
+
+    def test_option_falls_back_to_last_trade_when_quote_empty(self):
+        p = Proposal("option", "AAPL260204P00200000", "buy", 1, underlying="AAPL")
+        self.assertEqual(snapshot.price_for_proposal(self.SNAP, p), 4.4)
+
+    def test_option_with_no_price_data_returns_none(self):
+        p = Proposal("option", "AAPL260204C00210000", "buy", 1, underlying="AAPL")
+        self.assertIsNone(snapshot.price_for_proposal(self.SNAP, p))
+
+    def test_option_not_in_snapshot_returns_none(self):
+        p = Proposal("option", "AAPL260204C00999000", "buy", 1, underlying="AAPL")
+        self.assertIsNone(snapshot.price_for_proposal(self.SNAP, p))
+
+    def test_stock_uses_underlying_price(self):
+        p = Proposal("stock", "AAPL", "buy", 1)
+        self.assertEqual(snapshot.price_for_proposal(self.SNAP, p), 200.0)
+
+    def test_stock_not_in_snapshot_returns_none(self):
+        p = Proposal("stock", "TSLA", "buy", 1)
+        self.assertIsNone(snapshot.price_for_proposal(self.SNAP, p))
 
 
 class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):

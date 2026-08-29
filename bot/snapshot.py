@@ -13,7 +13,7 @@ import json
 from datetime import date, datetime, timedelta
 
 from bot.alpaca_mcp import AlpacaMCPClient
-from bot.models import AccountState, Position
+from bot.models import AccountState, Position, Proposal
 from bot.occ import parse_occ_symbol
 from bot.risk import EASTERN
 
@@ -126,6 +126,28 @@ async def build_option_research(client: AlpacaMCPClient, config: dict, today: da
             "contracts": data.get("snapshots", {}),
         }
     return research
+
+
+def price_for_proposal(snapshot: dict, p: Proposal) -> float | None:
+    """Fill-price estimate for risk sizing, from the snapshot already in
+    hand (no extra network call): an option's bid/ask mid (else last
+    trade), a stock's underlying price. None if the snapshot has nothing
+    for that symbol - risk.py rejects a None/zero price, so an unknown
+    symbol can't sneak through unsized."""
+    options = snapshot.get("options") or {}
+    if p.instrument == "option":
+        research = options.get(p.underlying or "") or {}
+        raw = (research.get("contracts") or {}).get(p.symbol)
+        if not raw:
+            return None
+        quote = raw.get("latestQuote") or {}
+        bid, ask = quote.get("bp"), quote.get("ap")
+        if bid and ask and bid > 0 and ask > 0:
+            return (bid + ask) / 2
+        last = (raw.get("latestTrade") or {}).get("p")
+        return float(last) if last else None
+    research = options.get(p.symbol) or {}
+    return research.get("underlying_price")
 
 
 def _serialize_account(account: AccountState) -> dict:
