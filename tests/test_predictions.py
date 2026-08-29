@@ -42,7 +42,7 @@ class SummarizeTest(unittest.TestCase):
         self.assertAlmostEqual(s["implied_median"], 7462.495, delta=0.02)  # cumulative crosses 0.5 in the 7450-7475 bucket
         self.assertGreater(s["p_above_reference"], 0.5)
         self.assertLess(s["p_down_over_1pct"], 0.2)
-        self.assertEqual(s["volume"], 1000.0)
+        self.assertEqual(s["volume"], 1500.0)  # 4 x 100 + 500 + 600
         self.assertEqual(s["top_buckets"][0]["range"], "7450.0-7474.99")
         self.assertAlmostEqual(sum(b["p"] for b in s["top_buckets"]), 0.87, delta=0.05)
         self.assertAlmostEqual(s["implied_move_pct"], (7462.495 / 7440 - 1) * 100, delta=0.01)
