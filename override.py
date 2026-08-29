@@ -21,6 +21,7 @@ from pathlib import Path
 
 from bot import journal, overrides
 from bot.config import load_config
+from bot.credentials import validate_account
 from bot.risk import EASTERN
 
 
@@ -38,10 +39,10 @@ def read_value(text: str) -> str:
     return Path(text[1:]).read_text() if text.startswith("@") else text
 
 
-def show() -> int:
+def show(config_path: str | None = None) -> int:
     now = datetime.now(EASTERN)
     active = overrides.active_overrides(now)
-    config = load_config(now=now)
+    config = load_config(config_path, now=now)
     print(f"== Active overrides ({len(active)}) == (now {now:%Y-%m-%d %H:%M %Z})")
     for key, entry in sorted(active.items()):
         value = entry["value"]
@@ -60,6 +61,8 @@ def show() -> int:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    ap.add_argument("--account", default="test", help="which account's overrides file (official, test, or any name)")
+    ap.add_argument("--config", default=None, help="config file to show effective values against (default config.yaml)")
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("show")
     p_set = sub.add_parser("set")
@@ -70,9 +73,12 @@ def main() -> int:
     p_clear.add_argument("key", nargs="?")
     p_clear.add_argument("--all", action="store_true")
     args = ap.parse_args()
+    validate_account(args.account)
+    journal.use_account(args.account)
+    overrides.use_account(args.account)
 
     if args.cmd == "show":
-        return show()
+        return show(args.config)
 
     now = datetime.now(EASTERN)
     if args.cmd == "set":

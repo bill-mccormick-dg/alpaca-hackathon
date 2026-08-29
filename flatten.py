@@ -18,10 +18,10 @@ import asyncio
 import sys
 from datetime import date, datetime
 
-from bot import journal
+from bot import journal, overrides
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import load_config
-from bot.credentials import load_credentials
+from bot.credentials import load_credentials, validate_account
 from bot.flatten import flatten_all, flatten_expiring
 from bot.orders import INCOMPLETE
 from bot.risk import EASTERN, RiskManager
@@ -37,8 +37,11 @@ async def run(args: argparse.Namespace) -> int:
         )
         return 2
 
-    config = load_config()
-    risk = RiskManager(config)
+    validate_account(args.account)
+    journal.use_account(args.account)
+    overrides.use_account(args.account)
+    config = load_config(args.config)
+    risk = RiskManager(config, account=args.account)
     today = datetime.now(EASTERN).date()
     final_day = date.fromisoformat(str(config["final_flatten_date"])) if config.get("final_flatten_date") else None
     expiring_only = args.expiring_only and not (final_day and today >= final_day)
@@ -84,7 +87,8 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--halt", action="store_true")
     ap.add_argument("--expiring-only", action="store_true", help="close only contracts expiring within eod_close_dte days")
-    ap.add_argument("--account", choices=("test", "official"), default="test")
+    ap.add_argument("--account", default="test", help="named account: official, test, or any credentials-<name>.env")
+    ap.add_argument("--config", default=None, help="config file (default config.yaml)")
     ap.add_argument("--verify-timeout", type=float, default=30.0, help="seconds to wait for closes to fill")
     return asyncio.run(run(ap.parse_args()))
 

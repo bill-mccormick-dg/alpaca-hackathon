@@ -269,6 +269,22 @@ class HaltTest(RiskManagerTestBase):
         self.assertEqual(self.risk.halted(datetime(2026, 1, 15, 12, 0)), "daily loss halt")
         self.assertIsNone(self.risk.halted(datetime(2026, 1, 16, 12, 0)))
 
+    def test_daily_halt_is_per_account_but_manual_halt_is_global(self):
+        challenger = RiskManager(make_config(), logs_dir=self.risk.logs_dir, account="qwen-a")
+        self.assertEqual(challenger.daily_halt_file(date(2026, 1, 15)).name, "HALT_qwen-a_2026-01-15")
+        self.assertEqual(self.risk.daily_halt_file(date(2026, 1, 15)).name, "HALT_2026-01-15")
+
+        challenger.daily_halt_file(date(2026, 1, 15)).touch()
+        self.assertEqual(challenger.halted(datetime(2026, 1, 15, 12, 0)), "daily loss halt")
+        self.assertIsNone(self.risk.halted(datetime(2026, 1, 15, 12, 0)))  # official unaffected
+
+        self.risk.manual_halt_file().touch()
+        self.assertEqual(challenger.halted(datetime(2026, 1, 16, 12, 0)), "manual halt")
+
+    def test_official_account_uses_unsuffixed_daily_halt(self):
+        official = RiskManager(make_config(), logs_dir=self.risk.logs_dir, account="official")
+        self.assertEqual(official.daily_halt_file(date(2026, 1, 15)).name, "HALT_2026-01-15")
+
 
 class DailyLossBreachTest(RiskManagerTestBase):
     def test_not_breached_when_equity_up(self):

@@ -14,6 +14,7 @@ this project's four required values, two accounts, and deployed paths.
 """
 
 import os
+import re
 from pathlib import Path
 
 REQUIRED_KEYS = (
@@ -25,14 +26,28 @@ REQUIRED_KEYS = (
 
 # Matches homenetwork/ansible/roles/alpaca-hackathon/templates/*.env.j2
 PRODUCTION_CREDENTIALS_DIR = Path("/root/.config/alpaca-hackathon")
-ACCOUNT_FILES = {
-    "test": "credentials-test.env",
-    "official": "credentials.env",
-}
+OFFICIAL = "official"
 
-# Local dev fallback, gitignored. Test account only — official credentials
-# never resolve from a local file, only the deployed path or explicit env vars.
-DOTENV_FILE = Path(__file__).resolve().parent.parent / ".env"
+# Local dev fallback, gitignored. Any NON-official account may resolve from
+# a local file (.env.<name>, then .env) - a teammate's compose stack or the
+# N-variant experiment farm. The official account never resolves from a
+# local file, only the deployed path or explicit env vars.
+REPO_ROOT = Path(__file__).resolve().parent.parent
+DOTENV_FILE = REPO_ROOT / ".env"
+
+_NAME_OK = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")
+
+
+def credentials_file(account: str) -> Path:
+    """Deployed path for an account: credentials.env for official,
+    credentials-<name>.env for everything else."""
+    return PRODUCTION_CREDENTIALS_DIR / ("credentials.env" if account == OFFICIAL else f"credentials-{account}.env")
+
+
+def validate_account(account: str) -> str:
+    if not isinstance(account, str) or not _NAME_OK.match(account):
+        raise ValueError(f"Bad account name {account!r}: lowercase letters, digits, - and _ only (e.g. test, official, qwen-a)")
+    return account
 
 
 def _parse_env_file(path: Path) -> dict:
@@ -46,36 +61,37 @@ def _parse_env_file(path: Path) -> dict:
     return values
 
 
+def _merge_from(values: dict, path: Path) -> None:
+    parsed = _parse_env_file(path)
+    for key in REQUIRED_KEYS:
+        if key not in values and parsed.get(key):
+            values[key] = parsed[key]
+
+
 def load_credentials(account: str = "test") -> dict:
-    """Resolve all four required credentials for `account` ("test" or
-    "official"), or raise RuntimeError naming exactly which are missing and
-    where this looked for them."""
-    if account not in ACCOUNT_FILES:
-        raise ValueError(f"Unknown account {account!r}; expected one of {sorted(ACCOUNT_FILES)}")
+    """Resolve all four required credentials for a named account, or raise
+    RuntimeError naming exactly which are missing and where this looked.
 
+    Order: environment variables -> the deployed file for the account ->
+    (non-official only) local .env.<account> -> local .env."""
+    validate_account(account)
     values = {k: os.environ[k] for k in REQUIRED_KEYS if os.environ.get(k)}
+    checked = ["environment variables"]
 
-    production_file = PRODUCTION_CREDENTIALS_DIR / ACCOUNT_FILES[account]
+    production_file = credentials_file(account)
+    checked.append(str(production_file))
     if len(values) < len(REQUIRED_KEYS) and production_file.exists():
-        parsed = _parse_env_file(production_file)
-        for key in REQUIRED_KEYS:
-            if key not in values and parsed.get(key):
-                values[key] = parsed[key]
+        _merge_from(values, production_file)
 
-    if account == "test" and len(values) < len(REQUIRED_KEYS) and DOTENV_FILE.exists():
-        from dotenv import dotenv_values
-
-        parsed = dotenv_values(DOTENV_FILE)
-        for key in REQUIRED_KEYS:
-            if key not in values and parsed.get(key):
-                values[key] = parsed[key]
+    if account != OFFICIAL:
+        for local in (DOTENV_FILE.with_name(f".env.{account}"), DOTENV_FILE):
+            checked.append(str(local))
+            if len(values) < len(REQUIRED_KEYS) and local.exists():
+                _merge_from(values, local)
 
     missing = [k for k in REQUIRED_KEYS if k not in values]
     if missing:
-        checked = f"environment variables, {production_file}"
-        if account == "test":
-            checked += f", and {DOTENV_FILE}"
         raise RuntimeError(
-            f"Missing credentials for account={account!r}: {', '.join(missing)}. Checked {checked}."
+            f"Missing credentials for account={account!r}: {', '.join(missing)}. Checked {', '.join(checked)}."
         )
     return values

@@ -15,7 +15,27 @@ from bot.risk import EASTERN, LOGS_DIR
 JOURNAL = LOGS_DIR / "journal.jsonl"
 
 
-def log(event: str, journal: Path = JOURNAL, **fields) -> dict:
+def journal_file(account: str | None) -> Path:
+    """One journal per account so an A/B challenger's trades never mix
+    with the official account's: logs/journal.jsonl for the official
+    account (and when no account is given), logs/journal-<name>.jsonl
+    otherwise."""
+    if not account or account == "official":
+        return LOGS_DIR / "journal.jsonl"
+    return LOGS_DIR / f"journal-{account}.jsonl"
+
+
+def use_account(account: str | None) -> Path:
+    """Point this process's default journal at the account's file. Called
+    once by each entrypoint after parsing --account, so the many log()
+    call sites need no plumbing."""
+    global JOURNAL
+    JOURNAL = journal_file(account)
+    return JOURNAL
+
+
+def log(event: str, journal: Path | None = None, **fields) -> dict:
+    journal = journal or JOURNAL
     journal.parent.mkdir(exist_ok=True)
     record = {"ts": datetime.now(EASTERN).isoformat(timespec="seconds"), "event": event, **fields}
     with journal.open("a") as f:
@@ -24,12 +44,13 @@ def log(event: str, journal: Path = JOURNAL, **fields) -> dict:
 
 
 def read_events(
-    day: str | None = None, events: tuple[str, ...] | None = None, journal: Path = JOURNAL
+    day: str | None = None, events: tuple[str, ...] | None = None, journal: Path | None = None
 ) -> list[dict]:
     """Parsed records for one Eastern-time date (default today; "all" for
     the whole journal), optionally filtered by event name. Malformed lines
     are skipped, never fatal - a half-written line from a crash must not
     take the summary down with it."""
+    journal = journal or JOURNAL
     day = day or datetime.now(EASTERN).date().isoformat()
     if not journal.exists():
         return []
@@ -48,7 +69,8 @@ def read_events(
     return out
 
 
-def daily_summary(day: str | None = None, journal: Path = JOURNAL) -> dict:
+def daily_summary(day: str | None = None, journal: Path | None = None) -> dict:
+    journal = journal or JOURNAL
     day = day or datetime.now(EASTERN).date().isoformat()
     summary = {
         "date": day,

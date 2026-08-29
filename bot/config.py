@@ -30,12 +30,16 @@ TRACKED_KEYS = (
 
 
 def load_config(
-    path: Path = CONFIG_FILE,
+    path: Path | None = None,
     now: datetime | None = None,
-    overrides_path: Path = _overrides.OVERRIDES_FILE,
+    overrides_path: Path | None = None,
 ) -> dict:
-    with open(path) as f:
+    """`path` defaults to config.yaml; `--config config-<name>.yaml` on the
+    entrypoints selects a variant. Overrides come from the account's file
+    (bot/overrides.py::use_account) unless overrides_path says otherwise."""
+    with open(path or CONFIG_FILE) as f:
         config = yaml.safe_load(f) or {}
+    config["_config_file"] = str(path or CONFIG_FILE)
     active = _overrides.active_overrides(now, path=overrides_path)
     for key, entry in active.items():
         config[key] = entry["value"]
@@ -58,5 +62,6 @@ def config_provenance(config: dict) -> dict:
         "strategy_notes_sha": notes_sha,
         "strategy_notes_head": notes.strip().splitlines()[0][:120] if notes.strip() else "",
         "config_hash": digest,
+        "config_file": config.get("_config_file"),
         "overrides": config.get("_overrides", {}),
     }

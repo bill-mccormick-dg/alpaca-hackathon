@@ -111,5 +111,23 @@ class FileRoundTripTest(unittest.TestCase):
         self.assertEqual(leftovers, [])
 
 
+class PerAccountOverridesTest(unittest.TestCase):
+    def test_file_per_account(self):
+        self.assertEqual(overrides.overrides_file("official").name, "overrides.yaml")
+        self.assertEqual(overrides.overrides_file(None).name, "overrides.yaml")
+        self.assertEqual(overrides.overrides_file("qwen-a").name, "overrides-qwen-a.yaml")
+
+    def test_use_account_repoints_default_used_by_readers_and_writers(self):
+        original = overrides.OVERRIDES_FILE
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                overrides.OVERRIDES_FILE = Path(d) / "overrides-qwen-a.yaml"
+                overrides.set_override("temperature", 0.9, now=NOW)  # no explicit path
+                self.assertTrue((Path(d) / "overrides-qwen-a.yaml").exists())
+                self.assertEqual(overrides.active_overrides(NOW)["temperature"]["value"], 0.9)
+        finally:
+            overrides.OVERRIDES_FILE = original
+
+
 if __name__ == "__main__":
     unittest.main()

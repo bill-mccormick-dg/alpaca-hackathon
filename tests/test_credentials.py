@@ -39,9 +39,28 @@ class LoadCredentialsTest(unittest.TestCase):
         content = "\n".join(f"{k}={v}" for k, v in values.items())
         (self._prod_dir / name).write_text(content + "\n")
 
-    def test_rejects_unknown_account(self):
-        with self.assertRaises(ValueError):
-            credentials.load_credentials("live")
+    def test_rejects_malformed_account_names(self):
+        for bad in ("", "Live Account", "../etc", "OFFICIAL", "x" * 40):
+            with self.assertRaises(ValueError):
+                credentials.load_credentials(bad)
+
+    def test_named_account_resolves_from_its_own_deployed_file(self):
+        self._write_prod_file("credentials-qwen-a.env", ALPACA_API_KEY="qwen-key")
+        self._write_prod_file("credentials-test.env", ALPACA_API_KEY="test-key")
+        self.assertEqual(credentials.load_credentials("qwen-a")["ALPACA_API_KEY"], "qwen-key")
+
+    def test_named_account_prefers_dotenv_name_over_plain_dotenv(self):
+        body = (
+            "ALPACA_SECRET_KEY=s\nALPACA_BASE_URL=https://paper-api.alpaca.markets\nFEATHERLESS_API_KEY=f\n"
+        )
+        self._dotenv_file.write_text("ALPACA_API_KEY=plain\n" + body)
+        self._dotenv_file.with_name(".env.qwen-a").write_text("ALPACA_API_KEY=named\n" + body)
+        self.assertEqual(credentials.load_credentials("qwen-a")["ALPACA_API_KEY"], "named")
+        self.assertEqual(credentials.load_credentials("other")["ALPACA_API_KEY"], "plain")
+
+    def test_credentials_file_paths(self):
+        self.assertEqual(credentials.credentials_file("official").name, "credentials.env")
+        self.assertEqual(credentials.credentials_file("qwen-a").name, "credentials-qwen-a.env")
 
     def test_environment_variables_take_priority_over_file(self):
         os.environ.update(
