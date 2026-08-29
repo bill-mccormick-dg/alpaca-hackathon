@@ -83,6 +83,12 @@ strategy_notes: |
 # runtime-overridable (see bot/overrides.py) for intraday A/B without a
 # deploy; a change here in git is the durable version.
 model: Qwen/Qwen3.8-Flash-Next  # challenger: 4x cheaper than Kimi, newest agentic model (Aug 2026)
+# Qwen3.8 / Kimi-K2.6 are thinking models: without this they spend the whole
+# max_tokens budget on hidden reasoning and return empty content (confirmed
+# live 2026-08-29). GLM-5.3-Flash ignores this flag entirely - not usable here.
+model_params:
+  chat_template_kwargs:
+    enable_thinking: false
 temperature: 0.2
 max_tokens: 800 # a JSON array of a few proposals, not prose
 request_timeout_sec: 60

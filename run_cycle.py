@@ -196,10 +196,17 @@ async def run(args: argparse.Namespace) -> int:
             model=decision.model,
             usage=decision.usage,
             latency_sec=decision.latency_sec,
+            finish_reason=decision.finish_reason,
+            reasoning=decision.reasoning or None,
         )
 
         if args.verbose:
-            print(f"model {decision.model} in {decision.latency_sec}s, usage {decision.usage}")
+            print(
+                f"model {decision.model} in {decision.latency_sec}s, finish={decision.finish_reason}, "
+                f"usage {decision.usage}"
+            )
+            if decision.reasoning:
+                print(f"model reasoning (head): {decision.reasoning[:600]!r}")
             print(f"model output: {raw}")
         if not proposals:
             print("decision: hold (no actions)")

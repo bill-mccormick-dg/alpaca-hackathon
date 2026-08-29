@@ -46,7 +46,11 @@ feed carries no Greeks or implied volatility, so where a contract's price was st
 to solve for it, implied volatility and the standard Greeks (delta, gamma, theta per day, \
 vega per 1 vol point) were derived from it via Black-Scholes and are included too. A contract \
 missing those fields means the price data was too thin or stale to solve reliably - judge \
-that one on price, strike, and days-to-expiration alone.
+that one on price, strike, and days-to-expiration alone. The Greeks are solved independently \
+per contract from a free indicative feed, so they will not be internally consistent (put and \
+call deltas at one strike need not sum to -1, and a few quotes are plainly stale). Treat them as \
+rough guides; do NOT spend effort auditing or reconciling the data - skip anything that looks \
+broken and decide from what is plausible. Keep your reasoning brief and answer decisively.
 
 STRATEGY (from config.yaml - the thesis you are executing; the hard limits above still win):
 {strategy_notes}
@@ -211,17 +215,34 @@ class Decision:
     model: str
     usage: dict | None = None  # Featherless/OpenAI-style {prompt_tokens, completion_tokens, total_tokens}
     latency_sec: float = 0.0
+    finish_reason: str | None = None
+    reasoning: str = ""  # thinking models return this separately from content; kept for the audit trail
     extra: dict = field(default_factory=dict)
+
+
+REASONING_KEEP_CHARS = 2000
+
+
+class TruncatedOutput(ValueError):
+    """The model hit max_tokens before producing an answer - with thinking
+    models that usually means the hidden reasoning consumed the budget."""
 
 
 def _sampling_kwargs(config: dict) -> dict:
     """temperature / max_tokens from config, only when present, so a config
-    without them behaves exactly as before."""
+    without them behaves exactly as before. `model_params` (a dict) is
+    merged verbatim into the request body - the escape hatch for
+    model-specific controls such as reasoning/thinking toggles
+    (chat_template_kwargs, reasoning_effort, thinking), which differ per
+    model family and belong in the variant's config, not in code."""
     kwargs = {}
     if config.get("temperature") is not None:
         kwargs["temperature"] = float(config["temperature"])
     if config.get("max_tokens") is not None:
         kwargs["max_tokens"] = int(config["max_tokens"])
+    extra = config.get("model_params")
+    if isinstance(extra, dict):
+        kwargs.update(extra)
     return kwargs
 
 
@@ -236,13 +257,27 @@ async def decide(
     started = time.monotonic()
     response = await client.chat([{"role": "user", "content": prompt}], **_sampling_kwargs(config))
     latency = time.monotonic() - started
-    raw = response["choices"][0]["message"]["content"]
+    choice = response["choices"][0]
+    message = choice.get("message") or {}
+    raw = message.get("content") or ""
+    reasoning = message.get("reasoning") or message.get("reasoning_content") or ""
+    finish = choice.get("finish_reason")
+    usage = response.get("usage")
+
+    if not raw.strip() and finish == "length":
+        used = (usage or {}).get("completion_tokens")
+        raise TruncatedOutput(
+            f"model output truncated before an answer (finish_reason=length, {used} completion tokens, "
+            f"{len(reasoning)} chars of hidden reasoning) - raise max_tokens or disable thinking via model_params"
+        )
     actions = _extract_json_array(raw)
     proposals = [_parse_proposal(a) for a in actions if isinstance(a, dict)]
     return Decision(
         proposals=proposals,
         raw=raw,
         model=response.get("model") or client.model,
-        usage=response.get("usage"),
+        usage=usage,
         latency_sec=round(latency, 3),
+        finish_reason=finish,
+        reasoning=reasoning[:REASONING_KEEP_CHARS],
     )

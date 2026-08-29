@@ -218,18 +218,59 @@ class ParseProposalTest(unittest.TestCase):
 
 
 class FakeFeatherlessClient:
-    def __init__(self, content: str, usage=None, model="fake/model"):
+    def __init__(self, content: str, usage=None, model="fake/model", finish_reason="stop", reasoning=None):
         self.content = content
         self.usage = usage
         self.model = model
+        self.finish_reason = finish_reason
+        self.reasoning = reasoning
         self.calls = []
 
     async def chat(self, messages, **kwargs):
         self.calls.append((messages, kwargs))
-        response = {"choices": [{"message": {"content": self.content}}], "model": self.model}
+        message = {"content": self.content}
+        if self.reasoning is not None:
+            message["reasoning"] = self.reasoning
+        response = {"choices": [{"message": message, "finish_reason": self.finish_reason}], "model": self.model}
         if self.usage is not None:
             response["usage"] = self.usage
         return response
+
+
+class ThinkingModelTest(unittest.IsolatedAsyncioTestCase):
+    async def test_model_params_merge_into_request(self):
+        client = FakeFeatherlessClient("[]")
+        cfg = _config(temperature=0.1, model_params={"chat_template_kwargs": {"enable_thinking": False}})
+        await decide.decide(_snapshot(), cfg, client, TODAY)
+        _, kwargs = client.calls[0]
+        self.assertEqual(kwargs["chat_template_kwargs"], {"enable_thinking": False})
+        self.assertEqual(kwargs["temperature"], 0.1)
+
+    async def test_reasoning_and_finish_reason_are_captured_and_truncated(self):
+        client = FakeFeatherlessClient("[]", reasoning="x" * 5000)
+        d = await decide.decide(_snapshot(), _config(), client, TODAY)
+        self.assertEqual(d.finish_reason, "stop")
+        self.assertEqual(len(d.reasoning), decide.REASONING_KEEP_CHARS)
+
+    async def test_empty_content_with_length_finish_is_a_clear_truncation_error(self):
+        client = FakeFeatherlessClient("", finish_reason="length", reasoning="thinking..." * 100,
+                                       usage={"completion_tokens": 800})
+        with self.assertRaises(decide.TruncatedOutput) as ctx:
+            await decide.decide(_snapshot(), _config(), client, TODAY)
+        msg = str(ctx.exception)
+        self.assertIn("finish_reason=length", msg)
+        self.assertIn("800 completion tokens", msg)
+        self.assertIn("model_params", msg)
+
+    async def test_empty_content_with_stop_finish_is_the_ordinary_no_json_error(self):
+        client = FakeFeatherlessClient("", finish_reason="stop")
+        with self.assertRaises(ValueError) as ctx:
+            await decide.decide(_snapshot(), _config(), client, TODAY)
+        self.assertNotIsInstance(ctx.exception, decide.TruncatedOutput)
+
+    def test_prompt_tells_the_model_not_to_audit_greeks(self):
+        prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
+        self.assertIn("do NOT spend effort auditing", prompt)
 
 
 class DecideTest(unittest.IsolatedAsyncioTestCase):
