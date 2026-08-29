@@ -26,7 +26,7 @@ import json
 import sys
 from datetime import datetime
 
-from bot import journal, overrides, review
+from bot import journal, mqtt, overrides, review
 from bot.config import load_config
 from bot.credentials import load_credentials, validate_account
 from bot.featherless import DEFAULT_MODEL, FeatherlessClient
@@ -115,6 +115,7 @@ async def run(args: argparse.Namespace) -> int:
     journal.use_account(args.account)
     overrides.use_account(args.account)
     config = load_config(args.config)
+    mqtt.configure(config, args.account)
     day = args.date or _today()
 
     records = journal.read_events(day)

@@ -40,6 +40,14 @@ def log(event: str, journal: Path | None = None, **fields) -> dict:
     record = {"ts": datetime.now(EASTERN).isoformat(timespec="seconds"), "event": event, **fields}
     with journal.open("a") as f:
         f.write(json.dumps(record, default=str) + "\n")
+    # Side channels hang off this one chokepoint. MQTT (issue #14) is a
+    # no-op unless an entrypoint called mqtt.configure() with a broker.
+    try:
+        from bot import mqtt
+
+        mqtt.on_event(record)
+    except Exception:  # noqa: BLE001, S110 - a side channel must never break the journal; nothing to log it to
+        pass
     return record
 
 

@@ -18,7 +18,7 @@ import asyncio
 import sys
 from datetime import date, datetime
 
-from bot import journal, overrides
+from bot import journal, mqtt, overrides
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import load_config
 from bot.credentials import load_credentials, validate_account
@@ -41,6 +41,7 @@ async def run(args: argparse.Namespace) -> int:
     journal.use_account(args.account)
     overrides.use_account(args.account)
     config = load_config(args.config)
+    mqtt.configure(config, args.account)
     risk = RiskManager(config, account=args.account)
     today = datetime.now(EASTERN).date()
     final_day = date.fromisoformat(str(config["final_flatten_date"])) if config.get("final_flatten_date") else None
