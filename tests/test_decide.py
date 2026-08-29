@@ -145,6 +145,15 @@ class BuildPromptTest(unittest.TestCase):
         self.assertEqual(embedded["account"]["equity"], 100000.0)
         self.assertIn("AAPL", embedded["options"])
 
+    def test_embeds_strategy_notes_verbatim(self):
+        prompt = decide.build_prompt(_snapshot(), _config(strategy_notes="THESIS: buy cheap gamma\n"), TODAY)
+        self.assertIn("STRATEGY (from config.yaml", prompt)
+        self.assertIn("THESIS: buy cheap gamma", prompt)
+
+    def test_missing_strategy_notes_does_not_crash(self):
+        prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
+        self.assertIn("(none)", prompt)
+
     def test_requests_only_market_or_limit_orders(self):
         prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
         self.assertIn('"market"|"limit"', prompt)

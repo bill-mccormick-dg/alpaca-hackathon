@@ -46,6 +46,8 @@ vega per 1 vol point) were derived from it via Black-Scholes and are included to
 missing those fields means the price data was too thin or stale to solve reliably - judge \
 that one on price, strike, and days-to-expiration alone.
 
+STRATEGY (from config.yaml - the thesis you are executing; the hard limits above still win):
+{strategy_notes}
 SNAPSHOT:
 {snapshot}
 
@@ -147,6 +149,7 @@ def build_prompt(snapshot: dict, config: dict, today: date | None = None) -> str
         last_entry=str(config["last_entry"]),
         trade_end=str(config["trade_end"]),
         contracts_per_underlying=int(config.get("research_contracts_per_underlying", 12)),
+        strategy_notes=str(config.get("strategy_notes") or "(none)").strip(),
         snapshot=json.dumps(payload, separators=(",", ":")),
     )
 

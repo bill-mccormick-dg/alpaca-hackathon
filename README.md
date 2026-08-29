@@ -1,5 +1,10 @@
 # Alpaca AI Trading Agents Hackathon
 
+> **Thesis:** Buy defined-risk, short-dated options premium on the five most
+> liquid names when an open-source model sees a concrete reason; deterministic
+> code sizes every trade, stops it, and closes it before expiry — the model
+> never touches an order. Full statement: [docs/strategy.md](docs/strategy.md).
+
 lablab.ai x Alpaca — Aug 28–Sep 4, 2026. Submission deadline Sep 4, 10:00 AM CDT.
 See [docs/alpaca-official-guidelines.md](docs/alpaca-official-guidelines.md)
 for Alpaca's full official rules/FAQ (copied verbatim) — this README
