@@ -6,7 +6,7 @@ METADATA.md as they go up.
 
 1. **Sat — the thesis**
    > Building for the @AlpacaHQ x @lablabai AI trading agents hackathon:
-   > "Long Premium, Short Leash." An open-source model (via Featherless)
+   > "AI Day Trader - Long Premium, Short Leash." An open-source model (via Featherless)
    > proposes defined-risk options trades; deterministic code sizes, stops and
    > closes every one. The model never touches an order. 280 tests so far.
    + screenshot: README thesis block or the risk gate table.

@@ -1,4 +1,4 @@
-# Video script — Long Premium, Short Leash
+# Video script — AI Day Trader - Long Premium, Short Leash
 
 **Format:** MP4, 1080p, ≤ 5:00 (target 3:30–4:30). Screen recording + voice.
 Terminal font ≥ 16 pt, dark theme, window ~1600×900. Record Wed or Thu after a

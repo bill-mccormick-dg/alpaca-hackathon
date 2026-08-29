@@ -17,7 +17,7 @@ the form as-is; edit here, not in the text box.
 
 **Project title** (≤ 50 chars)
 ```
-Long Premium, Short Leash
+AI Day Trader - Long Premium, Short Leash
 ```
 
 **Short description** (≤ 255 chars)
@@ -27,7 +27,7 @@ An autonomous options agent on Alpaca's MCP server. An open-source model (Feathe
 
 **Long description**
 ```
-Long Premium, Short Leash is an autonomous options-trading agent built for the Alpaca AI Trading Agents Hackathon. Its one-line thesis: buy defined-risk, short-dated options premium on the five most liquid names when an open-source model sees a concrete reason; deterministic code sizes every trade, stops it, and closes it before expiry - the model never touches an order.
+AI Day Trader - Long Premium, Short Leash is an autonomous options-trading agent built for the Alpaca AI Trading Agents Hackathon. Its one-line thesis: buy defined-risk, short-dated options premium on the five most liquid names when an open-source model sees a concrete reason; deterministic code sizes every trade, stops it, and closes it before expiry - the model never touches an order.
 
 How a cycle works (every 10 minutes during market hours, from cron):
 1. Deterministic exits run first: any contract on its expiry day is closed, and any position past its stop-loss or take-profit is closed. Code decides when a trade is done, not the model.
