@@ -11,6 +11,7 @@ risk-check first, mirroring alpaca-trader's risk.py/execute.py funnel, so
 the model never gets a direct path to submit an order.
 """
 
+import asyncio
 import os
 import shutil
 import sys
@@ -20,6 +21,9 @@ from typing import Self
 
 from mcp import ClientSession
 from mcp.client.stdio import StdioServerParameters, stdio_client
+
+RETRIES = 3
+RETRY_DELAY_SEC = 2.0
 
 
 def _resolve_server_command() -> str:
@@ -78,4 +82,27 @@ class AlpacaMCPClient:
         return result.tools
 
     async def call_tool(self, name: str, arguments: dict | None = None):
-        return await self.session.call_tool(name, arguments or {})
+        """Calls a tool, retrying only on transient *connection* failures.
+
+        The MCP server reports an upstream HTTP failure as a normal result
+        whose text starts "Error calling tool ..." rather than raising. A
+        ConnectError there means the request never reached Alpaca - safe to
+        retry even for order-placing tools, since nothing was submitted.
+        Anything else (4xx/5xx, validation) is returned as-is for the
+        caller to interpret. Retry exists because CT 108's upstream DNS is
+        intermittently flaky and one blip shouldn't cost a whole cycle.
+        """
+        last = None
+        for attempt in range(1, RETRIES + 1):
+            result = await self.session.call_tool(name, arguments or {})
+            if not _is_transient_connect_error(result):
+                return result
+            last = result
+            if attempt < RETRIES:
+                await asyncio.sleep(RETRY_DELAY_SEC * attempt)
+        return last
+
+
+def _is_transient_connect_error(result) -> bool:
+    text = "".join(getattr(b, "text", "") for b in getattr(result, "content", []) or [])
+    return text.startswith("Error calling tool") and "ConnectError" in text

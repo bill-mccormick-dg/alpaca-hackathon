@@ -19,9 +19,17 @@ from bot.risk import EASTERN
 
 
 def _data(result) -> dict:
-    """Unwrap an MCP tool_call result's {"data": ...} envelope."""
+    """Unwrap an MCP tool_call result's {"data": ...} envelope.
+
+    The server reports upstream failures as a plain-text result ("Error
+    calling tool 'x': ...") rather than raising, so a non-JSON body is an
+    Alpaca-side failure - surface that text instead of a JSONDecodeError
+    that hides it."""
     text = "\n".join(block.text for block in getattr(result, "content", []) if hasattr(block, "text"))
-    payload = json.loads(text)
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        raise RuntimeError(f"Alpaca MCP tool failed: {text[:300]}") from None
     return payload.get("data", payload) if isinstance(payload, dict) else payload
 
 

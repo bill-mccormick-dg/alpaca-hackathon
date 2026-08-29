@@ -105,7 +105,9 @@ async def run(args: argparse.Namespace) -> int:
             print("DAILY LOSS CUTOFF BREACHED - halted for today")
             return 0
 
-        if not risk.entries_allowed(now) and not acct.positions:
+        # --force skips this too: a rehearsal should exercise the model
+        # call; risk.py still rejects any resulting buy as out-of-window.
+        if not args.force and not risk.entries_allowed(now) and not acct.positions:
             print(f"flat and past the {risk.last_entry} ET entry cutoff - nothing to decide")
             return 0
 
