@@ -33,6 +33,18 @@
       Then reload (ha_restart_method, or Developer Tools > YAML > Restart).
   when: alpaca_hackathon_dashboard_file.changed
 
+- name: Normalize a fresh-install automations.yaml (HA's own default content
+    is a bare "[]" flow-style empty list, which is NOT valid to append a
+    block-style sequence after - it terminates the YAML document. Strip a
+    leading "[]" so our block becomes the document instead of following
+    one. Only matches at the very start of the file; any real content
+    already in the file is left untouched.
+  ansible.builtin.replace:
+    path: "{{ ha_automations_file }}"
+    regexp: '^\[\][ \t]*\r?\n?'
+    replace: ""
+  when: ha_register_automations
+
 - name: Register the alert automations (idempotent, marked block)
   ansible.builtin.blockinfile:
     path: "{{ ha_automations_file }}"
