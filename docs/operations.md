@@ -74,6 +74,27 @@ state on CT 108 survives redeploys.
 
 Managed by Ansible in the `homenetwork` repo; logs in `logs/cron-<account>.log`.
 
+## The experiment farm (local, `docker compose --profile farm`)
+
+The bot is stateless per cycle, so scaling *experiments* is trivial: one
+container per variant, each with its own config (`config-variants/<name>.yaml`),
+its own **test** paper account (`.env.<name>`) and its own journal. `farm.py`
+does inside the container what cron does on CT 108 - a cycle every 10 minutes
+in market hours, the expiring-only flatten at 15:50 ET, `eod_review` at
+16:05 ET - by running the same entrypoints as subprocesses.
+
+```
+docker compose --profile farm up -d                                   # all variants, detached
+docker compose --profile farm up bot-kimi26                           # one, foreground
+docker compose run --rm bot farm.py --account kimi26 --config config-variants/kimi26.yaml --once   # smoke test (dry-run)
+```
+
+Add a variant: a `config-variants/<name>.yaml` (copy an existing one),
+a `.env.<name>` with that account's keys, and a `bot-<name>` service in
+`docker-compose.yml`. Compare variants with `eod_review.py --account <name>`
+or `trade_report.py --account <name>`; promote a winner by copying its values
+into `config.yaml` via a PR. Nothing here can touch the official account.
+
 ## Official-account safety
 
 `run_cycle.py` and `flatten.py` refuse `--account official` before Mon Aug 31
