@@ -13,6 +13,7 @@ import json
 from bot.alpaca_mcp import AlpacaMCPClient
 
 MAX_RESULT_CHARS = 3500
+MAX_BARS = 40  # ~10 hours of 15Min bars; 40 trimmed bars is ~2.8 KB, inside MAX_RESULT_CHARS
 
 # OpenAI-style tool schemas. Deliberately few parameters: the model picks
 # a symbol and a scale, we choose feeds/limits.
@@ -125,7 +126,7 @@ def _trim_bars(data):
         for sym, bars in data["bars"].items():
             rows = [{k: b.get(k) for k in ("t", "o", "h", "l", "c", "v")} for b in (bars or []) if isinstance(b, dict)]
             rows.sort(key=lambda r: str(r.get("t") or ""))  # oldest first for the model, whatever the fetch order
-            out[sym] = rows
+            out[sym] = rows[-MAX_BARS:]  # newest MAX_BARS, so the JSON fits the result cap intact
         return out
     return data
 
