@@ -13,7 +13,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import date, datetime
 
-from bot import greeks, journal, research
+from bot import greeks, journal, predictions, research
 from bot.featherless import FeatherlessClient
 from bot.models import Proposal
 from bot.occ import parse_occ_symbol
@@ -54,7 +54,7 @@ broken and decide from what is plausible. Keep your reasoning brief and answer d
 
 STRATEGY (from config.yaml - the thesis you are executing; the hard limits above still win):
 {strategy_notes}
-{tools_note}SNAPSHOT:
+{predictions}{tools_note}SNAPSHOT:
 {snapshot}
 
 Respond with ONLY a JSON array (no markdown fence, no prose) of zero or more actions:
@@ -156,6 +156,7 @@ def build_prompt(snapshot: dict, config: dict, today: date | None = None, tools:
     tools_note = TOOLS_NOTE.format(n=int(config.get("research_max_tool_calls", 6))) if tools else ""
     return PROMPT_TEMPLATE.format(
         tools_note=tools_note,
+        predictions=predictions.prompt_block(snapshot.get("predictions") or {}),
         max_position_usd=float(config["max_position_usd"]),
         max_positions=int(config["max_positions"]),
         max_contracts_per_order=int(config["max_contracts_per_order"]),

@@ -197,10 +197,18 @@ async def build_snapshot(client: AlpacaMCPClient, config: dict, now: datetime | 
     account = await build_account_state(client)
     options = await build_option_research(client, config, today=now.date())
 
+    predictions = {}
+    if config.get("predictions_enabled"):
+        # Kalshi prior (#44): read-only, cached, never fatal.
+        from bot.predictions import fetch_predictions
+
+        predictions = await fetch_predictions(config)
+
     return {
         "market_open": clock_data.get("is_open", False),
         "next_open": clock_data.get("next_open"),
         "next_close": clock_data.get("next_close"),
         "account": _serialize_account(account),
         "options": options,
+        "predictions": predictions,
     }
