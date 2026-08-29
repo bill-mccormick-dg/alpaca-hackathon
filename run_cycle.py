@@ -17,7 +17,7 @@ import asyncio
 import sys
 from datetime import datetime
 
-from bot import execute
+from bot import execute, journal
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import load_config
 from bot.credentials import load_credentials
@@ -91,17 +91,27 @@ async def run(args: argparse.Namespace) -> int:
                 return 0
 
         acct = account_from_snapshot(snap)
+        day_pnl = acct.equity - acct.start_of_day_equity
         print(
-            f"equity {acct.equity:.2f}  cash {acct.cash:.2f}  "
+            f"equity {acct.equity:.2f}  cash {acct.cash:.2f}  day P&L {day_pnl:+.2f}  "
             f"positions {acct.open_position_count}  account={args.account}"
+        )
+        journal.log(
+            "cycle_start",
+            account=args.account,
+            equity=acct.equity,
+            day_pnl=day_pnl,
+            positions=acct.open_position_count,
+            dry_run=args.dry_run,
         )
 
         if risk.daily_loss_breached(acct):
-            # Flatten-on-breach is a later step; for now just halt the
-            # rest of the day so no new risk goes on.
+            # Flatten-on-breach is issue #19; for now just halt the rest
+            # of the day so no new risk goes on.
             halt = risk.daily_halt_file(now.date())
             halt.parent.mkdir(exist_ok=True)
             halt.write_text("daily loss cutoff breached\n")
+            journal.log("daily_loss_halt", equity=acct.equity, start_of_day=acct.start_of_day_equity)
             print("DAILY LOSS CUTOFF BREACHED - halted for today")
             return 0
 
@@ -114,13 +124,16 @@ async def run(args: argparse.Namespace) -> int:
         try:
             proposals, raw = await decide(snap, config, featherless, today=now.date())
         except Exception as exc:  # noqa: BLE001 - one bad model call must not crash the cycle
+            journal.log("error", where="decide", detail=str(exc))
             print(f"decision step failed: {exc}", file=sys.stderr)
             return 1
+        journal.log("decision", raw=raw, count=len(proposals))
 
         if args.verbose:
             print(f"model output: {raw}")
         if not proposals:
             print("decision: hold (no actions)")
+            journal.log("cycle_end", actions=0)
             return 0
 
         for p in proposals:
@@ -129,16 +142,26 @@ async def run(args: argparse.Namespace) -> int:
                 client, risk, acct, price or 0.0, p, dry_run=args.dry_run, now=now
             )
             label = f"{p.side} {p.qty} {p.symbol}"
+            fields = {
+                "side": p.side, "qty": p.qty, "symbol": p.symbol, "instrument": p.instrument,
+                "price": price, "reason": p.reason,
+            }
             if r.status == execute.ZERO_QTY:
                 continue
             if r.status == execute.REJECTED:
+                journal.log("order_rejected", detail=r.detail, **fields)
                 print(f"REJECTED {label}: {r.detail}")
             elif r.status == execute.DRY_RUN:
+                journal.log("dry_run", **fields)
                 print(f"DRY-RUN would {label} @ ~{price or 0:.2f}: {p.reason}")
             elif r.status == execute.SUBMITTED:
+                journal.log("order_submitted", order_id=r.order_id, **fields)
                 print(f"SUBMITTED {label} (order {r.order_id}): {p.reason}")
             elif r.status == execute.ERROR:
+                journal.log("order_error", detail=r.detail, **fields)
                 print(f"submit failed for {label}: {r.detail}", file=sys.stderr)
+
+        journal.log("cycle_end", actions=len(proposals))
 
     return 0
 
