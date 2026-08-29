@@ -1,0 +1,68 @@
+# Farm variant "kimi26": the official strategy on Kimi-K2.6 (thinking off)
+# with research tools + learning loop, without the Kalshi prior. Run with:
+#   docker compose --profile farm up bot-kimi26
+# Keys: .env.kimi26 (its own TEST paper account). Journal: logs/journal-kimi26.jsonl
+#
+# Everything not listed here is identical to config.yaml (this file is a
+# full config, kept in sync by hand - diff against config.yaml when in doubt).
+
+underlyings: [SPY, QQQ, AAPL, MSFT, NVDA]
+max_position_usd: 5000
+max_positions: 4
+max_contracts_per_order: 10
+daily_loss_cutoff_pct: 2.0
+min_days_to_expiration: 1
+max_days_to_expiration: 45
+option_strike_band_pct: 0.08
+research_contracts_per_underlying: 12
+
+strategy_notes: |
+  THESIS: Buy defined-risk, short-dated options premium on the most liquid
+  names when there is a concrete reason; code sizes, stops, and closes every
+  trade before expiry.
+  Tactics:
+  - Prefer BUYING calls or puts with 2-14 days to expiration, at or slightly
+    out of the money (|delta| roughly 0.35-0.55). Long premium only - max loss
+    is the premium paid, which is the risk budget.
+  - Trade the underlying's direction on evidence you can name: the day's
+    price action versus the prior close, a clear intraday trend, unusually
+    cheap or expensive implied volatility relative to the contract's peers.
+    No reason, no trade - holding is the default.
+  - One idea per underlying at a time; do not stack several strikes or
+    expirations on the same name.
+  - Positions are managed by code after entry: a stop-loss and take-profit on
+    the premium, and a forced close on expiry day. You may still propose a
+    sell to exit early on a thesis change - say why.
+  - Stock is allowed only as a small directional complement, never the main
+    idea.
+
+model: moonshotai/Kimi-K2.6
+temperature: 0.2
+max_tokens: 800
+request_timeout_sec: 90
+model_params:
+  chat_template_kwargs:
+    enable_thinking: false
+
+research_tools_enabled: true
+research_max_tool_calls: 6
+learning_enabled: true
+learning_days: 2
+learning_trades: 15
+predictions_enabled: false
+prediction_series: {SPY: KXINX, QQQ: KXNASDAQ100}
+
+model_prices:
+  moonshotai/Kimi-K2-Instruct: {in: 0.6, out: 2.5}
+  moonshotai/Kimi-K2.6: {in: 0.77, out: 3.5}
+  Qwen/Qwen3.8-Flash-Next: {in: 0.15, out: 0.5}
+
+stop_loss_pct: 40
+take_profit_pct: 60
+expiry_close_dte: 0
+eod_close_dte: 1
+final_flatten_date: "2026-09-04"
+
+trade_start: "09:45"
+trade_end: "15:45"
+last_entry: "15:15"
