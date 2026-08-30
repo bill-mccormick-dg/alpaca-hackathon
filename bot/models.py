@@ -52,6 +52,9 @@ class AccountState:
     start_of_day_equity: float
     cash: float
     positions: dict = field(default_factory=dict)  # symbol -> Position
+    # What the broker says this account IS, as opposed to what --account called
+    # it. None when it could not be read - see bot/identity.py for the policy.
+    account_number: str | None = None
 
     @property
     def open_position_count(self) -> int:

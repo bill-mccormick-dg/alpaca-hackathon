@@ -187,6 +187,49 @@ class BuildAccountStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(account.cash, 50000.0)
         self.assertEqual(account.positions, {})
 
+    async def test_reads_the_brokers_account_number(self):
+        """bot/identity.py's guard is only as good as this field arriving."""
+        client = FakeMCPClient(
+            {
+                "get_account_info": {"data": {**ACCOUNT_RESPONSE["data"], "account_number": "PA3VS39Y5LE2"}},
+                "get_all_positions": EMPTY_POSITIONS_RESPONSE,
+            }
+        )
+        account = await snapshot.build_account_state(client)
+
+        self.assertEqual(account.account_number, "PA3VS39Y5LE2")
+
+    async def test_account_number_is_none_when_the_broker_omits_it(self):
+        client = FakeMCPClient(
+            {"get_account_info": ACCOUNT_RESPONSE, "get_all_positions": EMPTY_POSITIONS_RESPONSE}
+        )
+        account = await snapshot.build_account_state(client)
+
+        self.assertIsNone(account.account_number)
+
+    async def test_fetch_account_number_reads_it_without_a_snapshot(self):
+        client = FakeMCPClient(
+            {"get_account_info": {"data": {**ACCOUNT_RESPONSE["data"], "account_number": "PA9TEST00001"}}}
+        )
+
+        self.assertEqual(await snapshot.fetch_account_number(client), "PA9TEST00001")
+
+    async def test_account_number_survives_the_snapshot_round_trip(self):
+        """run_cycle rebuilds AccountState from the serialized snapshot; if the
+        number were dropped there, every challenger cycle would fail closed."""
+        import run_cycle
+
+        client = FakeMCPClient(
+            {
+                "get_account_info": {"data": {**ACCOUNT_RESPONSE["data"], "account_number": "PA9TEST00001"}},
+                "get_all_positions": EMPTY_POSITIONS_RESPONSE,
+            }
+        )
+        account = await snapshot.build_account_state(client)
+        rebuilt = run_cycle.account_from_snapshot({"account": snapshot._serialize_account(account)})
+
+        self.assertEqual(rebuilt.account_number, "PA9TEST00001")
+
     async def test_includes_positions_from_build_positions(self):
         client = FakeMCPClient(
             {"get_account_info": ACCOUNT_RESPONSE, "get_all_positions": STOCK_POSITION_RESPONSE}

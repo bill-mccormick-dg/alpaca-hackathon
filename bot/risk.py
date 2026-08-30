@@ -9,6 +9,7 @@ from datetime import date, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+from bot.identity import identity_mismatch
 from bot.models import VALID_INSTRUMENTS, VALID_SIDES, AccountState, Proposal
 from bot.occ import parse_occ_symbol
 
@@ -39,6 +40,10 @@ class RiskManager:
         # is still deliberately global is logs/HALT (global_halt_file), which
         # only the CLI can write (flatten.py --halt --all-accounts).
         self.account = account if account and account != "official" else None
+        # The raw name, kept separately: self.account above is deliberately
+        # None for the official account so its halt files stay unsuffixed,
+        # but the identity check needs to know which account was ASKED for.
+        self.account_name = account or "test"
         self.underlyings = set(config["underlyings"])
         self.max_position_usd = config["max_position_usd"]
         self.max_positions = config["max_positions"]
@@ -117,6 +122,14 @@ class RiskManager:
         self, p: Proposal, account: AccountState, price: float, now: datetime | None = None
     ) -> tuple[bool, str]:
         now = now or datetime.now(EASTERN)
+
+        # Before anything about the order itself: are we even pointed at the
+        # account we think we are? Last line of defence - the entrypoints check
+        # this too, and fail closed on an unverifiable number, which this cannot
+        # (an AccountState built without one must stay usable in unit tests).
+        mismatch = identity_mismatch(self.account_name, account.account_number)
+        if mismatch:
+            return False, mismatch
 
         if p.instrument not in VALID_INSTRUMENTS:
             return False, f"invalid instrument: {p.instrument!r}"

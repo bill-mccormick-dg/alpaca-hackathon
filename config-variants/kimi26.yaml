@@ -1,7 +1,7 @@
 # Farm variant "kimi26": the official strategy on Kimi-K2.6 (thinking off)
 # with research tools + learning loop, without the Kalshi prior. Run with:
 #   docker compose --profile farm up bot-kimi26
-# Keys: .env.kimi26 (its own TEST paper account). Journal: logs/journal-kimi26.jsonl
+# Keys: the `kimi26` block in secrets.yaml (its own TEST paper account). Journal: logs/journal-kimi26.jsonl
 #
 # Everything not listed here is identical to config.yaml (this file is a
 # full config, kept in sync by hand - diff against config.yaml when in doubt).

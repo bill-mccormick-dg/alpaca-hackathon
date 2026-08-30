@@ -28,8 +28,10 @@ from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import load_config
 from bot.credentials import load_credentials, validate_account
 from bot.flatten import flatten_all, flatten_expiring
+from bot.identity import check_account_identity
 from bot.orders import INCOMPLETE
 from bot.risk import EASTERN, RiskManager
+from bot.snapshot import fetch_account_number
 from run_cycle import OFFICIAL_TRADING_STARTS, official_account_may_trade
 
 
@@ -56,20 +58,38 @@ async def run(args: argparse.Namespace) -> int:
 
     creds = load_credentials(args.account)
     async with AlpacaMCPClient(creds["ALPACA_API_KEY"], creds["ALPACA_SECRET_KEY"]) as client:
-        if expiring_only:
-            outcome = await flatten_expiring(
-                client, today, int(config.get("eod_close_dte", 1)), verify_timeout_sec=args.verify_timeout
-            )
+        allowed, identity_message = check_account_identity(args.account, await fetch_account_number(client))
+        if identity_message:
+            print(identity_message, file=sys.stderr)
+        if allowed:
+            if expiring_only:
+                outcome = await flatten_expiring(
+                    client, today, int(config.get("eod_close_dte", 1)), verify_timeout_sec=args.verify_timeout
+                )
+            else:
+                outcome = await flatten_all(client, verify_timeout_sec=args.verify_timeout)
         else:
-            outcome = await flatten_all(client, verify_timeout_sec=args.verify_timeout)
+            # Closing someone else's positions is precisely what this guard
+            # exists to prevent. --halt is deliberately still honoured below:
+            # the break-glass kill switch writes a local file and must keep
+            # working even when the credentials point somewhere unexpected.
+            journal.log(
+                "identity_refused",
+                account=args.account,
+                halt=args.halt,
+                all_accounts=args.all_accounts,
+                reason=identity_message,
+            )
+            outcome = None
 
-    journal.log(
-        "flatten",
-        account=args.account,
-        halt=args.halt,
-        expiring_only=expiring_only,
-        **{k: v for k, v in vars(outcome).items() if k != "extra"},
-    )
+    if outcome is not None:
+        journal.log(
+            "flatten",
+            account=args.account,
+            halt=args.halt,
+            expiring_only=expiring_only,
+            **{k: v for k, v in vars(outcome).items() if k != "extra"},
+        )
 
     if args.halt:
         halt = risk.global_halt_file() if args.all_accounts else risk.manual_halt_file()
@@ -78,6 +98,9 @@ async def run(args: argparse.Namespace) -> int:
         halt.write_text(f"manual kill switch ({scope})\n")
         journal.log("manual_halt", account=args.account, all_accounts=args.all_accounts)
         print(f"HALT file created: {halt} - halts {scope}; delete it to resume trading")
+
+    if outcome is None:
+        return 2
 
     if not outcome.cancels_settled:
         print("WARNING: order cancellations did not settle before closing", file=sys.stderr)

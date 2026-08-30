@@ -5,9 +5,9 @@ __pycache__
 *.pyc
 .ruff_cache
 logs
+secrets.yaml
 .env
 .env.*
-!.env.example
 .github
 docs
 *.md
