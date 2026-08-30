@@ -1,10 +1,13 @@
 # {{ ansible_managed }}
-# Home Assistant YAML-mode dashboard for the alpaca-hackathon bot(s). One
-# entities+history card per account (from bot/mqtt.py's MQTT discovery:
-# sensor.alpaca_<account>_{equity,day_pnl,positions,halt,last_decision}),
-# plus a combined equity comparison chart across every account listed in
-# ha_accounts - the A/B story: same live market, different model/thesis/
-# params, one chart.
+# Home Assistant YAML-mode dashboard for the alpaca-hackathon bot(s).
+# Entities come from two publishers: bot/mqtt.py (the read-only state
+# sensors, published by run_cycle.py each cycle) and mqtt_bridge.py (the
+# kill-switch button + tunable-knob controls, published once at bridge
+# startup - see mqtt_bridge.py's discovery_payloads()). Row 1 is the
+# intro (full width), row 2 each account's State side by side, row 3
+# each account's Day P&L history side by side, row 4 each account's
+# controls (kill switch + knobs) side by side. The cross-account equity
+# comparison chart is deliberately left off for now.
 title: {{ ha_dashboard_title }}
 views:
   - title: Trading
@@ -41,18 +44,56 @@ views:
                         name: Halt state
                       - entity: sensor.alpaca_{{ acct.id }}_last_decision
                         name: Last decision
-                  - type: history-graph
-                    title: Day P&L
-                    hours_to_show: 24
-                    entities:
-                      - entity: sensor.alpaca_{{ acct.id }}_day_pnl
 {% endfor %}
 
-          - type: history-graph
-            title: Equity — all accounts (the A/B comparison)
-            hours_to_show: 96
-            entities:
+          - type: horizontal-stack
+            cards:
 {% for acct in ha_accounts %}
-              - entity: sensor.alpaca_{{ acct.id }}_equity
-                name: {{ acct.label }}
+              - type: history-graph
+                title: {{ acct.label }} — Day P&L
+                hours_to_show: 24
+                entities:
+                  - entity: sensor.alpaca_{{ acct.id }}_day_pnl
+{% endfor %}
+
+          - type: horizontal-stack
+            cards:
+{% for acct in ha_accounts %}
+              - type: vertical-stack
+                cards:
+                  - type: button
+                    name: "{{ acct.label }} — kill switch"
+                    icon: mdi:stop-octagon
+                    entity: button.alpaca_{{ acct.id }}_kill_switch
+                    show_state: false
+                    tap_action:
+                      action: call-service
+                      service: button.press
+                      service_data:
+                        entity_id: button.alpaca_{{ acct.id }}_kill_switch
+                      confirmation:
+                        text: >-
+                          Flatten {{ acct.label }}'s positions and halt trading?
+                          The HALT file this creates stops EVERY account, not
+                          just this one - a human has to delete logs/HALT to
+                          resume.
+                  - type: entities
+                    title: Controls
+                    entities:
+                      - entity: text.alpaca_{{ acct.id }}_model
+                        name: Model
+                      - entity: number.alpaca_{{ acct.id }}_temperature
+                        name: Temperature
+                      - entity: number.alpaca_{{ acct.id }}_max_tokens
+                        name: Max tokens
+                      - entity: number.alpaca_{{ acct.id }}_research_contracts_per_underlying
+                        name: Research contracts/underlying
+                      - entity: number.alpaca_{{ acct.id }}_option_strike_band_pct
+                        name: Strike band %
+                      - entity: number.alpaca_{{ acct.id }}_stop_loss_pct
+                        name: Stop loss %
+                      - entity: number.alpaca_{{ acct.id }}_take_profit_pct
+                        name: Take profit %
+                      - entity: number.alpaca_{{ acct.id }}_eod_close_dte
+                        name: EOD close DTE
 {% endfor %}
