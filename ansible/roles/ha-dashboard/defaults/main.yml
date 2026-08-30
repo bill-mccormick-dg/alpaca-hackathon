@@ -17,6 +17,8 @@ ha_accounts:
     label: "Official"
   - id: test
     label: "Test / challenger"
+  - id: mixed
+    label: "Mixed instruments"
 
 # Must match config.yaml's mqtt.topic_prefix (bot/mqtt.py). HA's MQTT
 # integration default discovery prefix is "homeassistant" - only change
