@@ -29,6 +29,25 @@ class MqttTest(unittest.TestCase):
         mqtt._discovered.clear()
         self.addCleanup(lambda: mqtt.configure({}, "test"))
 
+        # Point every credential source at an empty temp dir. mqtt.configure()
+        # resolves broker settings through the same file chain the bot uses
+        # (#76), so on CT 108 - running as root, where
+        # /root/.config/alpaca-hackathon/credentials-test.env really exists and
+        # really carries MQTT_HOST - "disabled without a host" was true only on
+        # a dev laptop. The ansible role's smoke test runs this suite ON the
+        # host, which is where it surfaced.
+        tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(tmpdir.cleanup)
+        tmp = Path(tmpdir.name)
+        for attr, value in (
+            ("PRODUCTION_CREDENTIALS_DIR", tmp),
+            ("SECRETS_FILE", tmp / "secrets.yaml"),
+            ("DOTENV_FILE", tmp / ".env"),
+        ):
+            p = mock.patch.object(credentials, attr, value)
+            p.start()
+            self.addCleanup(p.stop)
+
     def test_disabled_without_host_or_flag(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             mqtt.configure({"mqtt": {"enabled": True}}, "test")
