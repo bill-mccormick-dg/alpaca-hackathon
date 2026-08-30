@@ -30,6 +30,7 @@ from bot import journal, mqtt, overrides, review
 from bot.config import load_config
 from bot.credentials import load_credentials, validate_account
 from bot.featherless import DEFAULT_MODEL, FeatherlessClient
+from bot.report import eod_payload
 from bot.risk import EASTERN, LOGS_DIR
 from bot.trades import pair_round_trips, summarize
 from trade_report import fetch_orders, fills_from_orders, journaled_sells
@@ -148,6 +149,11 @@ async def run(args: argparse.Namespace) -> int:
     out_dir.mkdir(exist_ok=True)
     out = out_dir / f"{day}-{args.account}.md"
     out.write_text(md)
+    try:
+        mqtt.configure(config, args.account)
+        mqtt.publish_report("eod_summary", eod_payload(md, day=day, account=args.account))
+    except Exception as exc:  # noqa: BLE001 - the digest is already written; publishing is a bonus
+        print(f"eod publish skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
     print(md)
     print(f"(written to {out})")
     journal.log("eod_review", day=day, equity=digest["equity"], trades=trade_summary.get("trades") if trade_summary else None)

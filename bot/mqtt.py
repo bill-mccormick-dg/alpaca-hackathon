@@ -55,6 +55,16 @@ STATE_SENSORS = {  # state topic suffix -> HA discovery attributes
     "last_decision": {"name": "Last decision", "icon": "mdi:robot"},
 }
 
+# Sensors whose useful content is far longer than HA's 255-character state
+# limit, so the text rides in JSON attributes and the state is a short
+# summary. Published from the journal (bot/report.py) rather than from a
+# single event, so a teammate sees the day so far and not just the last thing
+# that happened - issue #87.
+ATTRIBUTE_SENSORS = {
+    "recent_trades": {"name": "Recent trades", "icon": "mdi:format-list-bulleted"},
+    "eod_summary": {"name": "Eod summary", "icon": "mdi:calendar-check"},
+}
+
 
 def entity_object_id(account: str, key: str) -> str:
     """The entity_id (minus domain) for one account's `key` entity."""
@@ -153,6 +163,32 @@ def _discovery_once() -> None:
             "state_topic": topic("state", suffix), "device": device, **attrs,
         }
         publish(f"homeassistant/sensor/{payload['unique_id']}/config", payload, retain=True)
+    for suffix, attrs in ATTRIBUTE_SENSORS.items():
+        # json_attributes_topic is the same topic: the payload is one JSON
+        # object, HA takes `state` for the state and the rest as attributes.
+        payload = {
+            "unique_id": f"alpaca_{acct}_{suffix}",
+            "object_id": entity_object_id(acct, suffix),
+            "state_topic": topic("state", suffix),
+            "value_template": "{{ value_json.state }}",
+            "json_attributes_topic": topic("state", suffix),
+            "json_attributes_template": "{{ value_json.attributes | tojson }}",
+            "device": device, **attrs,
+        }
+        publish(f"homeassistant/sensor/{payload['unique_id']}/config", payload, retain=True)
+
+
+def publish_report(suffix: str, payload: dict) -> bool:
+    """Publish one attribute-carrying sensor (recent_trades, eod_summary).
+
+    Retained, because a teammate opening the dashboard hours later must see
+    the day so far rather than an empty card waiting for the next event."""
+    if suffix not in ATTRIBUTE_SENSORS:
+        return False
+    if not enabled():
+        return False
+    _discovery_once()
+    return publish(topic("state", suffix), payload, retain=True)
 
 
 def on_event(record: dict) -> None:

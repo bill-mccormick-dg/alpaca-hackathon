@@ -58,7 +58,9 @@ class MqttTest(unittest.TestCase):
             mqtt.on_event({"event": "decision", "count": 0})
             mqtt.on_event({"event": "decision", "count": 2})
         disc = [(t, json.loads(p)) for t, p, r in self.cap.calls if t.startswith("homeassistant/")]
-        self.assertEqual(len(disc), len(mqtt.STATE_SENSORS))  # once, not twice
+        # Every sensor announced once, not twice - both the plain state
+        # sensors and the attribute-carrying report ones (#87).
+        self.assertEqual(len(disc), len(mqtt.STATE_SENSORS) + len(mqtt.ATTRIBUTE_SENSORS))
         _, payload = disc[0]
         self.assertEqual(payload["device"]["identifiers"], ["alpaca_hackathon_official"])
         self.assertIn("state_topic", payload)
@@ -113,7 +115,7 @@ class EntityIdDerivationTest(unittest.TestCase):
     def test_state_sensor_names_derive_the_expected_entity_ids(self):
         for account in ("official", "test"):
             device_name = mqtt.device_block(account)["name"]
-            for key, attrs in mqtt.STATE_SENSORS.items():
+            for key, attrs in {**mqtt.STATE_SENSORS, **mqtt.ATTRIBUTE_SENSORS}.items():
                 want = mqtt.entity_object_id(account, key)
                 self.assertEqual(self.derived(device_name, attrs["name"]), want, key)
 

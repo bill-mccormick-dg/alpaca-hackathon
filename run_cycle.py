@@ -28,6 +28,7 @@ from bot.flatten import flatten_all
 from bot.identity import check_account_identity
 from bot.models import AccountState, Position
 from bot.orders import INCOMPLETE
+from bot.report import trades_payload
 from bot.retry import RetryBudget, call_with_retry, summarize
 from bot.risk import EASTERN, RiskManager
 from bot.snapshot import _data, build_snapshot, price_for_proposal
@@ -213,6 +214,13 @@ async def run(args: argparse.Namespace) -> int:
                             exit=True, detail=r.detail, **fields)
                 print(f"EXIT FAILED {p.symbol}: {r.detail}", file=sys.stderr)
         if exit_proposals:
+            # Republish the day's trades for the read-only Home Assistant view
+            # teammates reach over Tailscale (#87). Read back from the journal
+            # rather than accumulated in memory: each cycle is its own process.
+            try:
+                mqtt.publish_report("recent_trades", trades_payload(journal.read_events(), args.account))
+            except Exception as exc:  # noqa: BLE001 - a reporting side channel must never fail a cycle
+                print(f"trade report skipped: {describe_error(exc)}", file=sys.stderr)
             journal.log("cycle_end", actions=len(exit_proposals), exits_only=True)
             return 0
 

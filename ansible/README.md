@@ -58,3 +58,115 @@ clearly marked, unlike `configuration.yaml`'s nested keys.
   work for any account without per-account duplication.
 
 Uses only `ansible.builtin` modules - no collections to install.
+
+## Remote team access (issue #87)
+
+Teammates who are not on the LAN reach the dashboard over **Tailscale**. The
+network layer may already exist — a firewall acting as a Tailscale subnet
+router advertising the whole LAN — but do **not** simply add a teammate to the
+tailnet and rely on that: accepting that route hands them the entire private
+network, and a subnet router often offers an exit node too.
+
+Two things have to be true before a teammate gets a login.
+
+### 1. Reachability without the LAN
+
+Make Home Assistant its own tailnet node and share *that node*, rather than
+routing the teammate onto the subnet. Shared nodes do not carry subnet
+routes, so the blast radius is one host and one port.
+
+1. Apply homenetwork's `tailscale-client` role to the `homeassistant` host
+   with its own tag (the role never advertises routes or an exit node, so a
+   host running it can only ever be reached as itself).
+2. In the tailnet admin console, **share** that node with each teammate's
+   Tailscale account (Machines → the HA node → Share).
+3. Optionally restrict to the dashboard port with an ACL grant:
+   ```json
+   { "src": ["autogroup:shared"], "dst": ["tag:ha-dashboard"], "ip": ["tcp:8123"] }
+   ```
+
+Teammates then browse to `http://<ha-tailnet-ip>:8123`. Nothing is published
+to the internet and no port is forwarded.
+
+### 2. Read-only once they are in
+
+**Home Assistant has no per-entity permissions.** A non-admin user can operate
+any entity rendered on a dashboard they can open — including the kill
+switches. So the separation is done with two dashboards:
+
+| Dashboard | Contents | Who |
+|---|---|---|
+| `alpaca-hackathon` (`dashboard.yaml.j2`) | state **plus kill switches and tunable knobs** | admins only — set `require_admin: true` |
+| `alpaca-hackathon-team` (`dashboard_team.yaml.j2`) | state, intra-day trade log, EOD digest — **no controls** | teammates |
+
+- Create a **non-admin** Home Assistant user per teammate (Settings → People →
+  add person → uncheck "Administrator"). Non-admin users get no Settings and no
+  Developer Tools, so a dashboard with no control entities is genuinely
+  read-only for them.
+- Mark the operational dashboard `require_admin: true` — the role prints the
+  exact `lovelace:` snippet when it runs.
+- `tests/test_dashboard.py` fails the build if a control entity ever appears in
+  the team template. That test is the guard; keep it passing rather than
+  reasoning about the YAML by eye.
+
+### Protecting the kill switch
+
+The team dashboard has no controls, but **that alone is not the boundary**.
+Home Assistant has no per-user entity permissions, so a non-admin user can
+still reach an entity that appears anywhere else — most easily on the
+auto-generated **Overview** dashboard, which lists everything. `require_admin`
+hides a dashboard; it does not hide an entity.
+
+Three layers, in order of how much they actually buy you:
+
+1. **Non-admin users** (Settings → People → uncheck Administrator). Removes
+   Settings and Developer Tools, so they cannot call services directly.
+2. **`require_admin: true` on the operational dashboard.** Keeps the kill
+   switches and knobs off the dashboard they browse to.
+3. **Hide the control entities from auto-generated views.** In Settings →
+   Devices & Services → Entities, open each
+   `switch.<prefix>_<account>_kill_switch` (and the knob entities) and turn
+   **Visible** off. Hidden entities are excluded from auto-generated
+   dashboards but keep working on explicit ones — so your own operational
+   dashboard and phone tap are unaffected. This is the step that closes the
+   Overview gap, and it is easy to forget because everything looks fine
+   without it.
+
+**Then verify it, rather than assuming.** The only real proof is to try:
+
+```
+1. Create a throwaway non-admin HA user.
+2. Log in as them (private browser window).
+3. Confirm: the operational dashboard is not in the sidebar.
+4. Confirm: the auto-generated Overview does not show a kill switch.
+5. Press "e" (entity quick-bar) and search "kill" — confirm nothing
+   operable comes back.
+6. Delete the throwaway user.
+```
+
+If step 4 or 5 turns something up, layer 3 was missed or did not take.
+
+Consider also that halting the **judged** account from a dashboard is a
+convenience, not a requirement: `flatten.py --halt --account official` over
+SSH is unreachable from Home Assistant entirely. If the verification above
+ever looks uncertain during the scoring window, dropping the official
+account's switch from `mqtt_bridge.py`'s `discovery_payloads()` is a
+one-line change that makes the question moot.
+
+### What the team view shows
+
+Published by `bot/report.py` via `bot/mqtt.py` as two attribute-carrying
+sensors (HA caps a sensor's *state* at 255 characters, so the readable content
+travels as a JSON attribute):
+
+- `sensor.ai_day_trader_<account>_recent_trades` — the day's fills, rejections
+  and dry-runs with the reason the model gave, republished every cycle from the
+  journal. Retained, so opening the dashboard mid-afternoon shows the day so
+  far rather than an empty card.
+- `sensor.ai_day_trader_<account>_eod_summary` — the end-of-day digest
+  `eod_review.py` already writes to `logs/eod/<date>-<account>.md`, reused
+  verbatim rather than rendered twice.
+
+Both are strictly one-way. Neither publisher can be commanded, and the inbound
+MQTT bridge remains the only control path — see the repo README's
+"Official-account safety".
