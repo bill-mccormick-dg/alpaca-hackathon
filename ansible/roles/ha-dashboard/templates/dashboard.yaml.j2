@@ -61,22 +61,34 @@ views:
 {% for acct in ha_accounts %}
               - type: vertical-stack
                 cards:
-                  - type: button
-                    name: "{{ acct.label }} — kill switch"
-                    icon: mdi:stop-octagon
+                  # A kill switch should be hard to fire by accident and easy
+                  # to fire on purpose. tile (one compact row) instead of a
+                  # big button card, and HOLD-to-fire rather than tap: a
+                  # stray tap does nothing at all, a deliberate press-and-hold
+                  # raises the confirm dialog. Two deliberate steps.
+                  # It halts ONLY this account - the global "halt everything"
+                  # is CLI-only by design (flatten.py --halt --all-accounts),
+                  # so nothing on this dashboard can stop the judged account.
+                  - type: tile
                     entity: button.alpaca_{{ acct.id }}_kill_switch
-                    show_state: false
+                    name: Kill switch — hold to fire
+                    icon: mdi:stop-octagon
+                    color: red
+                    hide_state: true
                     tap_action:
-                      action: call-service
-                      service: button.press
-                      service_data:
+                      action: none
+                    hold_action:
+                      action: perform-action
+                      perform_action: button.press
+                      target:
                         entity_id: button.alpaca_{{ acct.id }}_kill_switch
                       confirmation:
                         text: >-
-                          Flatten {{ acct.label }}'s positions and halt trading?
-                          The HALT file this creates stops EVERY account, not
-                          just this one - a human has to delete logs/HALT to
-                          resume.
+                          Flatten {{ acct.label }}'s positions and halt
+                          {{ acct.label }}? Other accounts keep trading. A
+                          human has to delete
+                          logs/HALT_manual{{ '_' ~ acct.id if acct.id != 'official' else '' }}
+                          on the trading host to resume.
                   - type: entities
                     title: Controls
                     entities:

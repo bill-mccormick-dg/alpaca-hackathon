@@ -47,8 +47,9 @@ everything.
 
 ## Emergency controls
 
-- `flatten.py --account official --halt` - close everything, verified, and
-  stop all trading until `logs/HALT` is deleted.
+- `flatten.py --account official --halt` - close everything, verified, and stop
+  the official account until `logs/HALT_manual` is deleted. Add `--all-accounts`
+  (writes `logs/HALT`) to stop every account instead.
 - `status.py --account official` - what is held, what is halted, what today
   looked like.
 - `override.py --account official clear --all` - back to git config.

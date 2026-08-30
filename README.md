@@ -152,16 +152,17 @@ Every entrypoint takes `--account <name>` (default **test**) and `--config <file
 and *only* there; any other name reads `credentials-<name>.env` on CT 108, else
 a local `.env.<name>`, else `.env`. Each account gets its own journal
 (`logs/journal-<name>.jsonl`; the official account keeps `logs/journal.jsonl`),
-its own overrides file, and its own daily-loss halt file — a challenger
-breaching its cutoff never halts the official account. The manual `logs/HALT`
-kill switch is global on purpose. `config-test.yaml` is the current challenger
+its own overrides file, and its own halt files — a challenger can never stop
+the official account, whether by breaching its daily-loss cutoff or by having
+its kill switch pressed. Only the CLI-only break-glass `flatten.py --halt
+--all-accounts` halts everything. `config-test.yaml` is the current challenger
 config (Qwen3.8-Flash-Next); run it with
 `run_cycle.py --account test --config config-test.yaml`.
 
 | Command | What it does |
 |---|---|
 | `run_cycle.py [--dry-run] [--force] [--verbose]` | One cycle: gates → snapshot → decide → risk-check → execute. `--dry-run` prints orders instead of sending; `--force` skips the market-open / trading-window / entry-cutoff gates (rehearsal); `--verbose` prints the raw model output |
-| `flatten.py [--halt]` | Cancel all orders, wait for the cancels to settle, close all positions, then poll until actually flat and report what is *really* still held. `--halt` also trips the kill switch |
+| `flatten.py [--halt] [--all-accounts]` | Cancel all orders, wait for the cancels to settle, close all positions, then poll until actually flat and report what is *really* still held. `--halt` also trips this account's kill switch; add `--all-accounts` for the break-glass halt that stops every account |
 | `status.py [--json]` | Halt state, runtime overrides, account, positions, today's journal summary. Read-only — safe on the official account any time |
 | `override.py show \| set <key> <value> [--until] \| clear <key>\|--all` | Intraday config tweaks without a deploy — see **Runtime overrides** below |
 | `python -m unittest discover -s tests` | Credential-free guardrail tests |
@@ -169,8 +170,13 @@ config (Qwen3.8-Flash-Next); run it with
 
 **Halt files** (under `logs/`, checked at the top of every cycle):
 
-- `logs/HALT` — manual kill switch, created by `flatten.py --halt`. Nothing trades
+- `logs/HALT` — **global** break-glass halt: stops *every* account. Written only by
+  `flatten.py --halt --all-accounts`; deliberately unreachable from MQTT/Home
+  Assistant, so no dashboard tap can stop the judging account. Nothing trades
   until you **delete the file**.
+- `logs/HALT_manual` (official) / `logs/HALT_manual_<name>` (others) — that one
+  account's kill switch, created by `flatten.py --halt` or the Home Assistant
+  button. Only that account stops; the others keep trading.
 - `logs/HALT_<YYYY-MM-DD>` — daily-loss halt, written by `run_cycle.py` after it
   breaches `daily_loss_cutoff_pct` and flattens. Expires on its own at the next
   trading day; delete it to resume early.

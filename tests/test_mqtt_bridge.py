@@ -94,6 +94,20 @@ class RunHaltTest(unittest.TestCase):
         self.assertEqual(ns.account, "test")
         self.assertTrue(ns.config.endswith("config-test.yaml"))
 
+    def test_mqtt_kill_switch_never_fires_the_global_halt(self):
+        """An HA button may only ever halt its own account - the global
+        'halt everything' stays CLI-only, so no dashboard tap can stop the
+        judged account during the scoring window."""
+        captured = {}
+
+        async def fake_run(ns):
+            captured["ns"] = ns
+
+        for account in ("test", "official"):
+            with mock.patch.object(flatten, "run", fake_run):
+                asyncio.run(mqtt_bridge.run_halt(account, None))
+            self.assertFalse(captured["ns"].all_accounts, account)
+
     def test_explicit_config_override_is_respected(self):
         captured = {}
 

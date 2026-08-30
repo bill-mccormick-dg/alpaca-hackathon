@@ -15,14 +15,19 @@ def _config():
 
 
 class HaltStateTest(unittest.TestCase):
-    def test_reports_manual_and_daily_halt_files(self):
+    def test_reports_global_manual_and_daily_halt_files(self):
         with tempfile.TemporaryDirectory() as d:
             risk = RiskManager(_config(), logs_dir=Path(d))
-            self.assertEqual(status.halt_state(risk), {"manual_halt": False, "daily_halt": False})
+            self.assertEqual(
+                status.halt_state(risk),
+                {"global_halt": False, "manual_halt": False, "daily_halt": False},
+            )
             risk.manual_halt_file().write_text("x")
             self.assertTrue(status.halt_state(risk)["manual_halt"])
             risk.daily_halt_file().write_text("x")
             self.assertTrue(status.halt_state(risk)["daily_halt"])
+            risk.global_halt_file().write_text("x")
+            self.assertTrue(status.halt_state(risk)["global_halt"])
 
 
 class FormatPositionsTest(unittest.TestCase):
