@@ -17,7 +17,7 @@ import asyncio
 import sys
 from datetime import date, datetime, timedelta, timezone
 
-from bot import execute, journal, learning, mqtt, overrides
+from bot import execute, journal, learning, mqtt, overrides, predictions
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import config_provenance, load_config
 from bot.credentials import load_credentials, validate_account
@@ -156,6 +156,15 @@ async def run(args: argparse.Namespace) -> int:
             if not risk.in_trading_window(now):
                 print("outside trading window")
                 return 0
+
+        # What second opinion the model was handed this cycle. Logged from the
+        # snapshot rather than the prompt because the prompt carries the whole
+        # option chain; no record at all means no prior was available (the
+        # feed failed, or predictions_enabled is off), which is itself the
+        # answer.
+        prior = predictions.journal_fields(snap.get("predictions") or {})
+        if prior:
+            journal.log("predictions", account=args.account, **prior)
 
         acct = account_from_snapshot(snap)
 

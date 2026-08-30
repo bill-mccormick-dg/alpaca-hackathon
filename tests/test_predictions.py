@@ -1,3 +1,4 @@
+import pathlib
 import unittest
 from datetime import datetime, timezone
 
@@ -75,6 +76,94 @@ class PromptBlockTest(unittest.TestCase):
         self.assertIn("prior close 7,440", block)
         self.assertIn("P(above prior close)", block)
         self.assertIn("a PRIOR to weigh, not a signal to copy", block)
+
+
+class UsabilityGateTest(unittest.TestCase):
+    """A barely-traded range market still quotes every bucket. Normalising
+    those midpoints yields a flat distribution that looks authoritative and
+    says nothing - measured live on 2026-08-30, SPY implied a 64% chance of a
+    >1% move in one session on 70 contracts of volume."""
+
+    def summary(self, markets=TODAY, reference=7440.0):
+        s = predictions.summarize_range_event(markets, reference=reference)
+        s["series"] = "KXINX"
+        return s
+
+    def test_a_real_distribution_passes(self):
+        s = self.summary()
+
+        self.assertLessEqual(s["flatness"], predictions.MAX_FLATNESS)
+        self.assertIsNone(predictions.unusable_reason(s))
+
+    def test_thin_volume_is_suppressed(self):
+        s = self.summary()
+        s["volume"] = 70.0
+
+        self.assertIn("thin", predictions.unusable_reason(s))
+
+    def test_flat_distribution_is_suppressed_however_much_volume(self):
+        flat = [market("E-FLAT", lo, lo + 24.99, 0.19, 0.21, volume=100_000)
+                for lo in range(7300, 7600, 25)]
+        s = predictions.summarize_range_event(flat, reference=7440.0)
+
+        # Every bucket priced the same: normalising cannot rescue it.
+        self.assertGreater(s["flatness"], predictions.MAX_FLATNESS)
+        self.assertIn("flat", predictions.unusable_reason(s))
+
+    def test_thresholds_come_from_config(self):
+        s = self.summary()
+        s["volume"] = 70.0
+
+        self.assertIsNone(predictions.unusable_reason(s, {"predictions_min_volume": 10}))
+
+    def test_a_suppressed_prior_never_reaches_the_model(self):
+        s = self.summary()
+        s["suppressed"] = "thin: volume 70.0 < 250.0"
+
+        self.assertEqual(predictions.prompt_block({"SPY": s}), "")
+
+    def test_one_usable_underlying_still_renders(self):
+        good, bad = self.summary(), self.summary()
+        bad["suppressed"] = "thin: volume 1 < 250.0"
+        block = predictions.prompt_block({"SPY": good, "QQQ": bad})
+
+        self.assertIn("SPY via", block)
+        self.assertNotIn("QQQ via", block)
+
+
+class JournalFieldsTest(unittest.TestCase):
+    """The prompt is not journaled - it carries the whole option chain - so
+    without this there is no way to ask what second opinion the model had."""
+
+    def test_empty_when_nothing(self):
+        self.assertEqual(predictions.journal_fields({}), {})
+
+    def test_records_the_numbers_and_the_verdict(self):
+        s = predictions.summarize_range_event(TODAY, reference=7440.0)
+        s["series"] = "KXINX"
+        s["suppressed"] = "thin: volume 70.0 < 250.0"
+        fields = predictions.journal_fields({"SPY": s})["SPY"]
+
+        self.assertEqual(fields["series"], "KXINX")
+        self.assertEqual(fields["p_above_reference"], s["p_above_reference"])
+        self.assertEqual(fields["flatness"], s["flatness"])
+        # A withheld prior is recorded WITH its reason, so "no second opinion
+        # today" is answerable rather than an absence.
+        self.assertEqual(fields["suppressed"], "thin: volume 70.0 < 250.0")
+
+    def test_shown_prior_records_no_suppression(self):
+        s = predictions.summarize_range_event(TODAY, reference=7440.0)
+        s["series"] = "KXINX"
+
+        self.assertIsNone(predictions.journal_fields({"SPY": s})["SPY"]["suppressed"])
+
+
+class CycleJournalsThePriorTest(unittest.TestCase):
+    def test_run_cycle_logs_the_predictions_event(self):
+        source = (pathlib.Path(__file__).resolve().parent.parent / "run_cycle.py").read_text()
+
+        self.assertIn('journal.log("predictions"', source)
+        self.assertIn("predictions.journal_fields", source)
 
 
 if __name__ == "__main__":
