@@ -56,3 +56,10 @@ ha_restart_method: none
 ha_docker_container_name: homeassistant
 ha_systemd_service: home-assistant
 ha_restart_command: ""
+
+# Prefix of the entity_ids Home Assistant creates for this project. HA's
+# MQTT discovery derives entity_id from slugify(device name) + entity name
+# and IGNORES object_id (verified live), so this must match what
+# bot/mqtt.py's DEVICE_NAME_FMT slugifies to - "AI Day Trader (<account>)"
+# -> "ai_day_trader_<account>". Change it only if you changed that.
+ha_entity_prefix: ai_day_trader
