@@ -3,11 +3,11 @@
 # Entities come from two publishers: bot/mqtt.py (the read-only state
 # sensors, published by run_cycle.py each cycle) and mqtt_bridge.py (the
 # kill-switch button + tunable-knob controls, published once at bridge
-# startup - see mqtt_bridge.py's discovery_payloads()). Row 1 is the
-# intro (full width), row 2 each account's State side by side, row 3
-# each account's Day P&L history side by side, row 4 each account's
-# controls (kill switch + knobs) side by side. The cross-account equity
-# comparison chart is deliberately left off for now.
+# startup - see mqtt_bridge.py's discovery_payloads()). Rows, each one a
+# horizontal-stack with one column per account in ha_accounts: 1 intro
+# (full width), 2 kill switches, 3 State, 4 Day P&L history, 5 tunable
+# knobs. The cross-account equity comparison chart is deliberately left
+# off for now.
 title: {{ ha_dashboard_title }}
 views:
   - title: Trading
@@ -22,6 +22,43 @@ views:
               Long Premium, Short Leash — deterministic risk gates, an
               open-source model proposes, code disposes. Source:
               [alpaca-hackathon](https://github.com/bill-mccormick-dg/alpaca-hackathon).
+
+          # Kill switches sit directly under the title so they're always the
+          # first thing reachable in an emergency, without scrolling past the
+          # state cards. Each tile names its own account, since this row sits
+          # above the per-account headings below.
+          #
+          # A kill switch should be hard to fire by accident and easy to fire
+          # on purpose: tile (one compact row) rather than a big button card,
+          # and HOLD-to-fire rather than tap - a stray tap does nothing at
+          # all, a deliberate press-and-hold raises the confirm dialog. Two
+          # deliberate steps. Each halts ONLY its own account; the global
+          # "halt everything" is CLI-only by design (flatten.py --halt
+          # --all-accounts), so nothing here can stop the judged account.
+          - type: horizontal-stack
+            cards:
+{% for acct in ha_accounts %}
+              - type: tile
+                entity: button.alpaca_{{ acct.id }}_kill_switch
+                name: {{ acct.label }} — kill switch (hold)
+                icon: mdi:stop-octagon
+                color: red
+                hide_state: true
+                tap_action:
+                  action: none
+                hold_action:
+                  action: perform-action
+                  perform_action: button.press
+                  target:
+                    entity_id: button.alpaca_{{ acct.id }}_kill_switch
+                  confirmation:
+                    text: >-
+                      Flatten {{ acct.label }}'s positions and halt
+                      {{ acct.label }}? Other accounts keep trading. A
+                      human has to delete
+                      logs/HALT_manual{{ '_' ~ acct.id if acct.id != 'official' else '' }}
+                      on the trading host to resume.
+{% endfor %}
 
           - type: horizontal-stack
             cards:
@@ -59,53 +96,23 @@ views:
           - type: horizontal-stack
             cards:
 {% for acct in ha_accounts %}
-              - type: vertical-stack
-                cards:
-                  # A kill switch should be hard to fire by accident and easy
-                  # to fire on purpose. tile (one compact row) instead of a
-                  # big button card, and HOLD-to-fire rather than tap: a
-                  # stray tap does nothing at all, a deliberate press-and-hold
-                  # raises the confirm dialog. Two deliberate steps.
-                  # It halts ONLY this account - the global "halt everything"
-                  # is CLI-only by design (flatten.py --halt --all-accounts),
-                  # so nothing on this dashboard can stop the judged account.
-                  - type: tile
-                    entity: button.alpaca_{{ acct.id }}_kill_switch
-                    name: Kill switch — hold to fire
-                    icon: mdi:stop-octagon
-                    color: red
-                    hide_state: true
-                    tap_action:
-                      action: none
-                    hold_action:
-                      action: perform-action
-                      perform_action: button.press
-                      target:
-                        entity_id: button.alpaca_{{ acct.id }}_kill_switch
-                      confirmation:
-                        text: >-
-                          Flatten {{ acct.label }}'s positions and halt
-                          {{ acct.label }}? Other accounts keep trading. A
-                          human has to delete
-                          logs/HALT_manual{{ '_' ~ acct.id if acct.id != 'official' else '' }}
-                          on the trading host to resume.
-                  - type: entities
-                    title: Controls
-                    entities:
-                      - entity: text.alpaca_{{ acct.id }}_model
-                        name: Model
-                      - entity: number.alpaca_{{ acct.id }}_temperature
-                        name: Temperature
-                      - entity: number.alpaca_{{ acct.id }}_max_tokens
-                        name: Max tokens
-                      - entity: number.alpaca_{{ acct.id }}_research_contracts_per_underlying
-                        name: Research contracts/underlying
-                      - entity: number.alpaca_{{ acct.id }}_option_strike_band_pct
-                        name: Strike band %
-                      - entity: number.alpaca_{{ acct.id }}_stop_loss_pct
-                        name: Stop loss %
-                      - entity: number.alpaca_{{ acct.id }}_take_profit_pct
-                        name: Take profit %
-                      - entity: number.alpaca_{{ acct.id }}_eod_close_dte
-                        name: EOD close DTE
+              - type: entities
+                title: {{ acct.label }} — controls
+                entities:
+                  - entity: text.alpaca_{{ acct.id }}_model
+                    name: Model
+                  - entity: number.alpaca_{{ acct.id }}_temperature
+                    name: Temperature
+                  - entity: number.alpaca_{{ acct.id }}_max_tokens
+                    name: Max tokens
+                  - entity: number.alpaca_{{ acct.id }}_research_contracts_per_underlying
+                    name: Research contracts/underlying
+                  - entity: number.alpaca_{{ acct.id }}_option_strike_band_pct
+                    name: Strike band %
+                  - entity: number.alpaca_{{ acct.id }}_stop_loss_pct
+                    name: Stop loss %
+                  - entity: number.alpaca_{{ acct.id }}_take_profit_pct
+                    name: Take profit %
+                  - entity: number.alpaca_{{ acct.id }}_eod_close_dte
+                    name: EOD close DTE
 {% endfor %}
