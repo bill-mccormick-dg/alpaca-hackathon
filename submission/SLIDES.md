@@ -31,7 +31,7 @@ Fourteen slides, one idea each. Real screenshots over diagrams wherever a screen
    so live behaviour cannot change mid-session. The account-identity guard keys on the
    broker's own account number rather than a CLI string.
 10. **The daily loop** — eod_review → override (expires at close) or config PR → CI →
-    self-hosted runner deploys before the open. 68 PRs, 489 tests, every merge deployed.
+    self-hosted runner deploys before the open. 70 PRs, 491 tests, every merge deployed.
 11. **The experiment farm — real A/B, not a backtest** — four days is not a backtest and the
     free feed has no historical options data, so a docker-compose farm runs one container per
     variant, each with its own config and its own paper account, against the *same live
@@ -56,7 +56,7 @@ Speaker notes: keep each slide ≤ 40 seconds in the video's pitch section; slid
 
 ## Counts to refresh before export
 
-`68 PRs, 489 tests` appears on slide 10 of `video/slides.html`. Re-check both before
+`70 PRs, 491 tests` appears on slide 10 of `video/slides.html`. Re-check both before
 exporting — they moved substantially in the final days:
 
 ```
