@@ -64,6 +64,22 @@ services:
     restart: unless-stopped
     profiles: ["farm"]
 
+  # Instrument-choice variant (config-variants/mixed.yaml): identical to the
+  # official config except that stock and options are peers chosen per idea,
+  # rather than options-first. Single-variable A/B - same model, same caps.
+  bot-mixed:
+    image: alpaca-hackathon:latest
+    build: .
+    environment:
+      TZ: ${TZ:-America/Chicago}
+    command: ["farm.py", "--account", "mixed", "--config", "config-variants/mixed.yaml"]
+    volumes:
+      - ./logs:/app/logs
+      - ./config-variants:/app/config-variants:ro
+      - ./secrets.yaml:/app/secrets.yaml:ro
+    restart: unless-stopped
+    profiles: ["farm"]
+
   # Docs site (Docusaurus) rendering ./docs - the onboarding + reference
   # site. `docker compose up docs` then open http://localhost:3000. The
   # markdown is bind-mounted, so edits hot-reload; no Node on the host.
