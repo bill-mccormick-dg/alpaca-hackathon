@@ -26,6 +26,9 @@ services:
     volumes:
       - ./logs:/app/logs
       - ./config.yaml:/app/config.yaml:ro
+      # So `docker compose run --rm bot run_cycle.py --config config-variants/x.yaml`
+      # works ad hoc, not only through the farm services.
+      - ./config-variants:/app/config-variants:ro
       # Local dev credentials, read-only. `cp secrets.example.yaml secrets.yaml`
       # BEFORE the first run: compose creates an empty *directory* of that name
       # if the file is missing (harmless - the loader ignores it - but then
