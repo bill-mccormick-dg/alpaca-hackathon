@@ -281,18 +281,39 @@ def publish_discovery(client, prefix: str) -> None:
         client.publish(topic, json.dumps(payload), retain=True)
 
 
-def publish_transient(client, prefix: str, account: str, state: str) -> None:
-    """Publish an in-flight state ("halting"/"resuming") immediately, before
-    the slow part starts. A HALT runs flatten.py end to end - cancel orders,
-    wait for the cancels to settle, close positions, poll until actually
-    flat - which can take the full verify timeout. Without this the tile
-    sits unchanged for ~30s and reads as a dead control, so people press it
-    again. The account is marked in-flight so the heartbeat cannot overwrite
-    this with the file-derived state, which is still the OLD value until
-    flatten finishes writing the halt file."""
+def begin_command(account: str) -> bool:
+    """Mark an account as having a command in flight. False if one already
+    is - the caller should refuse rather than run two flattens at once.
+
+    In-flight accounts are skipped by the heartbeat: it derives state from
+    the halt FILES, and during a flatten the file is not written yet, so a
+    heartbeat landing mid-operation would publish the pre-command value and
+    flick the tile back out of its in-progress state."""
     with _inflight_lock:
+        if account in _inflight:
+            return False
         _inflight.add(account)
-    client.publish(f"{prefix}/{account}/state/halt", state, retain=True)
+        return True
+
+
+def run_command(client, prefix: str, account: str, command: str, config_path: str | None) -> None:
+    """Execute one HALT/RESUME. Runs on its own thread - see on_message."""
+    try:
+        if command == "HALT":
+            asyncio.run(run_halt(account, config_path))
+            print(f"[bridge] {account}: kill switch ON - flattened + halted", flush=True)
+        else:
+            run_resume(account, config_path)
+            print(f"[bridge] {account}: kill switch OFF - manual halt cleared", flush=True)
+    except Exception as exc:  # noqa: BLE001 - a bad/failed command must not crash the bridge
+        client.publish(f"{prefix}/{account}/command/error", json.dumps({"error": str(exc)}))
+        print(f"[bridge] {account}: {command} failed: {exc}", flush=True)
+    finally:
+        # Always resync from the files, success or not - the switch must end
+        # up showing what is actually true, including when a refused RESUME
+        # leaves the account halted. force=True clears the in-flight mark,
+        # so a failed command can never strand the tile mid-operation.
+        publish_halt_state(client, prefix, config_path, force=True)
 
 
 def publish_halt_state(client, prefix: str, config_path: str | None, force: bool = False) -> dict[str, str]:
@@ -365,25 +386,28 @@ def main() -> int:
                 return
             try:
                 validate_account(halt_account)
-                # Flip the tile to its in-flight state before the slow part,
-                # so the control visibly responds to the press instead of
-                # looking dead for as long as flatten takes.
-                publish_transient(client, prefix, halt_account,
-                                  "halting" if command == "HALT" else "resuming")
-                if command == "HALT":
-                    asyncio.run(run_halt(halt_account, args.config))
-                    print(f"[bridge] {halt_account}: kill switch ON - flattened + halted", flush=True)
-                else:
-                    run_resume(halt_account, args.config)
-                    print(f"[bridge] {halt_account}: kill switch OFF - manual halt cleared", flush=True)
-            except Exception as exc:  # noqa: BLE001 - a bad/failed command must not crash the bridge
+            except ValueError as exc:
                 client.publish(f"{prefix}/{halt_account}/command/error", json.dumps({"error": str(exc)}))
-                print(f"[bridge] {halt_account}: {command} failed: {exc}", flush=True)
-            # Always resync from the files afterwards, success or not - the
-            # switch must end up showing what is actually true, including
-            # when a refused RESUME leaves the account halted. force=True
-            # clears the in-flight mark set above.
-            publish_halt_state(client, prefix, args.config, force=True)
+                return
+            # Mark + publish the in-flight state HERE, synchronously, then
+            # hand the slow work to a thread and return. Two reasons this
+            # cannot run inline: paho only flushes client.publish() when the
+            # network loop next runs, which it cannot do until on_message
+            # returns - so an inline flatten made the "halting" tile appear
+            # AFTER the halt had already finished (observed live: manual at
+            # t+2.39s, halting at t+2.41s). And a blocked callback makes the
+            # whole bridge deaf for the duration, including to the other
+            # account's kill switch.
+            if not begin_command(halt_account):
+                client.publish(f"{prefix}/{halt_account}/command/error",
+                               json.dumps({"error": f"a command is already running for {halt_account}"}))
+                return
+            client.publish(f"{prefix}/{halt_account}/state/halt",
+                           "halting" if command == "HALT" else "resuming", retain=True)
+            threading.Thread(
+                target=run_command, name=f"cmd-{halt_account}",
+                args=(client, prefix, halt_account, command, args.config), daemon=True,
+            ).start()
             return
 
         try:
