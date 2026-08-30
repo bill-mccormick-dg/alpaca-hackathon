@@ -33,9 +33,11 @@ def _eastern_time(now: datetime) -> time:
 
 class RiskManager:
     def __init__(self, config: dict, logs_dir: Path = LOGS_DIR, account: str | None = None):
-        # account: scopes the DAILY-loss halt file (a challenger breaching
-        # its cutoff must not halt the official account). The manual HALT
-        # kill switch stays global on purpose - it stops everything.
+        # account: scopes BOTH halt kinds to one account, so a challenger can
+        # never stop the judged account - not by breaching its daily-loss
+        # cutoff, and not by having its kill switch pressed. The one halt that
+        # is still deliberately global is logs/HALT (global_halt_file), which
+        # only the CLI can write (flatten.py --halt --all-accounts).
         self.account = account if account and account != "official" else None
         self.underlyings = set(config["underlyings"])
         self.max_position_usd = config["max_position_usd"]
@@ -51,8 +53,19 @@ class RiskManager:
 
     # --- Session-level gates, checked once per cycle before any order ------
 
-    def manual_halt_file(self) -> Path:
+    def global_halt_file(self) -> Path:
+        """The break-glass kill switch: halts EVERY account. Written only by
+        `flatten.py --halt --all-accounts` - deliberately not reachable from
+        MQTT/Home Assistant, so no dashboard tap can stop the judged account
+        by accident during the scoring window."""
         return self.logs_dir / "HALT"
+
+    def manual_halt_file(self) -> Path:
+        """This account's own kill switch (`flatten.py --halt`, or the HA
+        button). Scoped like daily_halt_file so the challenger's kill switch
+        never touches the official account."""
+        suffix = f"_{self.account}" if self.account else ""
+        return self.logs_dir / f"HALT_manual{suffix}"
 
     def daily_halt_file(self, day: date | None = None) -> Path:
         day = day or datetime.now(EASTERN).date()
@@ -60,6 +73,8 @@ class RiskManager:
         return self.logs_dir / f"HALT{suffix}_{day.isoformat()}"
 
     def halted(self, now: datetime | None = None) -> str | None:
+        if self.global_halt_file().exists():
+            return "global halt"
         if self.manual_halt_file().exists():
             return "manual halt"
         day = (now or datetime.now(EASTERN)).date()

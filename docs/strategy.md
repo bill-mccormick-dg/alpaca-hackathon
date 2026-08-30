@@ -140,11 +140,12 @@ Why the two layers never fight:
 stretch goal): the bridge also subscribes to
 `alpaca-hackathon/<account>/command/halt` — payload must be exactly `HALT`
 (matches the HA button's `payload_press`) — and reuses `flatten.py`'s own
-`run()` to flatten **only that account's** positions. The HALT file it
-writes (`bot/risk.py::RiskManager.manual_halt_file`) is intentionally
-shared across accounts on purpose, so pressing either account's kill
-switch halts trading everywhere, not just that account — resuming
-(`rm logs/HALT`) stays a deliberate CLI-only step, never exposed to HA.
+`run()` to flatten **only that account's** positions and halt **only that
+account** (`bot/risk.py::RiskManager.manual_halt_file`). The break-glass
+"halt every account" (`logs/HALT`) is deliberately unreachable from HA —
+it is CLI-only (`flatten.py --halt --all-accounts`), so a stray dashboard
+tap can never stop the judged account during the scoring window. Resuming
+(deleting the halt file) likewise stays a CLI-only step, never exposed to HA.
 On startup the bridge also publishes (retained) MQTT discovery for that
 button and for `number`/`text` entities covering every overridable knob
 except `strategy_notes` (prose — stays `override.py set strategy_notes

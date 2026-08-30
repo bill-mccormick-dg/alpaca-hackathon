@@ -46,8 +46,12 @@ clearly marked, unlike `configuration.yaml`'s nested keys.
 ## What you get
 
 - **Dashboard** (`{{ ha_dashboard_filename }}`, default `dashboards/alpaca_hackathon.yaml`):
-  an equity history chart overlaying every account in `ha_accounts`, plus a
-  card per account with its live state and its own day-P&L chart.
+  rows of cards across every account in `ha_accounts` - live state, day-P&L
+  chart, then a Controls row with that account's tunable knobs and its kill
+  switch. The kill switch is hold-to-fire with a confirm dialog, and halts
+  **only its own account** - the "halt everything" break-glass stays CLI-only
+  (`flatten.py --halt --all-accounts`) so no dashboard tap can stop another
+  account.
 - **Automations**: a notification (+ optional light) on every submitted order,
   and on any halt (manual kill switch or daily-loss). Both read
   `trigger.payload_json` / `trigger.topic` from the MQTT message, so they

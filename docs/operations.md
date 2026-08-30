@@ -34,8 +34,12 @@ official account.
 
 ## Halt files (under `logs/`, checked at the top of every cycle)
 
-- `HALT` - manual kill switch, created by `flatten.py --halt`, **global**.
-  Nothing trades until you delete the file.
+- `HALT` - **global** break-glass halt: stops *every* account. Written only by
+  `flatten.py --halt --all-accounts`; deliberately unreachable from MQTT/Home
+  Assistant. Nothing trades until you delete the file.
+- `HALT_manual` (official) / `HALT_manual_<name>` (others) - that one account's
+  kill switch, from `flatten.py --halt` or the Home Assistant button. Only that
+  account stops.
 - `HALT_<YYYY-MM-DD>` (official) / `HALT_<name>_<date>` (others) - daily-loss
   halt, written after a breach of `daily_loss_cutoff_pct` flattens the
   account. Expires with the day; delete it to resume early.
@@ -92,10 +96,12 @@ Inbound, both handled by `mqtt_bridge.py` (long-running):
   via a `command_template` - see `mqtt_bridge.py::discovery_payloads()`.
 - `<prefix>/<account>/command/halt` - the kill switch (payload must be
   exactly `HALT`). Reuses `flatten.py`'s own `run()` to flatten **that
-  account's** positions, but the HALT file it writes is shared across every
-  account on purpose (`bot/risk.py::RiskManager.manual_halt_file`) - either
-  account's button halts trading everywhere. Resuming (`rm logs/HALT`) stays
-  CLI-only, never exposed to HA.
+  account's** positions and halt **that account only**
+  (`bot/risk.py::RiskManager.manual_halt_file`). The global "halt everything"
+  is deliberately not reachable from here - it is CLI-only
+  (`flatten.py --halt --all-accounts`), so no dashboard tap can stop the
+  judging account during the scoring window. Resuming (deleting the halt
+  file) likewise stays CLI-only, never exposed to HA.
 
 HA automation ideas still open: a light that goes green on `order_submitted`
 and red on `daily_loss_halt` / `manual_halt`.

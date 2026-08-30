@@ -7,8 +7,13 @@ Usage:
                                  expiring within config eod_close_dte days; hold the rest
                                  overnight. Ignored on/after config final_flatten_date,
                                  when everything is closed.
-  flatten.py --halt              kill switch: flatten AND create logs/HALT so no cycle runs
-                                 again until you delete that file
+  flatten.py --halt              kill switch: flatten this account AND halt it (writes
+                                 logs/HALT_manual[_<account>]) until you delete that file
+  flatten.py --halt --all-accounts
+                                 break-glass: same, but writes logs/HALT, which halts
+                                 EVERY account. CLI-only on purpose - the Home Assistant
+                                 buttons can only ever halt their own account, so a
+                                 dashboard tap can't stop the judging account by mistake
   flatten.py --account official  the judging account (refused before the official window
                                  opens, same as run_cycle.py - there is nothing to flatten)
 """
@@ -67,11 +72,12 @@ async def run(args: argparse.Namespace) -> int:
     )
 
     if args.halt:
-        halt = risk.manual_halt_file()
+        halt = risk.global_halt_file() if args.all_accounts else risk.manual_halt_file()
+        scope = "ALL accounts" if args.all_accounts else args.account
         halt.parent.mkdir(exist_ok=True)
-        halt.write_text("manual kill switch\n")
-        journal.log("manual_halt", account=args.account)
-        print(f"HALT file created: {halt} - delete it to resume trading")
+        halt.write_text(f"manual kill switch ({scope})\n")
+        journal.log("manual_halt", account=args.account, all_accounts=args.all_accounts)
+        print(f"HALT file created: {halt} - halts {scope}; delete it to resume trading")
 
     if not outcome.cancels_settled:
         print("WARNING: order cancellations did not settle before closing", file=sys.stderr)
@@ -87,6 +93,12 @@ async def run(args: argparse.Namespace) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--halt", action="store_true")
+    ap.add_argument(
+        "--all-accounts",
+        action="store_true",
+        help="with --halt: write the GLOBAL halt file (logs/HALT), stopping every account, "
+        "not just --account. Break-glass only; the HA kill-switch buttons never do this.",
+    )
     ap.add_argument("--expiring-only", action="store_true", help="close only contracts expiring within eod_close_dte days")
     ap.add_argument("--account", default="test", help="named account: official, test, or any credentials-<name>.env")
     ap.add_argument("--config", default=None, help="config file (default config.yaml)")

@@ -35,8 +35,8 @@ wait_
 say "Shot 4 - the leash: close everything, verified against the broker, and trip the kill switch"
 run $PY flatten.py --account "$ACCT" --halt
 run $PY run_cycle.py --account "$ACCT" --config "$CFG"
-run ls -la logs/HALT
-run rm -f logs/HALT
+run ls -la logs/HALT_manual_"$ACCT"
+run rm -f logs/HALT_manual_"$ACCT"
 wait_
 
 say "Shot 5 - end-of-day: round trips from Alpaca's fills, rejections by rule, the model's own read"

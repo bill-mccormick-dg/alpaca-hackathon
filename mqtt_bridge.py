@@ -15,10 +15,12 @@ Errors go to     <prefix>/<account>/config/error  (not retained)
 Also subscribes to <prefix>/<account>/command/halt - the kill switch
 (issue #14's "two-way control" stretch goal). Payload must be exactly
 "HALT" (matches the HA button's payload_press). Reuses flatten.py's own
-run() as-is: flattens *only* that account's positions, but the HALT file
-it writes (bot/risk.py::RiskManager.manual_halt_file) is intentionally
-shared, so it halts every account's next cycle, not just this one -
-resuming (deleting logs/HALT) stays a deliberate CLI-only step.
+run() as-is: flattens that account's positions and halts THAT ACCOUNT
+ONLY (bot/risk.py::RiskManager.manual_halt_file). The break-glass "halt
+every account" (logs/HALT) is deliberately NOT reachable from here - it
+is CLI-only (flatten.py --halt --all-accounts), so no dashboard tap can
+stop the judged account by accident during the scoring window. Resuming
+(deleting the halt file) likewise stays a deliberate CLI-only step.
 Errors go to <prefix>/<account>/command/error (not retained).
 
 On startup, publishes (retained) MQTT discovery for a kill-switch button
@@ -128,6 +130,11 @@ async def run_halt(account: str, config_path: str | None) -> None:
     official-account trading-window guard all come for free."""
     ns = argparse.Namespace(
         halt=True,
+        # Never the global halt: an HA button may only ever stop its OWN
+        # account. The break-glass "halt everything" is CLI-only
+        # (flatten.py --halt --all-accounts), so no dashboard tap can stop
+        # the judged account during the scoring window.
+        all_accounts=False,
         expiring_only=False,
         account=account,
         config=config_path_for(account, config_path),

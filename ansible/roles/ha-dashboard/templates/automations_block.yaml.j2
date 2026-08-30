@@ -36,7 +36,8 @@
         title: "AI Day Trader - HALTED"
         message: >-
           {% raw %}{{ trigger.topic.split('/')[1] }} account halted
-          ({{ trigger.topic.split('/')[-1] }}). Check status.py / logs/HALT.{% endraw %}
+          ({{ trigger.topic.split('/')[-1] }}). Check status.py; clear it by
+          deleting that account's halt file under logs/.{% endraw %}
 
 {% if ha_alert_light_entity %}
     - action: light.turn_on

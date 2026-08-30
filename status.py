@@ -21,6 +21,7 @@ from bot.snapshot import _data
 
 def halt_state(risk: RiskManager) -> dict:
     return {
+        "global_halt": risk.global_halt_file().exists(),
         "manual_halt": risk.manual_halt_file().exists(),
         "daily_halt": risk.daily_halt_file().exists(),
     }
@@ -92,6 +93,7 @@ async def run(args: argparse.Namespace) -> int:
 
     h = report["halt"]
     print("== Halt state ==")
+    print(f"  global HALT: {'YES (halts EVERY account)' if h['global_halt'] else 'no'}")
     print(f"  manual HALT: {'YES' if h['manual_halt'] else 'no'}")
     print(f"  daily halt:  {'YES' if h['daily_halt'] else 'no'}")
 
