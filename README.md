@@ -238,3 +238,9 @@ Alpaca's terms; model inference is Featherless.ai's.
 - [ ] Up to 5 social posts (X/LinkedIn, tag @lablabai and @AlpacaHQ)
 - [ ] **No orders placed on the account before Mon Aug 31, 9:30 AM ET**
 - [ ] Agent trading live by Mon Aug 31, 9:30 AM ET
+- [ ] **Submit the lablab.ai form — a filled draft is not a submission.** It
+      is a 3-step wizard; as of 2026-08-30 it sits at step 1 of 3 (36%), so
+      the team shows under "drafts in progress", not "submissions". See
+      [submission/METADATA.md](submission/METADATA.md) for exactly what is
+      left. There is no P&L leaderboard for this event, so nothing surfaces
+      the project except the submission itself.
