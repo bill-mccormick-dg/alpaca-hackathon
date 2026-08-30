@@ -5,7 +5,7 @@ export to PDF (or paste into Google Slides, link-viewable). This file is the out
 that deck and should be regenerated from it rather than edited independently: an earlier
 version of this file drifted three slides behind the real thing.
 
-Fourteen slides, one idea each. Real screenshots over diagrams wherever a screenshot exists.
+Fifteen slides, one idea each. Real screenshots over diagrams wherever a screenshot exists.
 
 1. **Title** — "AI Day Trader — Long Premium, Short Leash" · autonomous options agent on
    Alpaca's MCP server · team · account `PA3VS39Y5LE2`
@@ -30,13 +30,17 @@ Fourteen slides, one idea each. Real screenshots over diagrams wherever a screen
    deploys a merge in ~a minute; a freeze window refuses to sync trading code 08:20–15:15 CT
    so live behaviour cannot change mid-session. The account-identity guard keys on the
    broker's own account number rather than a CLI string.
-10. **The daily loop** — eod_review → override (expires at close) or config PR → CI →
-    self-hosted runner deploys before the open. 70 PRs, 491 tests, every merge deployed.
-11. **The experiment farm — real A/B, not a backtest** — four days is not a backtest and the
+10. **Built to be changed while it is running** — the development story: 496 tests in 1.3s
+    that need no API keys and no network; the whole thing runnable with nothing installed but
+    Docker; `--dry-run`/`--force` making a full cycle testable at 2am; runtime overrides that
+    change strategy without a deploy. Six of those tests exist because something broke.
+11. **The daily loop** — eod_review → override (expires at close) or config PR → CI →
+    self-hosted runner deploys before the open. 75 PRs, 496 tests, every merge deployed.
+12. **The experiment farm — real A/B, not a backtest** — four days is not a backtest and the
     free feed has no historical options data, so a docker-compose farm runs one container per
     variant, each with its own config and its own paper account, against the *same live
     market*. A winner is promoted into the official config by pull request.
-12. **Home Assistant, over MQTT — fully decoupled** — `journal.log()` → fire-and-forget MQTT
+13. **Home Assistant, over MQTT — fully decoupled** — `journal.log()` → fire-and-forget MQTT
     publish → HA auto-discovery. Three audiences off one feed: an operator dashboard with the
     kill switch; a second, read-only dashboard for the team over Tailscale (no switch, button
     or service call — HA has no per-entity permissions, so the separation must be the
@@ -46,17 +50,17 @@ Fourteen slides, one idea each. Real screenshots over diagrams wherever a screen
     for 25 minutes in market hours, the failure a dashboard cannot show because stale values
     look exactly like a quiet market. An hourly email carries trades + CSVs for anyone not
     watching a screen.
-13. **Results** — equity curve Mon–Thu (from `logs/equity.jsonl`), round trips, exit mix,
-    official vs challenger. An honest sentence about what didn't work.
-14. **What's next, and thanks** — promote what the challenger proved; multi-leg spreads once
+14. **Results** — equity curve Mon–Thu (from `logs/equity.jsonl`), round trips, exit mix,
+    official vs challenger vs the mixed-instrument variant. An honest sentence about what didn't work.
+15. **What's next, and thanks** — promote what the challenger proved; multi-leg spreads once
     the gates cover assignment risk. Repo + MIT license.
 
 Speaker notes: keep each slide ≤ 40 seconds in the video's pitch section; slides 3, 7, 9 and
-10 double as the video's diagram frames.
+11 double as the video's diagram frames.
 
 ## Counts to refresh before export
 
-`70 PRs, 491 tests` appears on slide 10 of `video/slides.html`. Re-check both before
+`75 PRs, 496 tests` appears on slide 11 of `video/slides.html`. Re-check both before
 exporting — they moved substantially in the final days:
 
 ```
