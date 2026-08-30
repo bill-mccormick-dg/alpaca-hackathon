@@ -30,6 +30,13 @@ EVENT_TOPICS = {
     "cycle_start", "decision", "order_submitted", "order_rejected", "order_error", "dry_run",
     "daily_loss_halt", "daily_loss_flatten", "flatten", "manual_halt", "error", "eod_review",
     "override_set", "override_cleared", "config", "tool_call",
+    # Journaled by run_cycle/flatten but previously dropped here, which meant
+    # the one alert that says "these credentials are not the account you asked
+    # for" could not reach a notification at all (#86, guard added in #84).
+    "identity_refused", "identity_unverified",
+    # Transient model failures that recovered (#85) - worth seeing the rate
+    # without reading the journal.
+    "decide_retry",
 }
 # Prefix of every entity_id this project publishes. NOT cosmetic: Home
 # Assistant's MQTT discovery derives entity_id from slugify(device name) +

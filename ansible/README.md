@@ -59,6 +59,36 @@ clearly marked, unlike `configuration.yaml`'s nested keys.
 
 Uses only `ansible.builtin` modules - no collections to install.
 
+## Push notifications (issue #86)
+
+The automations this role registers use `persistent_notification.create`, which
+is **in-app only** — it waits until someone opens Home Assistant. For a
+notification that reaches a phone, set `ha_notify_service` to a Companion app
+service (e.g. `notify.mobile_app_<device>`); blank leaves everything in-app and
+the role still works with no companion app at all.
+
+What pushes, and what deliberately does not:
+
+| Event | Push | Why |
+|---|---|---|
+| `manual_halt`, `daily_loss_halt` | yes, judged account | the account stopped trading |
+| `identity_refused`, `identity_unverified` | yes, **every** account | credentials do not match the account name — a *challenger* hitting this is the catastrophic case `bot/identity.py` exists for, so it is the one not to filter |
+| no cycles for `ha_stall_minutes` | yes, judged account | cron/host/venv broken, nothing trading |
+| fills, exits, rejections, dry-runs | in-app only | already on the dashboard and in the hourly email |
+
+Fills stay in-app on purpose. A channel that fires on routine activity gets
+muted, and the halt alert is lost with it.
+
+**Stall detection** is the one alert nothing else provides: a dashboard full of
+stale values looks exactly like a quiet market. It is derived from the equity
+sensor's `last_updated`, so it needs no extra publisher — if cron dies, the
+sensor stops updating and the alert fires. `ha_market_open_local` /
+`ha_market_close_local` are **local wall-clock on the HA host**, not Eastern.
+
+Requires `identity_refused` / `identity_unverified` to be published, which
+needs the `EVENT_TOPICS` entry added in the same change — they were journaled
+but dropped at the broker before that.
+
 ## Remote team access (issue #87)
 
 Teammates who are not on the LAN reach the dashboard over **Tailscale**. The
