@@ -34,7 +34,8 @@ from datetime import datetime
 from email.message import EmailMessage
 
 from bot import credentials, journal, report
-from bot.risk import EASTERN, LOGS_DIR
+from bot.config import load_config
+from bot.risk import EASTERN, LOGS_DIR, RiskManager
 
 # Settings resolved from the account's deployed credentials file, then the
 # environment - the same chain and the same reason as bot/credentials.py's
@@ -116,14 +117,19 @@ def equity_csv(path=None) -> str:
     return buf.getvalue()
 
 
-def summarize(events, account: str) -> dict:
-    """The numbers that go in the subject line and the top of the body."""
+def summarize(events, account: str, halt: str = "none") -> dict:
+    """The numbers that go in the subject line and the top of the body.
+
+    `halt` is the CURRENT state, derived from the halt files by the caller -
+    not from journal events. A manual_halt event stays in today's journal
+    after the halt is cleared, so an event-derived flag would mark the
+    account halted for the rest of the day and teach everyone to ignore the
+    subject line. Same reasoning as RiskManager.halt_state() (#74)."""
     cycles = [r for r in events if r.get("event") == "cycle_start"]
     latest = cycles[-1] if cycles else {}
     trades = report.recent_trades(events, limit=0)
     errors = [r for r in events if r.get("event") == "error"]
     retries = [r for r in events if r.get("event") == "decide_retry"]
-    halts = [r for r in events if r.get("event") in ("manual_halt", "daily_loss_halt")]
     equity = latest.get("equity")
     start = latest.get("start_of_day_equity")
     day_pnl = latest.get("day_pnl")
@@ -140,7 +146,8 @@ def summarize(events, account: str) -> dict:
         "dry_run": sum(1 for t in trades if t["event"] == "dry_run"),
         "errors": len(errors),
         "retries": len(retries),
-        "halted": bool(halts),
+        "halt": halt,
+        "halted": halt != "none",
         "trades": trades,
     }
 
@@ -159,7 +166,7 @@ def subject_line(s: dict, now: datetime) -> str:
             pnl = f" {float(s['day_pnl']):+,.2f}"
         except (TypeError, ValueError):
             pnl = ""
-    flag = " [HALTED]" if s["halted"] else ""
+    flag = f" [HALTED: {s['halt']}]" if s["halted"] else ""
     return f"AI Day Trader — {s['account']} — {now:%H:%M %Z} — {_money(s['equity'])}{pnl}{flag}"
 
 
@@ -178,7 +185,7 @@ def body_text(s: dict, now: datetime) -> str:
         lines.append(f"  Model           {s['errors']} error(s), {s['retries']} retry/ies")
     if s["halted"]:
         lines.append("")
-        lines.append("  *** THIS ACCOUNT IS HALTED — it is not trading. ***")
+        lines.append(f"  *** THIS ACCOUNT IS HALTED ({s['halt']}) — it is not trading. ***")
     lines += ["", "Trades so far today", "-------------------", ""]
     lines.append(report.render_trades_markdown(s["trades"][-12:], s["account"]))
     lines += [
@@ -231,7 +238,14 @@ def run(args: argparse.Namespace) -> int:
 
     now = datetime.now(EASTERN)
     events = journal.read_events()
-    summary = summarize(events, args.account)
+    # Current halt state comes from the halt FILES via the same helper the
+    # dashboard uses, never from journal events - see summarize().
+    try:
+        halt = RiskManager(load_config(args.config), account=args.account).halt_state(now)
+    except Exception as exc:  # noqa: BLE001 - a report must still send if config is unreadable
+        print(f"halt state unavailable ({type(exc).__name__}: {exc})", file=sys.stderr)
+        halt = "unknown"
+    summary = summarize(events, args.account, halt)
     day = now.date().isoformat()
     attachments = {
         f"trades-{day}-{args.account}.csv": trades_csv(events),
@@ -258,7 +272,7 @@ def run(args: argparse.Namespace) -> int:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--account", default="test", help="named account: official, test, or a variant")
-    ap.add_argument("--config", default=None, help="unused; accepted for symmetry with the other entrypoints")
+    ap.add_argument("--config", default=None, help="config file (default config.yaml) - read for the halt-file paths")
     ap.add_argument("--dry-run", action="store_true", help="print the message instead of sending it")
     return run(ap.parse_args())
 

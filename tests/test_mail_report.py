@@ -110,10 +110,23 @@ class SummaryTest(unittest.TestCase):
 
         self.assertEqual(s["day_pnl"], 1000.0)
 
-    def test_notices_a_halt(self):
-        s = mail_report.summarize([CYCLE, {"ts": "x", "event": "daily_loss_halt"}], "official")
+    def test_halt_comes_from_the_current_state_not_the_journal(self):
+        """A manual_halt event stays in today's journal after the halt is
+        cleared. Deriving the flag from events marked the account halted for
+        the rest of the day - caught live on CT 108, and the same trap
+        RiskManager.halt_state() already documents (#74)."""
+        events = [CYCLE, {"ts": "x", "event": "manual_halt"}]
+
+        s = mail_report.summarize(events, "official", halt="none")
+
+        self.assertFalse(s["halted"], "a cleared halt must not keep flagging the report")
+
+    def test_reports_a_live_halt_and_names_the_kind(self):
+        s = mail_report.summarize([CYCLE], "official", halt="daily_loss")
 
         self.assertTrue(s["halted"])
+        self.assertEqual(s["halt"], "daily_loss")
+        self.assertIn("daily_loss", mail_report.subject_line(s, NOW))
 
     def test_empty_journal_does_not_raise(self):
         s = mail_report.summarize([], "test")
@@ -143,9 +156,9 @@ class MessageTest(unittest.TestCase):
         self.assertIn("+1,000.00", subject)
 
     def test_subject_flags_a_halt_so_it_is_visible_without_opening(self):
-        summary = mail_report.summarize([CYCLE, {"ts": "x", "event": "manual_halt"}], "official")
+        summary = mail_report.summarize([CYCLE], "official", halt="manual")
 
-        self.assertIn("[HALTED]", mail_report.subject_line(summary, NOW))
+        self.assertIn("[HALTED", mail_report.subject_line(summary, NOW))
 
     def test_recipients_are_split_on_commas_and_semicolons(self):
         self.assertEqual(
