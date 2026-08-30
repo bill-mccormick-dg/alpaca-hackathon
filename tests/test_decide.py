@@ -288,6 +288,33 @@ class ThinkingModelTest(unittest.IsolatedAsyncioTestCase):
             await decide.decide(_snapshot(), _config(), client, TODAY)
         self.assertNotIsInstance(ctx.exception, decide.TruncatedOutput)
 
+    async def test_error_body_without_choices_surfaces_the_providers_message(self):
+        """A 200 carrying an error object instead of choices used to raise a
+        bare KeyError: 'choices', which told an operator nothing about the
+        real cause (rate limit, spent credits, model unavailable)."""
+
+        class ErrorBodyClient:
+            model = "m"
+
+            async def chat(self, messages, **kwargs):
+                return {"error": {"message": "insufficient credits", "type": "billing"}}
+
+        with self.assertRaises(RuntimeError) as ctx:
+            await decide.decide(_snapshot(), _config(), ErrorBodyClient(), TODAY)
+        msg = str(ctx.exception)
+        self.assertIn("no choices", msg)
+        self.assertIn("insufficient credits", msg)
+
+    async def test_empty_choices_list_is_also_reported_not_an_indexerror(self):
+        class EmptyChoicesClient:
+            model = "m"
+
+            async def chat(self, messages, **kwargs):
+                return {"choices": []}
+
+        with self.assertRaises(RuntimeError):
+            await decide.decide(_snapshot(), _config(), EmptyChoicesClient(), TODAY)
+
     def test_prompt_tells_the_model_not_to_audit_greeks(self):
         prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
         self.assertIn("do NOT spend effort auditing", prompt)
