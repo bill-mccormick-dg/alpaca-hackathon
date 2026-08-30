@@ -130,6 +130,25 @@ jobs:
             --exclude='__pycache__' \
             "$GITHUB_WORKSPACE"/ /opt/alpaca-hackathon/
 
+      - name: Record what was actually deployed
+        # `git log` inside /opt/alpaca-hackathon answers a DIFFERENT question
+        # than "what is running". Two channels write that directory: Ansible
+        # clones it (and owns the .git), while this job rsyncs files into it
+        # with --exclude='.git'. So the checkout's HEAD stays frozen at
+        # whatever Ansible last checked out while the files move on - `git
+        # log` reports a stale sha and `git status` shows a pile of phantom
+        # modifications. Asking the host what it is running and being told
+        # something several commits old is a bad thing to discover mid-session,
+        # so leave a marker that is written by the channel that actually
+        # deploys.
+        run: |
+          {
+            git -C "$GITHUB_WORKSPACE" rev-parse HEAD
+            git -C "$GITHUB_WORKSPACE" log -1 --format='%s'
+            date -Is
+          } > /opt/alpaca-hackathon/DEPLOYED
+          echo "recorded $(head -1 /opt/alpaca-hackathon/DEPLOYED)"
+
       - name: Restart the MQTT bridge onto the new code
         # cron entrypoints re-read the source every run, so a sync is enough
         # for them. The bridge is the exception: it is long-running, so
