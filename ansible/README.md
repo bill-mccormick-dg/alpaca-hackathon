@@ -109,6 +109,50 @@ switches. So the separation is done with two dashboards:
   the team template. That test is the guard; keep it passing rather than
   reasoning about the YAML by eye.
 
+### Protecting the kill switch
+
+The team dashboard has no controls, but **that alone is not the boundary**.
+Home Assistant has no per-user entity permissions, so a non-admin user can
+still reach an entity that appears anywhere else — most easily on the
+auto-generated **Overview** dashboard, which lists everything. `require_admin`
+hides a dashboard; it does not hide an entity.
+
+Three layers, in order of how much they actually buy you:
+
+1. **Non-admin users** (Settings → People → uncheck Administrator). Removes
+   Settings and Developer Tools, so they cannot call services directly.
+2. **`require_admin: true` on the operational dashboard.** Keeps the kill
+   switches and knobs off the dashboard they browse to.
+3. **Hide the control entities from auto-generated views.** In Settings →
+   Devices & Services → Entities, open each
+   `switch.<prefix>_<account>_kill_switch` (and the knob entities) and turn
+   **Visible** off. Hidden entities are excluded from auto-generated
+   dashboards but keep working on explicit ones — so your own operational
+   dashboard and phone tap are unaffected. This is the step that closes the
+   Overview gap, and it is easy to forget because everything looks fine
+   without it.
+
+**Then verify it, rather than assuming.** The only real proof is to try:
+
+```
+1. Create a throwaway non-admin HA user.
+2. Log in as them (private browser window).
+3. Confirm: the operational dashboard is not in the sidebar.
+4. Confirm: the auto-generated Overview does not show a kill switch.
+5. Press "e" (entity quick-bar) and search "kill" — confirm nothing
+   operable comes back.
+6. Delete the throwaway user.
+```
+
+If step 4 or 5 turns something up, layer 3 was missed or did not take.
+
+Consider also that halting the **judged** account from a dashboard is a
+convenience, not a requirement: `flatten.py --halt --account official` over
+SSH is unreachable from Home Assistant entirely. If the verification above
+ever looks uncertain during the scoring window, dropping the official
+account's switch from `mqtt_bridge.py`'s `discovery_payloads()` is a
+one-line change that makes the question moot.
+
 ### What the team view shows
 
 Published by `bot/report.py` via `bot/mqtt.py` as two attribute-carrying
