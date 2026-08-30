@@ -228,6 +228,55 @@ class HaltStateTest(HaltFilesTestBase):
         self.assertEqual(self.states(), {"official": "global", "test": "global"})
 
 
+class TransientStateTest(HaltFilesTestBase):
+    """A HALT runs flatten end to end and can take the whole verify
+    timeout. The tile must respond to the press immediately, and the
+    heartbeat must not stomp that in-progress state with the file-derived
+    one - the halt file does not exist yet while flatten is still running."""
+
+    def tearDown(self):
+        with mqtt_bridge._inflight_lock:
+            mqtt_bridge._inflight.clear()
+
+    def published_halt(self):
+        return [(t, p) for t, p, _ in self.published if t.endswith("/state/halt")]
+
+    def test_transient_state_is_published_immediately(self):
+        self.published.clear()
+        mqtt_bridge.publish_transient(self.client, "alpaca-hackathon", "test", "halting")
+        self.assertEqual(self.published_halt(), [("alpaca-hackathon/test/state/halt", "halting")])
+
+    def test_heartbeat_does_not_overwrite_an_in_flight_account(self):
+        mqtt_bridge.publish_transient(self.client, "alpaca-hackathon", "test", "halting")
+        self.published.clear()
+        # Heartbeat runs mid-flatten: the halt file is not written yet, so a
+        # naive resync would publish "none" and flick the tile back to green.
+        states = mqtt_bridge.publish_halt_state(self.client, "alpaca-hackathon", None)
+        self.assertNotIn("test", states)
+        self.assertEqual(self.published_halt(), [("alpaca-hackathon/official/state/halt", "none")])
+
+    def test_force_resolves_the_transient_state_to_the_truth(self):
+        mqtt_bridge.publish_transient(self.client, "alpaca-hackathon", "test", "halting")
+        (self.logs / "HALT_manual_test").write_text("x")
+        self.published.clear()
+        states = mqtt_bridge.publish_halt_state(self.client, "alpaca-hackathon", None, force=True)
+        self.assertEqual(states["test"], "manual")
+        self.assertIn(("alpaca-hackathon/test/state/halt", "manual"), self.published_halt())
+        # And the account is no longer in flight, so the heartbeat resumes.
+        self.published.clear()
+        self.assertEqual(mqtt_bridge.publish_halt_state(self.client, "alpaca-hackathon", None)["test"], "manual")
+
+    def test_a_failed_command_still_resolves_rather_than_sticking_amber(self):
+        mqtt_bridge.publish_transient(self.client, "alpaca-hackathon", "test", "resuming")
+        self.published.clear()
+        # No halt file was ever created (the command failed): force resync
+        # must still clear the in-flight mark and report the truth.
+        states = mqtt_bridge.publish_halt_state(self.client, "alpaca-hackathon", None, force=True)
+        self.assertEqual(states["test"], "none")
+        with mqtt_bridge._inflight_lock:
+            self.assertNotIn("test", mqtt_bridge._inflight)
+
+
 class ResumeTest(HaltFilesTestBase):
     def test_resume_clears_only_this_accounts_manual_halt(self):
         (self.logs / "HALT_manual_test").write_text("x")

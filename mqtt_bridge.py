@@ -66,6 +66,12 @@ from bot.risk import EASTERN
 # written mid-session by run_cycle).
 HALT_POLL_SEC = 20
 
+# Accounts with a HALT/RESUME in flight. Their transient state must survive
+# the heartbeat, which reads the halt files and would otherwise republish
+# the pre-command value mid-operation (flatten writes its halt file last).
+_inflight: set[str] = set()
+_inflight_lock = threading.Lock()
+
 DEFAULT_ACCOUNT = "test"
 REPO_ROOT = Path(__file__).resolve().parent
 
@@ -275,14 +281,36 @@ def publish_discovery(client, prefix: str) -> None:
         client.publish(topic, json.dumps(payload), retain=True)
 
 
-def publish_halt_state(client, prefix: str, config_path: str | None) -> dict[str, str]:
+def publish_transient(client, prefix: str, account: str, state: str) -> None:
+    """Publish an in-flight state ("halting"/"resuming") immediately, before
+    the slow part starts. A HALT runs flatten.py end to end - cancel orders,
+    wait for the cancels to settle, close positions, poll until actually
+    flat - which can take the full verify timeout. Without this the tile
+    sits unchanged for ~30s and reads as a dead control, so people press it
+    again. The account is marked in-flight so the heartbeat cannot overwrite
+    this with the file-derived state, which is still the OLD value until
+    flatten finishes writing the halt file."""
+    with _inflight_lock:
+        _inflight.add(account)
+    client.publish(f"{prefix}/{account}/state/halt", state, retain=True)
+
+
+def publish_halt_state(client, prefix: str, config_path: str | None, force: bool = False) -> dict[str, str]:
     """Publish each account's halt state (retained), derived from the halt
     FILES - the source of truth. This is what keeps the kill switch honest:
     a halted account runs no cycles, so nothing else would ever republish,
     and it also reflects changes made outside the bridge (someone deleting
-    a halt file on the host, or run_cycle writing a daily-loss halt)."""
+    a halt file on the host, or run_cycle writing a daily-loss halt).
+
+    `force` clears the in-flight mark: the command handler calls it that way
+    once the work is done, so the transient state resolves to the truth."""
     states = {}
     for account in KNOWN_ACCOUNTS:
+        with _inflight_lock:
+            if account in _inflight:
+                if not force:
+                    continue  # a command is mid-flight; do not stomp its transient state
+                _inflight.discard(account)
         try:
             state = risk_for(account, config_path).halt_state()
         except (OSError, KeyError) as exc:
@@ -337,6 +365,11 @@ def main() -> int:
                 return
             try:
                 validate_account(halt_account)
+                # Flip the tile to its in-flight state before the slow part,
+                # so the control visibly responds to the press instead of
+                # looking dead for as long as flatten takes.
+                publish_transient(client, prefix, halt_account,
+                                  "halting" if command == "HALT" else "resuming")
                 if command == "HALT":
                     asyncio.run(run_halt(halt_account, args.config))
                     print(f"[bridge] {halt_account}: kill switch ON - flattened + halted", flush=True)
@@ -348,8 +381,9 @@ def main() -> int:
                 print(f"[bridge] {halt_account}: {command} failed: {exc}", flush=True)
             # Always resync from the files afterwards, success or not - the
             # switch must end up showing what is actually true, including
-            # when a refused RESUME leaves the account halted.
-            publish_halt_state(client, prefix, args.config)
+            # when a refused RESUME leaves the account halted. force=True
+            # clears the in-flight mark set above.
+            publish_halt_state(client, prefix, args.config, force=True)
             return
 
         try:

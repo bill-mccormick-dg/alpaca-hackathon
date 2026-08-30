@@ -30,10 +30,19 @@ views:
           # The control is a SWITCH (mqtt_bridge.py publishes it as one), so
           # it shows the account's real halt state rather than being a
           # stateless press. A tile's `color` only applies while the entity
-          # is active, and YAML-mode Lovelace has no templated colour, so the
-          # green/red pair is done with two mutually-exclusive conditional
-          # cards - exactly one renders. They live in a vertical-stack per
-          # account so the hidden one can't collapse the row's columns.
+          # is active, and YAML-mode Lovelace has no templated colour, so
+          # the states are three mutually-exclusive conditional cards -
+          # exactly one renders. They live in a vertical-stack per account
+          # so the hidden ones can't collapse the row's columns.
+          #
+          # The conditions key on the halt SENSOR, not the switch: the
+          # sensor carries the full string (none / halting / resuming /
+          # manual / daily_loss / global) while the switch collapses all of
+          # those to on/off. That is what lets the middle card exist - a
+          # HALT runs flatten end to end and can take the whole verify
+          # timeout, so the tile flips to an amber in-progress state the
+          # moment it is pressed instead of looking dead. Tapping does
+          # nothing while that is showing.
           #
           # Each halts ONLY its own account; the global "halt everything" is
           # CLI-only by design (flatten.py --halt --all-accounts), so nothing
@@ -43,12 +52,12 @@ views:
 {% for acct in ha_accounts %}
               - type: vertical-stack
                 cards:
-                  # Trading (switch off) -> GREEN. Tap halts, with a confirm.
+                  # Trading -> GREEN. Tap halts, with a confirm.
                   - type: conditional
                     conditions:
                       - condition: state
-                        entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
-                        state: "off"
+                        entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
+                        state: "none"
                     card:
                       type: tile
                       entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
@@ -62,15 +71,36 @@ views:
                           text: >-
                             Flatten {{ acct.label }}'s positions and halt
                             {{ acct.label }}? Other accounts keep trading.
-                  # Halted (switch on) -> RED. Tap resumes, with a confirm.
-                  # A daily-loss or global halt also shows red here, but the
-                  # bridge refuses to clear those from the dashboard and
-                  # republishes the real state, so the tile stays red.
+                  # In flight -> AMBER, not tappable. Resolves by itself
+                  # when the bridge republishes the settled state.
                   - type: conditional
                     conditions:
                       - condition: state
-                        entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
-                        state: "on"
+                        entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
+                        state:
+                          - halting
+                          - resuming
+                    card:
+                      type: tile
+                      entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
+                      name: {{ acct.label }} — working…
+                      icon: mdi:progress-clock
+                      color: amber
+                      hide_state: false
+                      tap_action:
+                        action: none
+                  # Halted -> RED. Tap resumes, with a confirm. A daily-loss
+                  # or global halt also shows red, but the bridge refuses to
+                  # clear those from the dashboard and republishes the real
+                  # state, so the tile stays red.
+                  - type: conditional
+                    conditions:
+                      - condition: state
+                        entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
+                        state:
+                          - manual
+                          - daily_loss
+                          - global
                     card:
                       type: tile
                       entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
