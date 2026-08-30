@@ -28,6 +28,7 @@ from bot.flatten import flatten_all
 from bot.identity import check_account_identity
 from bot.models import AccountState, Position
 from bot.orders import INCOMPLETE
+from bot.retry import RetryBudget, call_with_retry, summarize
 from bot.risk import EASTERN, RiskManager
 from bot.snapshot import _data, build_snapshot, price_for_proposal
 from bot.trades import pair_round_trips
@@ -230,11 +231,43 @@ async def run(args: argparse.Namespace) -> int:
             return 0
 
         outcomes = await learning_block(client, config, snap, now)
+
+        # Measured 21% of cycles losing their decision to a transient model
+        # failure (issue #85). Without a retry the slot is simply forfeited -
+        # the next attempt is the next cron cycle, ten minutes later, which
+        # during the scoring window is a lost chance to enter or adjust.
+        budget = RetryBudget(
+            max_attempts=int(config.get("decide_max_attempts", 3)),
+            budget_sec=float(config.get("decide_retry_budget_sec", 120)),
+        )
+
+        def _on_retry(attempt, reason, delay, exc):
+            journal.log(
+                "decide_retry",
+                attempt=attempt,
+                reason=reason,
+                delay_sec=delay,
+                detail=summarize(exc),
+                model=featherless.model,
+            )
+            print(f"decision attempt {attempt} failed ({reason}); retrying in {delay:.0f}s", file=sys.stderr)
+
         try:
-            decision = await decide(snap, config, featherless, today=now.date(), mcp=client, learning=outcomes)
+            decision = await call_with_retry(
+                lambda: decide(snap, config, featherless, today=now.date(), mcp=client, learning=outcomes),
+                budget=budget,
+                on_retry=_on_retry,
+            )
         except Exception as exc:  # noqa: BLE001 - one bad model call must not crash the cycle
             detail = describe_error(exc)
-            journal.log("error", where="decide", detail=detail, model=featherless.model)
+            journal.log(
+                "error",
+                where="decide",
+                detail=detail,
+                model=featherless.model,
+                attempts=budget.max_attempts,
+                elapsed_sec=round(budget.elapsed, 1),
+            )
             print(f"decision step failed: {detail}", file=sys.stderr)
             return 1
         proposals, raw = decision.proposals, decision.raw
