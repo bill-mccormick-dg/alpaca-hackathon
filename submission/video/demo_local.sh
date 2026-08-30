@@ -10,7 +10,8 @@
 # here don't call Alpaca.
 set -u
 cd "$(dirname "$0")/../.."
-CT108=${CT108:-root@192.168.212.10}
+# Set CT108 to the bot host, e.g. CT108=root@10.0.0.5 ./demo_local.sh
+CT108=${CT108:?set CT108 to the bot host, e.g. root@host.lan}
 PAUSE=${PAUSE:-1}
 
 say()  { printf '\n\033[1;36m# %s\033[0m\n' "$*"; }

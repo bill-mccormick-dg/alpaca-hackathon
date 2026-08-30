@@ -11,7 +11,11 @@ const config = {
   url: 'http://localhost:3000',
   baseUrl: '/',
   onBrokenLinks: 'warn',
-  markdown: { format: 'md', hooks: { onBrokenMarkdownLinks: 'warn' } }, // plain CommonMark, so GitHub-flavoured docs render unchanged
+  // format 'md' keeps this plain CommonMark, so GitHub-flavoured docs render
+  // unchanged. mermaid needs BOTH the flag here AND the theme below - with only
+  // one of the two, fences render as plain code blocks and nothing warns you.
+  markdown: { format: 'md', mermaid: true, hooks: { onBrokenMarkdownLinks: 'warn' } },
+  themes: ['@docusaurus/theme-mermaid'],
 
   presets: [
     [

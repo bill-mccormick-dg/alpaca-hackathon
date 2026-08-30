@@ -11,6 +11,7 @@ Jinja2 is an Ansible dependency, not one of this project's four, and the whole
 suite stays runnable with `python -m unittest` and no extra install."""
 
 import re
+import sys
 import unittest
 from pathlib import Path
 
@@ -137,6 +138,58 @@ class PushNotificationTemplateTest(unittest.TestCase):
         self.assertEqual(len(push_section), 2, "push section marker missing")
         for event in ("order_rejected", "dry_run"):
             self.assertNotIn(event, push_section[1])
+
+
+class DiagramsAreInSyncTest(unittest.TestCase):
+    """The slide deck carries pre-rendered SVG, not live mermaid.
+
+    Runtime mermaid in the deck would make the PDF export race a JS render pass,
+    and a slide that looks right in a browser but exports blank shows up only in
+    the artifact that goes to judges. The cost of pre-rendering is that the SVG
+    can fall behind its source, so the deck records a hash of the mermaid it was
+    rendered from and this compares it against the fence.
+
+    Deliberately a hash comparison rather than a re-render: CI has neither Chrome
+    nor a reason to reach a CDN."""
+
+    def setUp(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+        import render_diagrams
+
+        self.rd = render_diagrams
+        self.sources = render_diagrams.diagrams()
+
+    def test_the_source_document_actually_has_diagrams(self):
+        self.assertIn("runtime", self.sources)
+        self.assertIn("infra", self.sources)
+
+    def test_deck_svg_matches_the_mermaid_it_was_rendered_from(self):
+        recorded = self.rd.deck_hashes(self.rd.DECK.read_text())
+
+        for name, src in self.sources.items():
+            self.assertIn(name, recorded, f"deck has no rendered {name} diagram")
+            self.assertEqual(
+                recorded[name], self.rd.source_hash(src),
+                f"{name} diagram is stale - run: python scripts/render_diagrams.py",
+            )
+
+    def test_deck_carries_real_svg_not_an_empty_placeholder(self):
+        deck = self.rd.DECK.read_text()
+
+        for name in self.sources:
+            block = deck.split(f"<!-- diagram:{name} -->", 1)[1].split(f"<!-- /diagram:{name} -->", 1)[0]
+            self.assertIn("<svg", block, f"{name}: no SVG in the deck")
+            self.assertNotIn("Syntax error", block, f"{name}: mermaid error graphic was injected")
+            self.assertGreater(len(block), 2000, f"{name}: SVG suspiciously small")
+
+    def test_readme_diagram_is_synced_from_the_same_source(self):
+        """The README shows the runtime diagram too; it is generated, not a copy."""
+        readme = self.rd.README.read_text()
+        block = readme.split(f"<!-- diagram:{self.rd.README_DIAGRAM} -->", 1)[1]
+        block = block.split(f"<!-- /diagram:{self.rd.README_DIAGRAM} -->", 1)[0]
+
+        self.assertIn(self.sources[self.rd.README_DIAGRAM], block,
+                      "README diagram differs from docs/architecture.md - run the render script")
 
 
 if __name__ == "__main__":

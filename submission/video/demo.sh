@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The screen-recorded part of the video, as a runnable script (issue #23).
 # Run on CT 108 during market hours in a 1600x900 terminal, font >= 16pt:
-#   ssh root@192.168.212.10 'cd /opt/alpaca-hackathon && bash submission/video/demo.sh'
+#   ssh root@<the-bot-host> 'cd /opt/alpaca-hackathon && bash submission/video/demo.sh'
 # It runs the real commands against the TEST account (never the official
 # one), prints a caption before each, and pauses for narration (Enter).
 # Use `PAUSE=0` to run through without stopping when rehearsing.

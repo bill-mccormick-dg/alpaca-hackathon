@@ -38,7 +38,7 @@ one before expiry. **The model never touches an order.**
 
 ## Where things run
 
-- **CT 108** (`192.168.212.10`, Proxmox LXC): cron runs both accounts every
+- **CT 108** (a Proxmox LXC on our own hardware): cron runs both accounts every
   10 minutes in market hours, the end-of-day flatten at 14:50 CT and the
   review at 15:05 CT. A self-hosted GitHub Actions runner on the same host
   deploys every merge to `main` within a minute or two.

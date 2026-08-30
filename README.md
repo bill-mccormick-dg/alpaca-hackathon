@@ -77,6 +77,55 @@ differ here, both hackathon requirements:
 
 Paper-only throughout — no live-trading code path exists.
 
+<!-- diagram:runtime -->
+<!-- synced from docs/architecture.md by scripts/render_diagrams.py -->
+```mermaid
+flowchart LR
+  cron([cron<br/>every 10 min]) --> gates
+
+  subgraph pre [deterministic code]
+    direction TB
+    gates{"gates<br/>halt files · market open<br/>trading window · account identity"} --> snap["snapshot<br/><small>bot/snapshot.py</small>"]
+    snap --> exits{"exits due?<br/><small>bot/exits.py</small><br/>expiry · stop · take-profit"}
+  end
+
+  subgraph llm [the model — proposes only]
+    direction TB
+    decide["bot/decide.py<br/>prompt + 4 read-only research tools"] --> props["JSON proposals"]
+  end
+
+  subgraph post [deterministic code]
+    direction TB
+    funnel["place_proposal()<br/><b>the only order path</b>"] --> gate{"check_order()<br/>rejects, never clamps"}
+  end
+
+  exits -- "sell proposals" --> funnel
+  exits -- "none due" --> decide
+  props --> funnel
+  gate -- "approved" --> mcp
+  gate -- "rejected + the rule" --> jrnl
+
+  snap -.-> mcp
+  snap -. "prior, never traded" .-> kalshi[(Kalshi)]
+  decide -.-> feath[(Featherless.ai)]
+  decide -. "research tools<br/>never place orders" .-> mcp
+
+  mcp[(Alpaca MCP<br/>paper only)] --> jrnl[("journal.jsonl<br/>one record per event")]
+  jrnl --> ha["MQTT → Home Assistant"]
+  jrnl --> rpt["status · trade_report<br/>eod_review · mail_report"]
+
+  flat["flatten.py<br/>cancel + close"] -. "bypasses the gate:<br/>only ever reduces exposure" .-> mcp
+
+  classDef model fill:#2a1f3d,stroke:#a78bfa,color:#e6edf3
+  classDef danger stroke:#e3b341,stroke-width:2px
+  class decide,props model
+  class funnel,gate danger
+```
+<!-- /diagram:runtime -->
+
+Everything outside the model's box is deterministic code. Full walk-through, plus
+the infrastructure and CI/CD picture, in [docs/architecture.md](docs/architecture.md).
+
 ## Setup
 
 1. ~~Create an Alpaca paper trading account, $100,000 balance~~ — done

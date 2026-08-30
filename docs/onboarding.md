@@ -98,3 +98,17 @@ that talks to Alpaca or Featherless is wrapped so a fake can stand in (see
 - Never leave root-owned `__pycache__` inside `/opt/alpaca-hackathon` on CT 108
   (it breaks the deploy rsync). Use `PYTHONDONTWRITEBYTECODE=1` when running
   things there by hand; cron already does.
+
+## If the architecture diagrams show as code blocks
+
+`docs-site` renders mermaid through `@docusaurus/theme-mermaid`, which lives in
+`package.json` - and `package.json` is baked into the image, not bind-mounted.
+So after pulling a change that touches it:
+
+```bash
+docker compose build docs && docker compose up docs
+```
+
+Editing `docusaurus.config.js` alone hot-reloads (it *is* mounted) and then fails
+at runtime because the package is missing from the image. On GitHub the same
+fences render natively with no build step at all.
