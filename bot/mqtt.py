@@ -79,13 +79,19 @@ def configure(config: dict, account: str) -> dict:
     is true AND a host is known (config or MQTT_HOST)."""
     global _settings
     cfg = config.get("mqtt") or {}
-    host = os.environ.get("MQTT_HOST") or cfg.get("host")
+    # Precedence: real env vars, then the account's credentials file, then
+    # config. The middle step is what makes this work under cron, which
+    # inherits essentially no environment - see credentials.load_mqtt_env.
+    from bot.credentials import load_mqtt_env
+
+    env = {**load_mqtt_env(account), **{k: v for k, v in os.environ.items() if k.startswith("MQTT_") and v}}
+    host = env.get("MQTT_HOST") or cfg.get("host")
     _settings = {
         "enabled": bool(cfg.get("enabled")) and bool(host),
         "host": host,
-        "port": int(os.environ.get("MQTT_PORT") or cfg.get("port") or 1883),
-        "username": os.environ.get("MQTT_USERNAME") or cfg.get("username"),
-        "password": os.environ.get("MQTT_PASSWORD"),
+        "port": int(env.get("MQTT_PORT") or cfg.get("port") or 1883),
+        "username": env.get("MQTT_USERNAME") or cfg.get("username"),
+        "password": env.get("MQTT_PASSWORD"),
         "prefix": str(cfg.get("topic_prefix") or DEFAULT_PREFIX).strip("/"),
         "account": account,
         "timeout": float(cfg.get("timeout_sec") or 2.0),

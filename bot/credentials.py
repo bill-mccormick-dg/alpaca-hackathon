@@ -24,6 +24,11 @@ REQUIRED_KEYS = (
     "FEATHERLESS_API_KEY",
 )
 
+# Optional, and resolved from the same files as the required keys above -
+# see load_mqtt_env(). Their absence disables the MQTT side channel rather
+# than failing anything.
+MQTT_KEYS = ("MQTT_HOST", "MQTT_PORT", "MQTT_USERNAME", "MQTT_PASSWORD")
+
 # Matches homenetwork/ansible/roles/alpaca-hackathon/templates/*.env.j2
 PRODUCTION_CREDENTIALS_DIR = Path("/root/.config/alpaca-hackathon")
 OFFICIAL = "official"
@@ -95,3 +100,41 @@ def load_credentials(account: str = "test") -> dict:
             f"Missing credentials for account={account!r}: {', '.join(missing)}. Checked {', '.join(checked)}."
         )
     return values
+
+
+def load_mqtt_env(account: str = "test") -> dict:
+    """Broker settings for the MQTT side channel, from the SAME file chain
+    as load_credentials (the deployed credentials file already carries
+    them alongside the API keys).
+
+    This exists because cron is the thing that actually runs the bot, and
+    a cron job inherits almost no environment - only what /etc/cron.d sets
+    (PATH, PYTHONDONTWRITEBYTECODE). load_credentials returns the four
+    REQUIRED_KEYS as a dict and never exports anything, so bot/mqtt.py's
+    os.environ lookup found no MQTT_HOST under cron and silently disabled
+    itself: every scheduled cycle traded correctly and published nothing.
+    Verified live with `env -i` before this was added.
+
+    Optional by design: returns whatever it finds and never raises. No
+    broker configured must stay a no-op, not an error - the side channel
+    may never break a trading cycle."""
+    try:
+        validate_account(account)
+    except ValueError:
+        return {}
+    found = {k: os.environ[k] for k in MQTT_KEYS if os.environ.get(k)}
+    candidates = [credentials_file(account)]
+    if account != OFFICIAL:
+        candidates += [DOTENV_FILE.with_name(f".env.{account}"), DOTENV_FILE]
+    for path in candidates:
+        if len(found) == len(MQTT_KEYS):
+            break
+        try:
+            if path.exists():
+                parsed = _parse_env_file(path)
+                for key in MQTT_KEYS:
+                    if key not in found and parsed.get(key):
+                        found[key] = parsed[key]
+        except OSError:
+            continue
+    return found

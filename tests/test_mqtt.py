@@ -1,10 +1,12 @@
 import json
 import os
 import re
+import tempfile
 import unittest
+from pathlib import Path
 from unittest import mock
 
-from bot import mqtt
+from bot import credentials, mqtt
 
 
 class Capture:
@@ -127,6 +129,52 @@ class EntityIdDerivationTest(unittest.TestCase):
         for account in ("official", "test"):
             name = mqtt.device_block(account)["name"]
             self.assertEqual(self.slugify(name), f"{mqtt.ENTITY_PREFIX}_{account}")
+
+
+class CronEnvironmentTest(unittest.TestCase):
+    """Regression: cron is what actually runs the bot, and it inherits
+    almost no environment. bot/mqtt.py used to read MQTT_HOST straight
+    from os.environ, so every scheduled cycle silently disabled the side
+    channel - it traded fine and published nothing. Settings must resolve
+    from the account's credentials file too."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.creds = Path(self.tmp.name)
+        p = mock.patch.object(credentials, "PRODUCTION_CREDENTIALS_DIR", self.creds)
+        p.start()
+        self.addCleanup(p.stop)
+        self.addCleanup(lambda: mqtt.configure({}, "test"))
+
+    def write(self, account, body):
+        credentials.credentials_file(account).write_text(body)
+
+    def test_broker_resolves_from_the_credentials_file_with_an_empty_env(self):
+        self.write("official", "ALPACA_API_KEY=k\nMQTT_HOST=broker.local\nMQTT_PORT=1884\nMQTT_USERNAME=u\nMQTT_PASSWORD=p\n")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            s = mqtt.configure({"mqtt": {"enabled": True}}, "official")
+        self.assertTrue(mqtt.enabled())
+        self.assertEqual((s["host"], s["port"], s["username"]), ("broker.local", 1884, "u"))
+
+    def test_real_env_vars_still_win_over_the_file(self):
+        self.write("official", "MQTT_HOST=from-file\n")
+        with mock.patch.dict(os.environ, {"MQTT_HOST": "from-env"}, clear=True):
+            s = mqtt.configure({"mqtt": {"enabled": True}}, "official")
+        self.assertEqual(s["host"], "from-env")
+
+    def test_no_broker_anywhere_stays_a_silent_no_op(self):
+        with mock.patch.dict(os.environ, {}, clear=True):
+            mqtt.configure({"mqtt": {"enabled": True}}, "official")
+        self.assertFalse(mqtt.enabled())
+        self.assertFalse(mqtt.publish("t", "x"))
+
+    def test_each_account_reads_its_own_credentials_file(self):
+        self.write("official", "MQTT_HOST=official-broker\n")
+        self.write("test", "MQTT_HOST=test-broker\n")
+        with mock.patch.dict(os.environ, {}, clear=True):
+            self.assertEqual(mqtt.configure({"mqtt": {"enabled": True}}, "official")["host"], "official-broker")
+            self.assertEqual(mqtt.configure({"mqtt": {"enabled": True}}, "test")["host"], "test-broker")
 
 
 if __name__ == "__main__":
