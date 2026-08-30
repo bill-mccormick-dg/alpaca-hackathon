@@ -281,6 +281,48 @@ def publish_discovery(client, prefix: str) -> None:
         client.publish(topic, json.dumps(payload), retain=True)
 
 
+def source_fingerprint() -> tuple:
+    """mtime+size of every source file this process's behaviour depends on."""
+    paths = [Path(__file__), Path(flatten.__file__), *sorted((REPO_ROOT / "bot").glob("*.py"))]
+    out = []
+    for p in paths:
+        try:
+            st = p.stat()
+            out.append((str(p), st.st_mtime_ns, st.st_size))
+        except OSError:
+            out.append((str(p), None, None))
+    return tuple(out)
+
+
+def watch_source_and_exit(interval: float = 10.0, _fingerprint=None) -> None:
+    """Exit when the deployed source changes, so systemd (Restart=always)
+    brings the bridge back on the new code.
+
+    The CI runner rsyncs into /opt/alpaca-hackathon but cannot restart a
+    system unit - it runs unprivileged and CT 108 has no sudo - so without
+    this a deploy leaves the OLD bridge running indefinitely. That is not
+    hypothetical: it silently invalidated a live test during development,
+    where a restart landed one second before the rsync and the "new"
+    behaviour was simply the old code.
+
+    Never exits mid-command: a HALT in flight owns a flatten that must
+    finish and publish its settled state first."""
+    baseline = _fingerprint() if _fingerprint else source_fingerprint()
+    reader = _fingerprint or source_fingerprint
+    while True:
+        time.sleep(interval)
+        if reader() == baseline:
+            continue
+        with _inflight_lock:
+            busy = bool(_inflight)
+        if busy:
+            continue  # let the command finish; we'll catch the change next pass
+        print("[bridge] source changed on disk - exiting so systemd restarts on the new code", flush=True)
+        # os._exit, not sys.exit: this runs on a daemon thread, where
+        # SystemExit would only unwind this thread and leave the bridge up.
+        os._exit(0)
+
+
 def begin_command(account: str) -> bool:
     """Mark an account as having a command in flight. False if one already
     is - the caller should refuse rather than run two flattens at once.
@@ -446,6 +488,7 @@ def main() -> int:
             time.sleep(HALT_POLL_SEC)
 
     threading.Thread(target=halt_heartbeat, daemon=True, name="halt-heartbeat").start()
+    threading.Thread(target=watch_source_and_exit, daemon=True, name="source-watch").start()
     client.loop_forever()
     return 0
 
