@@ -14,19 +14,62 @@ an open-source one on **Featherless.ai** instead of the Claude CLI.
 
 ## One cycle
 
-`run_cycle.py`, from cron every 10 minutes in market hours:
+`run_cycle.py`, from cron every 10 minutes in market hours. The model occupies
+exactly one box, and it emits proposals - never orders.
 
+<!-- diagram:runtime -->
+```mermaid
+flowchart LR
+  cron([cron<br/>every 10 min]) --> gates
+
+  subgraph pre [deterministic code]
+    direction TB
+    gates{"gates<br/>halt files · market open<br/>trading window · account identity"} --> snap["snapshot<br/><small>bot/snapshot.py</small>"]
+    snap --> exits{"exits due?<br/><small>bot/exits.py</small><br/>expiry · stop · take-profit"}
+  end
+
+  subgraph llm [the model — proposes only]
+    direction TB
+    decide["bot/decide.py<br/>prompt + 4 read-only research tools"] --> props["JSON proposals"]
+  end
+
+  subgraph post [deterministic code]
+    direction TB
+    funnel["place_proposal()<br/><b>the only order path</b>"] --> gate{"check_order()<br/>rejects, never clamps"}
+  end
+
+  exits -- "sell proposals" --> funnel
+  exits -- "none due" --> decide
+  props --> funnel
+  gate -- "approved" --> mcp
+  gate -- "rejected + the rule" --> jrnl
+
+  snap -.-> mcp
+  snap -. "prior, never traded" .-> kalshi[(Kalshi)]
+  decide -.-> feath[(Featherless.ai)]
+  decide -. "research tools<br/>never place orders" .-> mcp
+
+  mcp[(Alpaca MCP<br/>paper only)] --> jrnl[("journal.jsonl<br/>one record per event")]
+  jrnl --> ha["MQTT → Home Assistant"]
+  jrnl --> rpt["status · trade_report<br/>eod_review · mail_report"]
+
+  flat["flatten.py<br/>cancel + close"] -. "bypasses the gate:<br/>only ever reduces exposure" .-> mcp
+
+  classDef model fill:#2a1f3d,stroke:#a78bfa,color:#e6edf3
+  classDef danger stroke:#e3b341,stroke-width:2px
+  class decide,props model
+  class funnel,gate danger
 ```
-gates          halt files? official window? market open? trading window?
-snapshot       account, positions, clock, option chains -> derived Greeks, (Kalshi prior)
-exits          expiry / stop-loss / take-profit  -> sell proposals -> execute; cycle ends if any fired
-final day?     no new entries on/after final_flatten_date
-learning       RECENT OUTCOMES block from fills + journal (challenger)
-decide         prompt -> model (optionally: bounded research tool loop) -> JSON proposals
-risk gate      every proposal through check_order(); rejected ones journaled with the rule
-execute        our code calls place_stock_order / place_option_order via MCP
-journal        cycle_start, config, decision, tool_call, order_*, cycle_end
-```
+
+Reading it: everything outside the purple box is deterministic code. The model
+receives the snapshot and may call four read-only research tools; it returns a
+JSON array of proposals. Both the model's proposals *and* the code's own exit
+sells go through the same `place_proposal()` → `check_order()` funnel.
+
+The one exception is drawn deliberately: `flatten.py` cancels orders and closes
+positions without passing `check_order()`, because it only ever *reduces*
+exposure ([`bot/flatten.py`](https://github.com/bill-mccormick-dg/alpaca-hackathon/blob/main/bot/flatten.py)).
+A diagram claiming every write goes through the gate would be wrong.
 
 ## Modules
 
@@ -67,11 +110,56 @@ Entrypoints: `run_cycle.py`, `flatten.py`, `status.py`, `override.py`,
 
 ## Infrastructure
 
+The bot runs on our own hardware - a Proxmox LXC ("CT 108"), not a laptop -
+and deploys itself from a runner living on that same container.
+
+<!-- diagram:infra -->
+```mermaid
+flowchart LR
+  dev["developer<br/>branch → PR"] --> ci
+
+  subgraph github [GitHub]
+    direction TB
+    ci["CI · ubuntu-latest<br/>ruff + unittest"] --> merge(["squash-merge<br/>to main"])
+    merge --> skip{"paths-ignore?"}
+    skip -- "docs · submission<br/>ansible · tests" --> nodep["no deploy"]
+    skip -- "code" --> freeze{"freeze<br/>Mon–Fri<br/>08:20–15:15 CT"}
+    freeze -- "trading code,<br/>market open" --> fail["hard fail<br/>red X on main"]
+  end
+
+  freeze == "otherwise" ==> runner
+
+  subgraph ct [CT 108 · Proxmox LXC]
+    direction TB
+    runner["self-hosted runner<br/>outbound only"] == "rsync --delete" ==> app["/opt/alpaca-hackathon"]
+    cron["cron · CT<br/>*/10 8-14 cycles<br/>14:50 flatten · 15:05 review<br/>hourly report"] --> app
+    app --- creds[["credentials 0600<br/>root only"]]
+    bridge["mqtt_bridge<br/>the one inbound<br/>control path"] --> app
+  end
+
+  vault[("homenetwork<br/>ansible-vault")] --> ans["Ansible<br/>from a workstation,<br/>never CI"]
+  ans --> ct
+  local["local dev<br/>secrets.yaml"] -. "cannot hold the<br/>judged account" .-> app
+
+  app --> alp[(Alpaca MCP)]
+  app --> fea[(Featherless)]
+  app --> mq["MQTT →<br/>Home Assistant"]
+  mq --> bridge
+  app --> mail["Postfix → relay CT<br/>→ email"]
+
+  classDef stop stroke:#d73a4a,stroke-width:2px
+  classDef safe stroke:#4fb39c
+  class fail,freeze stop
+  class creds,vault safe
+```
+
 - **CT 108** (Proxmox LXC, Debian 12): venv + cron, credentials only readable
   by root, `logs/` owned by the runner user. Provisioned by Terraform +
   Ansible in a separate private repo (`homenetwork`), disclosed in the README.
 - **CI/CD**: GitHub Actions lint+test on every PR; a **self-hosted runner on
   CT 108** rsyncs `main` into `/opt/alpaca-hackathon` on every merge (a
-  sanity check refuses to sync an incomplete checkout).
+  sanity check refuses to sync an incomplete checkout). The freeze is a hard
+  failure rather than a skip: a red X on `main` is the signal that `main` and
+  the trading host have diverged.
 - **Local**: `docker compose` - the bot image (tests, dry runs, your own paper
   account) and this docs site.

@@ -50,6 +50,23 @@ print(html.unescape(m.group(1)) if m else "could not measure")
 PY
 ```
 
+## Diagrams
+
+The deck's two architecture diagrams are **pre-rendered SVG**, injected from the
+mermaid fences in `docs/architecture.md`. Runtime mermaid is deliberately not used
+here: the export is a headless-Chrome print, and a JS render pass it can race
+produces a slide that looks right in a browser and exports blank.
+
+After editing a fence:
+
+```sh
+python scripts/render_diagrams.py          # re-render + inject + sync the README
+python scripts/render_diagrams.py --check  # just report staleness
+```
+
+`tests/test_dashboard.py` fails if the deck's SVG falls behind its source, so this
+cannot be silently forgotten.
+
 ## Before the final export
 
 Refresh the counts on slide 10 — they moved a lot in the last days:
