@@ -37,8 +37,15 @@ Fourteen slides, one idea each. Real screenshots over diagrams wherever a screen
     variant, each with its own config and its own paper account, against the *same live
     market*. A winner is promoted into the official config by pull request.
 12. **Home Assistant, over MQTT — fully decoupled** — `journal.log()` → fire-and-forget MQTT
-    publish → HA auto-discovery: equity, day P&L, positions, halt, last decision, plus the
-    kill switch and a read-only team view.
+    publish → HA auto-discovery. Three audiences off one feed: an operator dashboard with the
+    kill switch; a second, read-only dashboard for the team over Tailscale (no switch, button
+    or service call — HA has no per-entity permissions, so the separation must be the
+    dashboard itself); and phone push for problems only. Fills deliberately do not push — a
+    channel that fires on routine activity gets muted and takes the halt alert with it. What
+    does: halts, account-identity refusals, and a stall detector that notices no cycle has run
+    for 25 minutes in market hours, the failure a dashboard cannot show because stale values
+    look exactly like a quiet market. An hourly email carries trades + CSVs for anyone not
+    watching a screen.
 13. **Results** — equity curve Mon–Thu (from `logs/equity.jsonl`), round trips, exit mix,
     official vs challenger. An honest sentence about what didn't work.
 14. **What's next, and thanks** — promote what the challenger proved; multi-leg spreads once

@@ -170,14 +170,23 @@ $ diff config.yaml config-variants/kimi26.yaml
   <div class="flow">
     <span class="code">journal.log()</span><em>&rarr;</em>
     <span>MQTT publish (fire-and-forget)</span><em>&rarr;</em>
-    <span>HA auto-discovery: equity, day P&amp;L, positions, halt, last decision</span>
+    <span>HA auto-discovery: equity, day P&amp;L, positions, halt, last decision, trades</span>
   </div>
-  <pre>alpaca-hackathon/test/event/order_submitted   {"side":"buy","symbol":"NVDA...","qty":10,...}
-alpaca-hackathon/test/state/equity            100240.50           [retained]
-homeassistant/sensor/alpaca_test_halt/config  {"device":{"name":"AI Day Trader (test)"},...}</pre>
-  <p class="lead">No broker configured, or broker down &rarr; no-op; a publish can never delay or fail
-  a cycle. And it's two-way: <code>config/set</code> applies a runtime override through the exact
-  same validated, allowlisted path the CLI uses - expiring at the close, same as always.</p>
+  <pre>alpaca-hackathon/official/event/order_submitted  {"side":"buy","symbol":"NVDA...","qty":10,...}
+alpaca-hackathon/official/event/identity_refused {"reason":"resolved credentials for the JUDGING account"}
+alpaca-hackathon/official/state/equity           100240.50           [retained]
+homeassistant/sensor/alpaca_official_halt/config {"device":{"name":"AI Day Trader (official)"},...}</pre>
+  <p>Three audiences, one feed. <strong>Operator:</strong> a dashboard with the kill switch and
+  the tunable knobs. <strong>Team:</strong> a second, read-only dashboard - no switch, no button,
+  no service call - reachable over Tailscale, because Home Assistant has no per-entity
+  permissions, so the separation has to be the dashboard itself. <strong>Phone:</strong> push,
+  but only for problems.</p>
+  <p class="lead">Fills deliberately do <em>not</em> push - a channel that fires on routine
+  activity gets muted, and the halt alert is lost with it. What does: a halt, an account-identity
+  refusal, and a stall detector that notices no cycle has run for 25 minutes during market hours -
+  the failure a dashboard cannot show you, because stale values look exactly like a quiet market.
+  An hourly email carries the day's trades and CSVs for anyone not watching a screen. No broker,
+  or broker down &rarr; no-op: a publish can never delay or fail a cycle.</p>
 </section>
 
 <section>
