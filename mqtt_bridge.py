@@ -57,7 +57,7 @@ import flatten
 from bot import journal, mqtt, overrides
 from bot import risk as risk_module
 from bot.config import config_provenance, load_config
-from bot.credentials import validate_account
+from bot.credentials import load_mqtt_env, validate_account
 from bot.risk import EASTERN
 
 # How often to republish each account's halt state. The state is derived
@@ -319,11 +319,15 @@ def main() -> int:
 
     config = load_config(args.config)
     prefix = args.prefix or (config.get("mqtt") or {}).get("topic_prefix") or mqtt.DEFAULT_PREFIX
-    host = os.environ.get("MQTT_HOST") or (config.get("mqtt") or {}).get("host")
+    # Same resolution the bot uses (env, then the credentials file, then
+    # config), so the bridge does not silently depend on its systemd unit's
+    # EnvironmentFile being right.
+    broker = {**load_mqtt_env(DEFAULT_ACCOUNT), **{k: v for k, v in os.environ.items() if k.startswith("MQTT_") and v}}
+    host = broker.get("MQTT_HOST") or (config.get("mqtt") or {}).get("host")
     if not host:
         print("MQTT_HOST (or config.mqtt.host) is required", file=sys.stderr)
         return 2
-    port = int(os.environ.get("MQTT_PORT") or (config.get("mqtt") or {}).get("port") or 1883)
+    port = int(broker.get("MQTT_PORT") or (config.get("mqtt") or {}).get("port") or 1883)
 
     def on_message(client, userdata, msg):
         halt_account = parse_halt_topic(msg.topic)
@@ -362,8 +366,8 @@ def main() -> int:
             print(f"[bridge] {account}: refused {payload.get('key')}: {result['error']}", flush=True)
 
     client = paho.Client(paho.CallbackAPIVersion.VERSION2, client_id="alpaca-hackathon-bridge")
-    if os.environ.get("MQTT_USERNAME"):
-        client.username_pw_set(os.environ["MQTT_USERNAME"], os.environ.get("MQTT_PASSWORD"))
+    if broker.get("MQTT_USERNAME"):
+        client.username_pw_set(broker["MQTT_USERNAME"], broker.get("MQTT_PASSWORD"))
     client.on_message = on_message
     client.connect(host, port, keepalive=60)
     client.subscribe(f"{prefix}/config/set", qos=1)
