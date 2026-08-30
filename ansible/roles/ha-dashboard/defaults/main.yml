@@ -61,6 +61,32 @@ ha_automations_file: "{{ ha_config_dir }}/automations.yaml"
 # way, so the automations are useful with zero extra setup.
 ha_alert_light_entity: ""
 
+# --- Push notifications (issue #86) ------------------------------------------
+# persistent_notification.create is IN-APP ONLY: it waits until someone opens
+# Home Assistant. For a notification that reaches a phone you need a real
+# notify service from the HA Companion app, e.g. notify.mobile_app_<device>.
+# Blank leaves every automation as in-app only, so the role still works with
+# no companion app configured.
+ha_notify_service: ""
+
+# Only PROBLEMS push, and only for the judged account. Fills, exits and
+# rejections stay in-app: they are already covered by the dashboard and the
+# hourly email, and a channel that fires on routine activity is a channel
+# people mute - at which point the halt alert is lost too.
+ha_push_account: official
+
+# Stall detection: nothing has published for this long during market hours
+# means no cycle is running - cron, the host, or the venv is broken and
+# NOTHING is trading. A dashboard full of stale values looks identical to a
+# quiet market, so this is the failure that is otherwise invisible. Derived
+# from the equity sensor's last_updated, so it needs no extra publisher.
+ha_stall_minutes: 25
+# Local wall-clock on the Home Assistant host (NOT Eastern). Defaults suit a
+# Central-time instance watching a 08:30-15:00 CT session, starting after the
+# first cycle has had a chance to land.
+ha_market_open_local: "09:00:00"
+ha_market_close_local: "15:05:00"
+
 # How to make HA pick up the new config. "none" (default) does nothing -
 # reload via the UI (Developer Tools > YAML > "Automations" /
 # "All YAML configuration") or your own mechanism. Set to "docker" or

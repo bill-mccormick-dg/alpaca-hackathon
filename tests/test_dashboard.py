@@ -75,5 +75,37 @@ class OperationalDashboardStillHasTheControlsTest(unittest.TestCase):
         self.assertRegex(body, r"switch\.")
 
 
+class PushNotificationTemplateTest(unittest.TestCase):
+    """Push automations exist only when a real notify service is configured -
+    persistent_notification is in-app only and never reaches a phone (#86)."""
+
+    def setUp(self):
+        self.body = _uncommented(TEMPLATES / "automations_block.yaml.j2")
+
+    def test_push_actions_are_guarded_by_a_configured_notify_service(self):
+        self.assertIn("{% if ha_notify_service %}", self.body)
+
+    def test_the_alerts_that_matter_all_have_a_push_automation(self):
+        for event in ("manual_halt", "daily_loss_halt", "identity_refused", "identity_unverified"):
+            self.assertIn(event, self.body, f"no automation references {event}")
+
+    def test_identity_alerts_are_not_filtered_to_one_account(self):
+        """A challenger resolving to the judged account is the whole point of
+        the guard - filtering it to `official` would hide the case."""
+        self.assertIn("/+/event/identity_refused", self.body)
+
+    def test_stall_detection_reads_a_sensor_that_is_actually_published(self):
+        self.assertIn("_equity", self.body)
+        self.assertIn("equity", mqtt.STATE_SENSORS)
+
+    def test_routine_trade_events_do_not_push(self):
+        """order_submitted/rejected stay in-app; a muted channel loses the
+        halt alert with it."""
+        push_section = self.body.split("{% if ha_notify_service %}", 1)
+        self.assertEqual(len(push_section), 2, "push section marker missing")
+        for event in ("order_rejected", "dry_run"):
+            self.assertNotIn(event, push_section[1])
+
+
 if __name__ == "__main__":
     unittest.main()

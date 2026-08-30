@@ -100,6 +100,20 @@ class MqttTest(unittest.TestCase):
         self.assertTrue(eff[1])
         self.assertEqual(json.loads(eff[0])["config_hash"], "abc")
 
+    def test_identity_and_retry_events_reach_the_broker(self):
+        """These are journaled by run_cycle/flatten; if they are not in
+        EVENT_TOPICS they are silently dropped and no automation can fire on
+        them - which is exactly what happened to identity_refused (#86)."""
+        with mock.patch.dict(os.environ, {"MQTT_HOST": "b"}, clear=True):
+            mqtt.configure({"mqtt": {"enabled": True}}, "official")
+            mqtt.on_event({"event": "identity_refused", "reason": "wrong account"})
+            mqtt.on_event({"event": "identity_unverified", "reason": "no account number"})
+            mqtt.on_event({"event": "decide_retry", "attempt": 1, "reason": "http timeout"})
+        topics = [t for t, _, _ in self.cap.calls]
+
+        for event in ("identity_refused", "identity_unverified", "decide_retry"):
+            self.assertIn(f"alpaca-hackathon/official/event/{event}", topics)
+
     def test_unlisted_events_are_not_published(self):
         with mock.patch.dict(os.environ, {"MQTT_HOST": "b"}, clear=True):
             mqtt.configure({"mqtt": {"enabled": True}}, "test")

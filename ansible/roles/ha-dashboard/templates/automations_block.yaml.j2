@@ -48,3 +48,96 @@
         brightness_pct: 80
 {% endif %}
   mode: queued
+
+{% if ha_notify_service %}
+# --- Push notifications (issue #86) -------------------------------------------
+# Only problems, and (with one deliberate exception) only the judged account
+# {{ ha_push_account }}. Fills and rejections stay in-app above: a channel that
+# fires on routine activity gets muted, and then the alerts below are lost
+# with it.
+#
+# The exception is account identity, which listens on EVERY account. A
+# CHALLENGER reporting identity_refused is the catastrophic case the guard in
+# bot/identity.py exists for - credentials that resolve to the judged account
+# under another name - so it is precisely the one not to filter out.
+#
+# priority/ttl are Android Companion options that let a message through
+# battery optimisation - appropriate for "your judged account stopped
+# trading", not for "an order filled".
+
+- id: alpaca_hackathon_push_halted
+  alias: "AI Day Trader - PUSH halted"
+  description: "Managed by ansible/roles/ha-dashboard - edit the role, not this block."
+  triggers:
+    - trigger: mqtt
+      topic: "{{ ha_mqtt_topic_prefix }}/{{ ha_push_account }}/event/manual_halt"
+    - trigger: mqtt
+      topic: "{{ ha_mqtt_topic_prefix }}/{{ ha_push_account }}/event/daily_loss_halt"
+  actions:
+    - action: {{ ha_notify_service }}
+      data:
+        title: "AI Day Trader HALTED"
+        message: >-
+          {% raw %}The {{ trigger.topic.split('/')[1] }} account is halted
+          ({{ trigger.topic.split('/')[-1] }}) and is NOT trading.{% endraw %}
+        data:
+          priority: high
+          ttl: 0
+          color: "#d73a4a"
+  mode: queued
+
+- id: alpaca_hackathon_push_identity
+  alias: "AI Day Trader - PUSH account identity"
+  description: "Managed by ansible/roles/ha-dashboard - edit the role, not this block."
+  triggers:
+    - trigger: mqtt
+      topic: "{{ ha_mqtt_topic_prefix }}/+/event/identity_refused"
+    - trigger: mqtt
+      topic: "{{ ha_mqtt_topic_prefix }}/+/event/identity_unverified"
+  actions:
+    - action: {{ ha_notify_service }}
+      data:
+        title: "AI Day Trader - ACCOUNT IDENTITY"
+        message: >-
+          {% raw %}{{ trigger.topic.split('/')[1] }}: {{ trigger.payload_json.reason
+          | default('credentials do not match the account name') }}{% endraw %}
+        data:
+          priority: high
+          ttl: 0
+          color: "#d73a4a"
+  mode: queued
+
+- id: alpaca_hackathon_push_stalled
+  alias: "AI Day Trader - PUSH no cycles"
+  description: "Managed by ansible/roles/ha-dashboard - edit the role, not this block."
+  # Checked on a timer rather than triggered by an event: the whole point is
+  # that no event is arriving. Repeats while the stall persists, which is the
+  # right behaviour for an outage during a scored session.
+  triggers:
+    - trigger: time_pattern
+      minutes: "/15"
+  conditions:
+    - condition: time
+      after: "{{ ha_market_open_local }}"
+      before: "{{ ha_market_close_local }}"
+      weekday: [mon, tue, wed, thu, fri]
+    - condition: template
+      # `is not none` guards the window before the sensor has ever appeared -
+      # without it the template errors and the automation silently never runs.
+      value_template: >-
+        {% raw %}{% set s = states.sensor.{% endraw %}{{ ha_entity_prefix }}_{{ ha_push_account }}_equity{% raw %} %}
+        {{ s is not none and (now() - s.last_updated).total_seconds() > {% endraw %}{{ ha_stall_minutes * 60 }}{% raw %} }}{% endraw %}
+  actions:
+    - action: {{ ha_notify_service }}
+      data:
+        title: "AI Day Trader - NO CYCLES"
+        message: >-
+          {% raw %}No update from the {% endraw %}{{ ha_push_account }}{% raw %} account for over
+          {% endraw %}{{ ha_stall_minutes }}{% raw %} minutes during market hours - nothing is
+          trading. Check cron on CT 108.{% endraw %}
+        data:
+          priority: high
+          ttl: 0
+          color: "#d73a4a"
+  mode: single
+{% endif %}
