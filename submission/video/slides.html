@@ -149,6 +149,25 @@ model output: [{"instrument":"option","symbol":"NVDA260902P00220000","side":"buy
 </section>
 
 <section>
+  <h2>Built to be changed while it is running</h2>
+  <p>A four-day agent is mostly an <em>iteration speed</em> problem: the constraint is not writing
+  the strategy, it is changing it without breaking a live account.</p>
+  <table>
+    <tr><th>495 tests, 1.3s</th><td>every one runs with <b>no API keys and no network</b> - clone
+      and get a green suite before you have credentials</td></tr>
+    <tr><th>Only Docker needed</th><td><code>docker compose run --rm bot</code> - tests, a full
+      dry-run cycle, the docs site</td></tr>
+    <tr><th>Rehearse any time</th><td><code>--dry-run</code> prints orders instead of sending;
+      <code>--force</code> skips the market gates - a whole cycle is testable at 2am Sunday</td></tr>
+    <tr><th>Strategy changes without a deploy</th><td><code>override.py</code> - allowlisted knobs,
+      hard risk caps stay git-only, all of it expires at the close</td></tr>
+  </table>
+  <p class="lead">Six of those tests exist because something broke - a report that published on one
+  of four cycle paths, a test that passed only on a laptop. Each incident ends as a test, so the
+  suite is a list of things that can no longer happen quietly.</p>
+</section>
+
+<section>
   <h2>The daily loop</h2>
   <div class="flow">
     <span>16:05 <code>eod_review</code></span><em>&rarr;</em>
