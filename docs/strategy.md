@@ -5,6 +5,45 @@ title: Strategy
 
 # Strategy
 
+What this bot is trying to do, who decides what, and how the day ends. Read
+[Operations](operations.md) for how to run it; this page is the *why*.
+
+If you build software but do not trade options, the section below is everything
+you need to read the rest of this page. Nothing here is advice — it is a
+glossary for the terms these docs use.
+
+<details>
+<summary><b>If you don't trade options</b> — the ten terms this page assumes</summary>
+
+- **Option** — a contract to buy (**call**) or sell (**put**) 100 shares of a
+  stock at a fixed **strike** price, until it **expires**. It is a bet on
+  direction with a deadline.
+- **Premium** — the price you pay for that contract. **Going long premium** means
+  *buying* options. The alternative, *selling* them, collects premium up front
+  but exposes you to open-ended loss — which is why this bot never does it.
+- **Defined risk** — because we only ever buy, the worst case is known before
+  entry: the premium paid, and not a cent more. That single fact is what lets
+  every guardrail here be a simple absolute number.
+- **DTE** — days to expiration. A 5-DTE contract expires in five days.
+- **ATM / OTM** — at-the-money (strike ≈ current price) / out-of-the-money
+  (strike beyond it). OTM contracts cost less and need a bigger move.
+- **Delta** — roughly, how much the option moves per $1 of stock move, from 0 to
+  1. It doubles as a rough "chance this finishes in the money", so |delta| ≈ 0.4
+  is a contract that needs a real move but not a miracle.
+- **Theta** — the daily cost of time passing. Long premium pays theta every day;
+  that is the rent for defined risk.
+- **Implied volatility (IV)** — how much movement the option's price implies the
+  market expects. High IV means options are expensive.
+- **Mark** — the broker's current mid-price for a position, used to value it
+  without selling.
+- **Notional** — the position's full economic size (`contracts x 100 x price`),
+  not the premium paid. The `$5,000` cap below is notional.
+- **Assignment** — being forced to buy or sell the underlying stock because a
+  contract you *sold* was exercised. Only affects sellers, which is another
+  reason this bot only buys.
+
+</details>
+
 > **Thesis:** Buy defined-risk, short-dated options premium on the five most
 > liquid names when an open-source model sees a concrete reason; deterministic
 > code sizes every trade, stops it, and closes it before expiry — the model
@@ -35,7 +74,7 @@ minute to minute, so it does not.
 | Whether there is a reason to trade, which direction, which contract | model | `bot/decide.py` prompt → JSON proposals |
 | Whether a proposal is allowed at all | code, never negotiated | `bot/risk.py::check_order()` |
 | Sizing cap, position count, DTE window, entry cutoff | code | `bot/risk.py` |
-| Stop-loss / take-profit on premium, forced close on expiry day | code, every cycle | `bot/exits.py` (issue #32) |
+| Stop-loss / take-profit on premium, forced close on expiry day | code, every cycle | `bot/exits.py` (#32, deterministic exits) |
 | Daily-loss halt, kill switch, end-of-day handling | code | `run_cycle.py`, `flatten.py` |
 | The only order path | code | `bot/execute.py::place_proposal()` |
 
@@ -59,10 +98,25 @@ default and is treated as a good decision.
 
 ## What the code enforces regardless of the notes
 
-`config.yaml` is the source of truth; at the time of writing: whitelist
-`SPY QQQ AAPL MSFT NVDA`; max $5,000 notional per position; max 4 concurrent
-positions; max 10 contracts per order; 1–45 DTE; entries 09:45–15:15 ET, sells
-until 15:45 ET; 2% daily-loss cutoff → flatten + halt for the day.
+`config.yaml` is the source of truth, and every value there is a hard cap in
+`bot/risk.py` — the model proposes, the config decides. At the time of writing,
+with the reasoning each carries in `config.yaml`:
+
+| Limit | Value | Why |
+|---|---|---|
+| Whitelist | `SPY QQQ AAPL MSFT NVDA` | the most liquid names, so a fill is always available and the spread is narrow |
+| Notional per position | $5,000 | `contracts x 100 x price` — the position's economic size, not the premium paid |
+| Concurrent positions | 4 | keeps total exposure comprehensible at a glance |
+| Contracts per order | 10 | "a backstop against a fat-fingered or hallucinated large size, independent of the dollar cap" |
+| Expiration window | 1–45 DTE | "guards against 0-DTE gamma risk on one side, multi-month decay drag on the other" |
+| Entries | 09:45–15:15 ET | skips the opening auction's noise; stops opening new risk near the close |
+| Sells | until 15:45 ET | exits stay legal after entries stop |
+| Daily loss | 2% of start-of-day equity | breaching it flattens and halts for the day |
+
+**These are the hard caps, not the tactics.** The prompt asks for 2–14 DTE (see
+above); the *code* permits 1–45. The narrower band is a preference the model is
+told to favour, the wider one is the limit it cannot cross — so a sensible
+contract slightly outside the tactic is allowed, and a wild one is not.
 
 ## Holding period and end of day
 
@@ -72,7 +126,16 @@ multi-day holds. So the end-of-day rule is *not* "flatten everything":
 within `eod_close_dte` days; everything else is held overnight under the
 per-position stop/take-profit (`bot/exits.py`, checked every cycle before the
 model is consulted), and any contract reaching `expiry_close_dte` is
-force-closed that day regardless of P&L.
+force-closed that day regardless of profit or loss.
+
+The two keys are easy to confuse and do different jobs:
+
+| Key | Default | Who acts on it | When |
+|---|---|---|---|
+| `expiry_close_dte` | 0 | `bot/exits.py`, **every cycle** | closes a contract once it has this many days left — 0 means "expiring today" |
+| `eod_close_dte` | 1 | `flatten.py --expiring-only`, **once at 15:50 ET** | the cron backstop, in case a cycle did not run |
+
+One is the continuous rule; the other is the end-of-day safety net behind it.
 
 **The score is fixed at Thursday's close.** Per Alpaca's FAQ, the Fri Sep 4
 09:30 ET snapshot *"will look at the portfolio's total equity as of EOD
@@ -90,7 +153,7 @@ Consequences:
 
 ## What "working" looks like by Thursday
 
-A tiny sample, so diagnostics rather than verdicts (`trade_report.py`, #29):
+A tiny sample, so diagnostics rather than verdicts (`trade_report.py` — #29, round-trip attribution):
 
 - The model traded on stated reasons, and the journal shows them.
 - Rejections are rare and *sensible* (a cap, not a malformed proposal) — a
@@ -101,16 +164,16 @@ A tiny sample, so diagnostics rather than verdicts (`trade_report.py`, #29):
 
 ## Daily loop
 
-After each close: `eod_review.py` (#30) → read the digest → edit
+After each close: `eod_review.py` (#30, the end-of-day digest) → read the digest → edit
 `strategy_notes` / exits / knobs → PR → CI → deploy → the next morning runs
-the new version. Promote the test-account challenger config (#34) when it
+the new version. Promote the test-account challenger config (#34, the two-account A/B) when it
 wins convincingly.
 
 ## Runtime overrides (intraday, no deploy)
 
 `config.yaml` in git is the base. `logs/overrides.yaml` on the CT — written
 only through `bot/overrides.py` (the `override.py` CLI today, the MQTT bridge
-in #14) — wins for these keys: `model`, `temperature`, `max_tokens`,
+in #14, the Home Assistant integration) — wins for these keys: `model`, `temperature`, `max_tokens`,
 `strategy_notes`, `research_contracts_per_underlying`,
 `option_strike_band_pct`, `stop_loss_pct`, `take_profit_pct`,
 `eod_close_dte`. Hard risk caps are deliberately not on the list.
@@ -125,7 +188,7 @@ Why the two layers never fight:
   `strategy_notes` hash + first line, and the active overrides with their
   expiry and origin. `status.py` shows the same.
 
-**MQTT contract** (implemented by #14, defined here so both sides agree):
+**MQTT contract** (implemented by #14, the Home Assistant integration; defined here so both sides agree):
 
 - Subscribe `alpaca-hackathon/config/set`, JSON `{"key": ..., "value": ...,
   "until": "<ISO, optional>"}` → `set_override(key, value, until,
@@ -136,7 +199,7 @@ Why the two layers never fight:
   journal event. Home Assistant always sees what the bot is actually
   running, which is the whole "no fight" guarantee.
 
-**Kill switch + dashboard knobs** (mqtt_bridge.py, #14's "two-way control"
+**Kill switch + dashboard knobs** (mqtt_bridge.py — #14's "two-way control"
 stretch goal): the bridge also subscribes to
 `alpaca-hackathon/<account>/command/halt` — payload must be exactly `HALT`
 (matches the HA button's `payload_press`) — and reuses `flatten.py`'s own
