@@ -142,3 +142,14 @@ final_flatten_date: "2026-09-04"
 trade_start: "09:45"
 trade_end: "15:45"
 last_entry: "15:15"
+
+# MQTT side channel for Home Assistant (bot/mqtt.py, issue #14). Publish
+# MQTT discovery, and the effective config is republished each cycle.
+# Broker host/credentials come from the env (MQTT_HOST, MQTT_PORT,
+# MQTT_USERNAME, MQTT_PASSWORD) - the same files that carry the API keys.
+# No host, or broker down -> no-op. Inbound config/set is mqtt_bridge.py.
+mqtt:
+  enabled: true
+  topic_prefix: alpaca-hackathon
+  ha_discovery: true
+  timeout_sec: 2
