@@ -109,6 +109,16 @@ temperature: 0.2
 max_tokens: 800 # a JSON array of a few proposals, not prose
 request_timeout_sec: 60
 
+# Transient model failures cost a whole cycle otherwise - the next attempt is
+# the next cron slot, 10 minutes later (issue #85: 21% of early cycles lost a
+# decision this way, split between upstream no_response and a 200 carrying an
+# empty completion). Retries are bounded by BOTH a count and a wall clock, and
+# the budget must stay far inside the 10-minute cadence so a retrying cycle can
+# never overlap the next one. Auth/quota failures and truncated output are
+# never retried - see bot/retry.py.
+decide_max_attempts: 3
+decide_retry_budget_sec: 120
+
 # Deterministic exits (bot/exits.py), checked at the top of every cycle
 # BEFORE the model is consulted. Percentages are of the entry premium (or
 # entry price for stock): -40 means "close if the position has lost 40% of
