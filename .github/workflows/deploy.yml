@@ -5,23 +5,51 @@ name: Deploy
 # the ghdeploy user) — the runner connects outbound to GitHub to pick up
 # jobs, so no inbound network path, VPN, or SSH hop is needed at all.
 # "Deploying" is syncing the checkout the runner already has into
-# /opt/alpaca-hackathon, the stable path future cron/venv provisioning will
-# use (see homenetwork/ansible/roles/alpaca-hackathon).
+# /opt/alpaca-hackathon, the stable path cron and the venv use
+# (see homenetwork/ansible/roles/alpaca-hackathon).
 #
 # Security note: self-hosted runners on public repos are only safe when
 # nothing untrusted can trigger them. This workflow deliberately triggers
 # only on `push` to `main` (never pull_request/pull_request_target), so only
 # someone with write access to this repo can run code on the runner.
+#
+# COMPETITION SAFETY (two independent layers):
+#
+#   1. paths-ignore below — docs, the docs site, the submission folder, the
+#      ansible role (deployed from a workstation, never by CI) and the tests
+#      cannot start a deploy at all. Writing up the project during the
+#      scoring week must never touch the trading host.
+#
+#   2. The freeze gate in the job — while the market is open, a push that
+#      changes TRADING code refuses to sync, so live behaviour can never
+#      change mid-session and a cycle can never start against a half-synced
+#      tree. Outside market hours it deploys normally, which is the whole
+#      point of the daily loop (EOD review -> config change -> PR -> deploy
+#      before the next open).
 
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "docs/**"
+      - "docs-site/**"
+      - "submission/**"
+      - "ansible/**"
+      - "tests/**"
+      - "**/*.md"
+      - LICENSE
+      - .gitignore
 
 jobs:
   deploy:
     runs-on: [self-hosted, alpaca-hackathon]
     steps:
       - uses: actions/checkout@v4
+        with:
+          # Full history: the freeze gate diffs the push's whole range, and a
+          # shallow clone cannot resolve `before` on a multi-commit push. The
+          # repo is small enough that this costs nothing.
+          fetch-depth: 0
 
       - name: Sanity-check the checkout before syncing
         # The network this runner sits on has intermittently flaky DNS
@@ -36,6 +64,59 @@ jobs:
             echo "::error::Checkout looks incomplete ($count .py files found) — refusing to sync"
             exit 1
           fi
+
+      - name: Refuse to change trading code while the market is open
+        # TRADING code is anything a live cycle executes or reads:
+        # run_cycle/flatten/eod_review, the bot package, the configs, the
+        # pinned dependencies. mqtt_bridge.py counts too - it cannot change
+        # strategy, but it holds the kill switch and calls flatten.run(),
+        # so a bad bridge deploy can cancel orders and close positions.
+        #
+        # The window is cron's own: */10 8-14 Mon-Fri plus the 14:50 flatten
+        # and 15:05 review, in CT (see homenetwork alpaca_hackathon_*
+        # schedules). Blocking 08:20-15:15 CT covers every scheduled run
+        # with a margin either side, so a sync can never land mid-cycle.
+        #
+        # Deliberately a hard failure, not a skip: a red X on main is the
+        # signal that main and the trading host have diverged. Re-run this
+        # job after the close to apply it.
+        env:
+          # The push's real range, so a multi-commit push is judged on all of
+          # it, not just the tip. Zeroes on a branch's first push; the
+          # fallbacks below cover that and any missing history.
+          BEFORE: ${{ github.event.before }}
+        run: |
+          changed=""
+          case "$BEFORE" in
+            ""|0000000000000000000000000000000000000000) ;;
+            *) changed=$(git -C "$GITHUB_WORKSPACE" diff --name-only "$BEFORE" HEAD 2>/dev/null || true) ;;
+          esac
+          [ -z "$changed" ] && changed=$(git -C "$GITHUB_WORKSPACE" diff --name-only HEAD~1 HEAD 2>/dev/null || true)
+          [ -z "$changed" ] && changed=$(git -C "$GITHUB_WORKSPACE" show --pretty= --name-only HEAD)
+          # An empty list here would silently mean "nothing to freeze", so
+          # fail closed instead: we cannot prove the push is docs-only.
+          if [ -z "$changed" ]; then
+            echo "::error::Could not determine which files changed - refusing to deploy rather than assume it is safe."
+            exit 1
+          fi
+          trading=$(echo "$changed" | grep -E \
+            '^(run_cycle|flatten|eod_review|mqtt_bridge)\.py$|^bot/|^config(-test)?\.yaml$|^requirements\.txt$' \
+            || true)
+          if [ -z "$trading" ]; then
+            echo "no trading-code changes in this push - deploy is safe at any time"
+            echo "changed: $(echo "$changed" | tr '\n' ' ')"
+            exit 0
+          fi
+          now_min=$(( 10#$(TZ=America/Chicago date +%H) * 60 + 10#$(TZ=America/Chicago date +%M) ))
+          dow=$(TZ=America/Chicago date +%u)   # 1=Mon .. 7=Sun
+          if [ "$dow" -le 5 ] && [ "$now_min" -ge 500 ] && [ "$now_min" -le 915 ]; then
+            echo "::error::Refusing to deploy trading code while the market is open."
+            echo "Changed trading files:"; echo "$trading" | sed 's/^/  /'
+            echo "Now $(TZ=America/Chicago date '+%a %H:%M %Z'); the freeze is Mon-Fri 08:20-15:15 CT."
+            echo "Re-run this job after the close, or merge outside market hours."
+            exit 1
+          fi
+          echo "trading code changed, but the market is closed ($(TZ=America/Chicago date '+%a %H:%M %Z')) - proceeding"
 
       - name: Sync to /opt/alpaca-hackathon
         run: |
@@ -56,15 +137,22 @@ jobs:
         # The runner is unprivileged, so homenetwork's alpaca-hackathon role
         # grants it exactly one sudo rule - `systemctl restart` on this one
         # unit, nothing else (roles/alpaca-hackathon, tag runner-sudoers).
-        # If that rule is absent the restart is skipped, not failed:
-        # mqtt_bridge.py also watches its own source and exits for systemd
-        # to bring it back, so the bridge still converges within ~25s. Never
-        # fails the deploy either way - the sync succeeded and the whole
-        # trading path is already current.
+        #
+        # A blunt `systemctl restart` would kill a kill-switch flatten
+        # mid-flight, leaving positions half-closed and no halt file
+        # written. So if a command is in flight we do NOT restart: the
+        # bridge's own source watcher exits once it goes idle, and systemd
+        # brings it back. Same fallback when the sudo rule is missing.
+        # Never fails the deploy - the sync succeeded and the trading path
+        # is already current.
         run: |
           unit=alpaca-hackathon-mqtt-bridge
           if ! systemctl is-active --quiet "$unit" 2>/dev/null; then
             echo "::notice::$unit is not running here - nothing to reload"
+            exit 0
+          fi
+          if ls /opt/alpaca-hackathon/logs/HALT* >/dev/null 2>&1; then
+            echo "::warning::a halt is active - not restarting $unit from CI. Its source watcher will restart it once idle."
             exit 0
           fi
           if sudo -n /usr/bin/systemctl restart "$unit" 2>/dev/null; then
