@@ -128,6 +128,14 @@ class DiscoveryPayloadsTest(unittest.TestCase):
                 topic = f"homeassistant/{domain}/alpaca_{account}_{key}/config"
                 self.assertIn(topic, self.payloads, f"missing {topic}")
 
+    def test_every_entity_disables_has_entity_name_so_object_id_is_honored(self):
+        # HA defaults has_entity_name true, which (with a device block
+        # present) derives entity_id from the device+entity name instead of
+        # object_id - confirmed live to produce unpredictable/truncated ids.
+        for topic, payload in self.payloads.items():
+            self.assertIs(payload["has_entity_name"], False, topic)
+            self.assertEqual(payload["object_id"], payload["unique_id"], topic)
+
     def test_number_knob_uses_config_set_with_a_command_template(self):
         payload = self.payloads["homeassistant/number/alpaca_test_temperature/config"]
         self.assertEqual(payload["command_topic"], "alpaca-hackathon/config/set")
