@@ -30,12 +30,12 @@ Fifteen slides, one idea each. Real screenshots over diagrams wherever a screens
    deploys a merge in ~a minute; a freeze window refuses to sync trading code 08:20–15:15 CT
    so live behaviour cannot change mid-session. The account-identity guard keys on the
    broker's own account number rather than a CLI string.
-10. **Built to be changed while it is running** — the development story: 496 tests in 1.3s
+10. **Built to be changed while it is running** — the development story: 506 tests in 1.3s
     that need no API keys and no network; the whole thing runnable with nothing installed but
     Docker; `--dry-run`/`--force` making a full cycle testable at 2am; runtime overrides that
     change strategy without a deploy. Six of those tests exist because something broke.
 11. **The daily loop** — eod_review → override (expires at close) or config PR → CI →
-    self-hosted runner deploys before the open. 75 PRs, 496 tests, every merge deployed.
+    self-hosted runner deploys before the open. 82 PRs, 506 tests, every merge deployed.
 12. **The experiment farm — real A/B, not a backtest** — four days is not a backtest and the
     free feed has no historical options data, so a docker-compose farm runs one container per
     variant, each with its own config and its own paper account, against the *same live
@@ -60,7 +60,7 @@ Speaker notes: keep each slide ≤ 40 seconds in the video's pitch section; slid
 
 ## Counts to refresh before export
 
-`75 PRs, 496 tests` appears on slide 11 of `video/slides.html`. Re-check both before
+`82 PRs, 506 tests` appears on slide 11 of `video/slides.html`. Re-check both before
 exporting — they moved substantially in the final days:
 
 ```
