@@ -84,9 +84,11 @@ Paper-only throughout — no live-trading code path exists.
 2. Featherless AI credits ($25/participant) optionally available for open-source
    model inference — see event page for claiming instructions
 3. `pip install -r requirements.txt`
-4. `cp .env.example .env` and fill in `ALPACA_API_KEY` / `ALPACA_SECRET_KEY`
-   (from the **`hackathon_test`** account — never the official one locally)
-   and `FEATHERLESS_API_KEY`
+4. `cp secrets.example.yaml secrets.yaml` and fill in `accounts.test.api_key` /
+   `.secret_key` (from the **`hackathon_test`** account — never the official one
+   locally) and the shared `featherless_api_key`. See
+   [Where the keys come from](#where-the-keys-come-from) — the template names the
+   exact vault variable behind each field.
 5. Test: `python -m unittest discover -s tests` (credential-free unit tests),
    then `python scripts/verify_connection.py` (live check against the test
    account by default; `--account official` for the judging account, which
@@ -96,6 +98,20 @@ Paper-only throughout — no live-trading code path exists.
    gates skipped). Drop `--dry-run` to submit paper orders on the test account.
    `--account official` is refused outright before Mon Aug 31 9:30 AM ET
    unless `--dry-run` — hardcoded in `run_cycle.py`, not configurable.
+
+### Where the keys come from
+
+| You are | Where your keys come from |
+|---|---|
+| **Maintainer** | The private `homenetwork` repo's ansible vault. `cd ~/homenetwork/ansible && ansible-vault view vault.yml`, then copy by hand into `secrets.yaml`: `vault_alpaca_hackathon_test_api_key` → `accounts.test.api_key`, `vault_alpaca_hackathon_test_secret_key` → `accounts.test.secret_key`, `vault_alpaca_hackathon_featherless_api_key` → `featherless_api_key`. Deliberately copy-by-hand — no script here reads the vault. |
+| **Teammate** | Your **own** Alpaca paper account (alpaca.markets → paper → generate keys), plus your own or the shared Featherless key. You never need the vault. |
+| **The official account** | Nothing local, ever. Its keys exist only on CT 108 at `/root/.config/alpaca-hackathon/credentials.env`, deployed by homenetwork's `alpaca-hackathon` ansible role. |
+
+> **Not these.** In that same vault, the bare `vault_alpaca_api_key` /
+> `vault_alpaca_secret_key` (no `hackathon_`) — and the `pass alpaca/Key`
+> password-store entry, verified to hold the identical value — belong to a
+> **different project**, CT 107's `alpaca-trader`. They authenticate perfectly
+> well and quietly trade the wrong account.
 
 ## Documentation
 
@@ -112,9 +128,9 @@ paper account — `run_cycle.py` refuses `--account official` before the
 competition window regardless, and the official keys never leave CT 108.
 
 ```
-cp .env.example .env            # your TEST paper account keys + Featherless key
+cp secrets.example.yaml secrets.yaml   # your TEST paper keys + Featherless key
 docker compose build
-docker compose run --rm bot -m unittest discover -s tests   # 219 credential-free tests
+docker compose run --rm bot -m unittest discover -s tests   # 384 credential-free tests
 docker compose run --rm bot                                 # = run_cycle.py --dry-run --force
 docker compose run --rm bot run_cycle.py --dry-run --force --verbose
 docker compose run --rm bot status.py
@@ -123,7 +139,7 @@ docker compose run --rm bot override.py show
 
 `./logs` (journal, halt files, overrides) and `config.yaml` are bind-mounted,
 so state persists across runs and config edits need no rebuild. Drop
-`--dry-run` to place real paper orders **on the test account in `.env`**.
+`--dry-run` to place real paper orders **on the test account in `secrets.yaml`**.
 
 ## Team onboarding
 
@@ -134,8 +150,8 @@ so state persists across runs and config edits need no rebuild. Drop
    work before changing anything.
 3. Workflow: small feature branch off `main` → push → PR → CI must be green →
    squash-merge → the self-hosted runner deploys `main` to CT 108 within a
-   minute or two. Never commit to `main` directly; never commit `.env`,
-   `logs/`, or credentials.
+   minute or two. Never commit to `main` directly; never commit `secrets.yaml`,
+   `.env`, `logs/`, or credentials.
 4. Read [docs/strategy.md](docs/strategy.md) (what the bot is trying to do and
    which decisions belong to code vs the model) and the **Operations** section
    below (how to run, stop, and read it). Open work is on the issue tracker,
@@ -149,8 +165,10 @@ Every entrypoint takes `--account <name>` (default **test**) and `--config <file
 (default `config.yaml`).
 
 **Named accounts** (A/B, issue #34): `official` reads `credentials.env` on CT 108
-and *only* there; any other name reads `credentials-<name>.env` on CT 108, else
-a local `.env.<name>`, else `.env`. Each account gets its own journal
+and *only* there; any other name reads `credentials-<name>.env` on CT 108, else its
+`accounts.<name>` block in a local `secrets.yaml`, else the legacy `.env.<name>` /
+`.env`. `secrets.yaml` must not contain an `official` entry — the loader rejects the
+whole file if it does, for every account. Each account gets its own journal
 (`logs/journal-<name>.jsonl`; the official account keeps `logs/journal.jsonl`),
 its own overrides file, and its own halt files — a challenger can never stop
 the official account, whether by breaching its daily-loss cutoff or by having
@@ -207,6 +225,24 @@ and `flatten.py` refuse `--account official` before Mon Aug 31 9:30 AM ET unless
 `ALPACA_PAPER_TRADE=true` is hardcoded in `bot/alpaca_mcp.py` and no live-trading
 code path exists. The model never gets an order-placing tool; every order funnels
 through `bot/execute.py::place_proposal()` → `bot/risk.py::check_order()`.
+
+**Account-identity guard** (`bot/identity.py`): every gate above keys on the
+`--account` *string*. This one keys on the account number the broker reports, so
+the judging account's keys reaching a non-official name — a mis-copied
+`secrets.yaml` block, a stray `ALPACA_API_KEY`, the wrong vault variable — is
+caught rather than quietly traded while every log line says "test". Checked at
+cycle start in `run_cycle.py`, before flattening in `flatten.py`, and again inside
+`check_order()` so no order path can miss it. The policy is asymmetric on purpose:
+
+- A **non-official** run is fail-closed. If the number is the judging account, or
+  can't be read at all, it refuses — a skipped challenger cycle costs nothing.
+- The **official** run refuses a confirmed mismatch, but if the number simply
+  can't be read it warns and proceeds: a parsing regression must not take the
+  judged account out of the market. The warning is printed and journalled
+  (`identity_unverified`); refusals journal `identity_refused`.
+
+`flatten.py --halt` still writes its halt file even when identity is refused —
+the break-glass kill switch must work regardless of what the credentials point at.
 
 ## License
 

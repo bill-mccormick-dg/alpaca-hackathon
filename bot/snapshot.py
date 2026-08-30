@@ -82,7 +82,14 @@ async def build_account_state(client: AlpacaMCPClient) -> AccountState:
         start_of_day_equity=float(data["last_equity"]),
         cash=float(data["cash"]),
         positions=await build_positions(client),
+        account_number=data.get("account_number"),
     )
+
+
+async def fetch_account_number(client: AlpacaMCPClient) -> str | None:
+    """Just the broker's account number, for entrypoints that verify identity
+    without building a whole snapshot (flatten.py). None if it isn't there."""
+    return _data(await client.call_tool("get_account_info")).get("account_number")
 
 
 async def get_underlying_price(client: AlpacaMCPClient, symbol: str) -> float:
@@ -172,6 +179,7 @@ def _serialize_account(account: AccountState) -> dict:
         "equity": account.equity,
         "start_of_day_equity": account.start_of_day_equity,
         "cash": account.cash,
+        "account_number": account.account_number,
         "positions": [
             {
                 "symbol": p.symbol,

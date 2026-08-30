@@ -145,6 +145,13 @@ class CronEnvironmentTest(unittest.TestCase):
         p = mock.patch.object(credentials, "PRODUCTION_CREDENTIALS_DIR", self.creds)
         p.start()
         self.addCleanup(p.stop)
+        # Non-official accounts also resolve from secrets.yaml and .env, so those
+        # have to point somewhere empty too - otherwise these assertions quietly
+        # depend on whether the developer's own secrets.yaml has an mqtt: block.
+        for attr, name in (("SECRETS_FILE", "secrets.yaml"), ("DOTENV_FILE", ".env")):
+            patch = mock.patch.object(credentials, attr, self.creds / name)
+            patch.start()
+            self.addCleanup(patch.stop)
         self.addCleanup(lambda: mqtt.configure({}, "test"))
 
     def write(self, account, body):

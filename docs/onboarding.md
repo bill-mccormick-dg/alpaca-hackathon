@@ -13,15 +13,20 @@ Ten minutes from clone to a dry-run cycle. Nothing to install but Docker.
   until submission).
 - Create **your own** Alpaca paper trading account at
   [alpaca.markets](https://alpaca.markets) and generate API keys. Never use or
-  ask for the official account's keys; they live only on CT 108.
+  ask for the official account's keys; they live only on CT 108, and
+  `secrets.yaml` rejects an `official` entry outright.
 - Featherless API key: use the shared team key (ask), or your own.
+- Maintainer only: the `test` account's real keys come from the private
+  `homenetwork` repo's ansible vault (`ansible-vault view vault.yml`, vars
+  `vault_alpaca_hackathon_test_*`). Not the bare `vault_alpaca_*` vars and not
+  `pass alpaca/Key` — those are CT 107's alpaca-trader, a different project.
 
 ## 2. Run it
 
 ```bash
 git clone git@github.com:bill-mccormick-dg/alpaca-hackathon.git
 cd alpaca-hackathon
-cp .env.example .env            # your TEST paper keys + FEATHERLESS_API_KEY
+cp secrets.example.yaml secrets.yaml   # your TEST paper keys + Featherless key
 docker compose build
 docker compose run --rm bot -m unittest discover -s tests     # ~300 tests, no keys needed
 docker compose run --rm bot                                   # = run_cycle.py --dry-run --force
@@ -33,7 +38,7 @@ docker compose up docs                                        # this site at htt
 `--dry-run` prints what would be ordered and sends nothing. `--force` skips
 the market-open / trading-window / entry-cutoff gates so you can rehearse on a
 weekend. Drop `--dry-run` to place real paper orders **on the account in your
-`.env`**.
+`secrets.yaml`**.
 
 Everything writes to `./logs` (journal, halt files, overrides), which is
 bind-mounted and git-ignored. `config.yaml` is bind-mounted read-only, so config
@@ -60,7 +65,8 @@ gh pr merge --squash --delete-branch   # only when green
 
 Merging to `main` deploys to CT 108 automatically (self-hosted runner,
 rsync into `/opt/alpaca-hackathon`, `logs/` and `.venv/` untouched). Never
-commit to `main` directly; never commit `.env`, `logs/`, or credentials.
+commit to `main` directly; never commit `secrets.yaml`, `.env`, `logs/`, or
+credentials.
 
 Conventions: `ruff` is the linter (config in `pyproject.toml`); tests are
 `unittest`, credential-free, and live in `tests/test_<module>.py`; anything

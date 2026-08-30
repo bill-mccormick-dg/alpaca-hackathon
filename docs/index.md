@@ -33,7 +33,7 @@ one before expiry. **The model never touches an order.**
 |---|---|---|
 | Purpose | Judged. Equity as of EOD Thu Sep 3 is the score | Ours. Development and the A/B challenger |
 | Config | `config.yaml` - Kimi-K2-Instruct, research/prior/learning **off** | `config-test.yaml` - Qwen3.8 with research tools, Kalshi prior, learning loop **on** |
-| Keys | Only on CT 108 (`/root/.config/alpaca-hackathon/credentials.env`) | Your own `.env` locally; CT 108 has its copy |
+| Keys | Only on CT 108 (`/root/.config/alpaca-hackathon/credentials.env`) | Your own `secrets.yaml` locally; CT 108 has its copy |
 | Rule | No orders before Mon Aug 31 9:30 ET (enforced in code) | Trade freely |
 
 ## Where things run

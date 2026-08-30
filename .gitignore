@@ -1,7 +1,11 @@
 .venv/
 __pycache__/
 *.pyc
+# Local dev credentials. secrets.yaml is the canonical one; .env/.env.<name>
+# are the legacy form, still read by bot/credentials.py for back-compat.
+secrets.yaml
 .env
+.env.*
 .DS_Store
 logs/
 docs-site/node_modules/

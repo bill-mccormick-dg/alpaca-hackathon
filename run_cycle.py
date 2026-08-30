@@ -25,6 +25,7 @@ from bot.decide import decide
 from bot.exits import check_exits
 from bot.featherless import DEFAULT_MODEL, FeatherlessClient
 from bot.flatten import flatten_all
+from bot.identity import check_account_identity
 from bot.models import AccountState, Position
 from bot.orders import INCOMPLETE
 from bot.risk import EASTERN, RiskManager
@@ -95,6 +96,7 @@ def account_from_snapshot(snap: dict) -> AccountState:
         start_of_day_equity=acct["start_of_day_equity"],
         cash=acct["cash"],
         positions=positions,
+        account_number=acct.get("account_number"),
     )
 
 
@@ -139,6 +141,24 @@ async def run(args: argparse.Namespace) -> int:
                 return 0
 
         acct = account_from_snapshot(snap)
+
+        # Every guard above this line keys on the --account STRING. This one
+        # keys on what the broker says the account actually is, and it runs
+        # before a single proposal is generated.
+        allowed, identity_message = check_account_identity(args.account, acct.account_number)
+        if identity_message:
+            print(identity_message, file=sys.stderr)
+        if not allowed:
+            journal.log(
+                "identity_refused",
+                account=args.account,
+                account_number=acct.account_number,
+                reason=identity_message,
+            )
+            return 2
+        if identity_message:
+            journal.log("identity_unverified", account=args.account, reason=identity_message)
+
         day_pnl = acct.equity - acct.start_of_day_equity
         print(
             f"equity {acct.equity:.2f}  cash {acct.cash:.2f}  day P&L {day_pnl:+.2f}  "

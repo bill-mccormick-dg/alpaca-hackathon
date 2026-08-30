@@ -26,8 +26,16 @@ locally). Every entrypoint takes `--account <name>` (default **test**) and
 ## Named accounts
 
 `official` reads `credentials.env` on CT 108 and *only* there. Any other name
-reads `credentials-<name>.env` on CT 108, else a local `.env.<name>`, else
-`.env`. Each account has its own journal (`logs/journal-<name>.jsonl`; the
+reads `credentials-<name>.env` on CT 108, else its `accounts.<name>` block in a
+local `secrets.yaml`, else the legacy `.env.<name>` / `.env`. Two guards keep the
+judging account out of local files: `official` never consults `secrets.yaml` at
+all, and an `official` entry *in* `secrets.yaml` is rejected for every account,
+so pasting its keys there fails loudly instead of trading it under another name.
+A third guard is independent of the file format: `bot/identity.py` compares the
+account number the broker reports against the account name you asked for, and
+refuses a challenger run that resolves to the judging account (or whose account
+number can't be read at all). The official account warns rather than refuses when
+the number is unreadable, so a parsing regression can't halt the judged account. Each account has its own journal (`logs/journal-<name>.jsonl`; the
 official account keeps `logs/journal.jsonl`), its own overrides file and its
 own daily-loss halt file - a challenger breaching its cutoff never halts the
 official account.
@@ -153,7 +161,8 @@ Managed by Ansible in the `homenetwork` repo; logs in `logs/cron-<account>.log`.
 
 The bot is stateless per cycle, so scaling *experiments* is trivial: one
 container per variant, each with its own config (`config-variants/<name>.yaml`),
-its own **test** paper account (`.env.<name>`) and its own journal. `farm.py`
+its own **test** paper account (an `accounts.<name>` block in `secrets.yaml`)
+and its own journal. `farm.py`
 does inside the container what cron does on CT 108 - a cycle every 10 minutes
 in market hours, the expiring-only flatten at 15:50 ET, `eod_review` at
 16:05 ET - by running the same entrypoints as subprocesses.
@@ -165,7 +174,7 @@ docker compose run --rm bot farm.py --account kimi26 --config config-variants/ki
 ```
 
 Add a variant: a `config-variants/<name>.yaml` (copy an existing one),
-a `.env.<name>` with that account's keys, and a `bot-<name>` service in
+an `accounts.<name>` block in `secrets.yaml`, and a `bot-<name>` service in
 `docker-compose.yml`. Compare variants with `eod_review.py --account <name>`
 or `trade_report.py --account <name>`; promote a winner by copying its values
 into `config.yaml` via a PR. Nothing here can touch the official account.

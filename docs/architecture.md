@@ -33,7 +33,8 @@ journal        cycle_start, config, decision, tool_call, order_*, cycle_end
 | Module | Role | Notes |
 |---|---|---|
 | `bot/alpaca_mcp.py` | Thin async client around `alpaca-mcp-server` (stdio) | `ALPACA_PAPER_TRADE=true` hardcoded; retries transient connect errors only |
-| `bot/credentials.py` | Named accounts -> credential files | `official` never reads a local `.env` |
+| `bot/credentials.py` | Named accounts -> credential files | `official` never reads `secrets.yaml` or `.env` |
+| `bot/identity.py` | Broker account number vs the `--account` name | The only guard keyed on the credentials, not the CLI string; fail-closed for challengers, warn-and-proceed for `official` |
 | `bot/config.py` + `bot/overrides.py` | `config.yaml` + runtime overrides (allowlisted, expire 16:00 ET) | `config_provenance()` is what the journal records each cycle |
 | `bot/snapshot.py` | Account/positions, option chains in a strike band around spot, clock | `feed=indicative` always (no OPRA) |
 | `bot/greeks.py` | Black-Scholes IV solve (bisection) + delta/gamma/theta/vega | Alpaca's free feed has none |
