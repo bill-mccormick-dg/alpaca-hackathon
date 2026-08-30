@@ -81,7 +81,7 @@ REPO_ROOT = Path(__file__).resolve().parent
 # account not listed here still works for config/set (apply_message resolves
 # its config from the bridge's own --config); it just won't have dashboard
 # controls until added to both lists.
-KNOWN_ACCOUNTS = ("official", "test")
+KNOWN_ACCOUNTS = ("official", "test", "mixed")
 ACCOUNT_CONFIG_PATH: dict[str, str] = {"test": str(REPO_ROOT / "config-test.yaml")}
 
 # Numeric knobs to expose as HA `number` entities: bot/overrides.py's

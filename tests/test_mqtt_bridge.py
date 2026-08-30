@@ -212,20 +212,40 @@ class HaltStateTest(HaltFilesTestBase):
     effect of cycle events, but a halted account runs no cycles - so the
     sensor froze at its last value. It is now derived from the halt files."""
 
+    def _all(self, state):
+        """Expected mapping with every known account at `state`.
+
+        Derived from KNOWN_ACCOUNTS rather than spelled out: these once
+        hardcoded {"official", "test"} and broke the moment a third variant
+        was added, which said nothing about the behaviour under test."""
+        return dict.fromkeys(mqtt_bridge.KNOWN_ACCOUNTS, state)
+
     def test_reports_none_when_nothing_is_halted(self):
-        self.assertEqual(self.states(), {"official": "none", "test": "none"})
+        self.assertEqual(self.states(), self._all("none"))
         self.assertTrue(all(retain for _, _, retain in self.published))
 
     def test_tracks_a_halt_file_created_outside_the_bridge(self):
         (self.logs / "HALT_manual_test").write_text("x")
-        self.assertEqual(self.states(), {"official": "none", "test": "manual"})
+
+        self.assertEqual(self.states(), {**self._all("none"), "test": "manual"})
+
         # ...and notices when it is removed on the host, with no cycle needed.
         (self.logs / "HALT_manual_test").unlink()
-        self.assertEqual(self.states(), {"official": "none", "test": "none"})
+        self.assertEqual(self.states(), self._all("none"))
+
+    def test_a_per_account_halt_does_not_leak_to_the_others(self):
+        """The whole point of per-account halt files: a challenger breaching
+        its cutoff must never stop the judged account."""
+        (self.logs / "HALT_manual_test").write_text("x")
+
+        states = self.states()
+
+        self.assertEqual(states["test"], "manual")
+        self.assertTrue(all(v == "none" for k, v in states.items() if k != "test"))
 
     def test_global_halt_shows_on_every_account(self):
         (self.logs / "HALT").write_text("x")
-        self.assertEqual(self.states(), {"official": "global", "test": "global"})
+        self.assertEqual(self.states(), self._all("global"))
 
 
 class TransientStateTest(HaltFilesTestBase):
@@ -275,8 +295,16 @@ class TransientStateTest(HaltFilesTestBase):
         # Heartbeat runs mid-flatten: the halt file is not written yet, so a
         # naive resync would publish "none" and flick the tile back to green.
         states = mqtt_bridge.publish_halt_state(self.client, "alpaca-hackathon", None)
+
+        # The invariant: the in-flight account is skipped, every other known
+        # account is still resynced. Listing the others by name made this break
+        # when a third variant was added, which told us nothing.
         self.assertNotIn("test", states)
-        self.assertEqual(self.published_halt(), [("alpaca-hackathon/official/state/halt", "none")])
+        others = [a for a in mqtt_bridge.KNOWN_ACCOUNTS if a != "test"]
+        self.assertEqual(
+            self.published_halt(),
+            [(f"alpaca-hackathon/{a}/state/halt", "none") for a in others],
+        )
 
     def test_force_resolves_the_transient_state_to_the_truth(self):
         mqtt_bridge.begin_command("test")
