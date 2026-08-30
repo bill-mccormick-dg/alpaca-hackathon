@@ -106,6 +106,38 @@ Inbound, both handled by `mqtt_bridge.py` (long-running):
 HA automation ideas still open: a light that goes green on `order_submitted`
 and red on `daily_loss_halt` / `manual_halt`.
 
+## Deploy safety during the scoring week
+
+`.github/workflows/deploy.yml` has two independent guards so writing up the
+project can never disturb the trading host:
+
+1. **`paths-ignore`** - a push touching only `docs/`, `docs-site/`,
+   `submission/`, `ansible/`, `tests/`, any `*.md`, `LICENSE` or
+   `.gitignore` does not start a deploy at all. (The ansible role is applied
+   from a workstation, never by CI.)
+2. **A market-hours freeze** - a push that changes **trading code** is
+   refused Mon-Fri 08:20-15:15 CT, covering every scheduled cron run with a
+   margin, so live behaviour cannot change mid-session and no cycle can
+   start against a half-synced tree. Outside those hours it deploys
+   normally, which is what the daily loop needs (EOD review -> config change
+   -> PR -> deploy before the next open).
+
+Trading code is `run_cycle.py`, `flatten.py`, `eod_review.py`,
+`mqtt_bridge.py`, anything under `bot/`, `config.yaml`, `config-test.yaml`
+and `requirements.txt`. `mqtt_bridge.py` is on that list deliberately: it
+cannot change strategy, but it holds the kill switch and calls
+`flatten.run()`, so a bad bridge deploy can cancel orders and close
+positions.
+
+The freeze is a hard job failure, not a skip - a red X on `main` is the
+signal that `main` and the trading host have diverged. Re-run the job after
+the close to apply it. If the changed-file list cannot be determined, it
+fails closed rather than assuming the push is docs-only.
+
+The bridge restart is also skipped while any halt file exists, so CI cannot
+kill a kill-switch flatten mid-flight; `mqtt_bridge.py`'s own source watcher
+restarts it once idle.
+
 ## CT 108 cron (Central time)
 
 ```
