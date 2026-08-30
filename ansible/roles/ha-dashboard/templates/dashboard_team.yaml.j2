@@ -65,14 +65,12 @@ views:
 {% for acct in ha_accounts %}
           - type: markdown
             title: {{ acct.label }} — trades today
-            content: >-
-              {% raw %}{{ state_attr('sensor.{% endraw %}{{ ha_entity_prefix }}_{{ acct.id }}_recent_trades{% raw %}', 'markdown') or '_Waiting for the first cycle._' }}{% endraw %}
+            content: "{% raw %}{{ state_attr('sensor.{% endraw %}{{ ha_entity_prefix }}_{{ acct.id }}_recent_trades{% raw %}', 'markdown') or '_Waiting for the first cycle._' }}{% endraw %}"
 {% endfor %}
 
           # --- end-of-day digest -----------------------------------------
 {% for acct in ha_accounts %}
           - type: markdown
             title: {{ acct.label }} — end of day
-            content: >-
-              {% raw %}{{ state_attr('sensor.{% endraw %}{{ ha_entity_prefix }}_{{ acct.id }}_eod_summary{% raw %}', 'markdown') or '_No digest yet today._' }}{% endraw %}
+            content: "{% raw %}{{ state_attr('sensor.{% endraw %}{{ ha_entity_prefix }}_{{ acct.id }}_eod_summary{% raw %}', 'markdown') or '_No digest yet today._' }}{% endraw %}"
 {% endfor %}

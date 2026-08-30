@@ -8,9 +8,7 @@
     - action: persistent_notification.create
       data:
         title: "AI Day Trader - order submitted"
-        message: >-
-          {% raw %}{{ trigger.payload_json.side }} {{ trigger.payload_json.qty }}
-          {{ trigger.payload_json.symbol }} - {{ trigger.payload_json.reason }}{% endraw %}
+        message: "{% raw %}{{ trigger.payload_json.side }} {{ trigger.payload_json.qty }} {{ trigger.payload_json.symbol }} - {{ trigger.payload_json.reason }}{% endraw %}"
 
 {% if ha_alert_light_entity %}
     - action: light.turn_on
@@ -34,10 +32,7 @@
     - action: persistent_notification.create
       data:
         title: "AI Day Trader - HALTED"
-        message: >-
-          {% raw %}{{ trigger.topic.split('/')[1] }} account halted
-          ({{ trigger.topic.split('/')[-1] }}). Check status.py; clear it by
-          deleting that account's halt file under logs/.{% endraw %}
+        message: "{% raw %}{{ trigger.topic.split('/')[1] }} account halted ({{ trigger.topic.split('/')[-1] }}). Check status.py; clear it by deleting that account's halt file under logs/.{% endraw %}"
 
 {% if ha_alert_light_entity %}
     - action: light.turn_on
@@ -61,9 +56,12 @@
 # bot/identity.py exists for - credentials that resolve to the judged account
 # under another name - so it is precisely the one not to filter out.
 #
-# priority/ttl are Android Companion options that let a message through
-# battery optimisation - appropriate for "your judged account stopped
-# trading", not for "an order filled".
+# NOTE ON FORMATTING: no line below may END with a Jinja tag. Ansible renders
+# templates with trim_blocks=True, which swallows the newline straight after
+# `%}` - which silently glued `data:` onto the end of a message string and left
+# one automation with no actions at all. Keep templated values on a single
+# quoted line so the line ends with `"`, and tests/test_dashboard.py enforces
+# it.
 
 - id: alpaca_hackathon_push_halted
   alias: "AI Day Trader - PUSH halted"
@@ -77,9 +75,7 @@
     - action: {{ ha_notify_service }}
       data:
         title: "AI Day Trader HALTED"
-        message: >-
-          {% raw %}The {{ trigger.topic.split('/')[1] }} account is halted
-          ({{ trigger.topic.split('/')[-1] }}) and is NOT trading.{% endraw %}
+        message: "{% raw %}The {{ trigger.topic.split('/')[1] }} account is halted ({{ trigger.topic.split('/')[-1] }}) and is NOT trading.{% endraw %}"
         data:
           priority: high
           ttl: 0
@@ -98,9 +94,7 @@
     - action: {{ ha_notify_service }}
       data:
         title: "AI Day Trader - ACCOUNT IDENTITY"
-        message: >-
-          {% raw %}{{ trigger.topic.split('/')[1] }}: {{ trigger.payload_json.reason
-          | default('credentials do not match the account name') }}{% endraw %}
+        message: "{% raw %}{{ trigger.topic.split('/')[1] }}: {{ trigger.payload_json.reason | default('credentials do not match the account name') }}{% endraw %}"
         data:
           priority: high
           ttl: 0
@@ -121,20 +115,15 @@
       after: "{{ ha_market_open_local }}"
       before: "{{ ha_market_close_local }}"
       weekday: [mon, tue, wed, thu, fri]
+    # `is not none` guards the window before the sensor has ever appeared -
+    # without it the template errors and the automation silently never runs.
     - condition: template
-      # `is not none` guards the window before the sensor has ever appeared -
-      # without it the template errors and the automation silently never runs.
-      value_template: >-
-        {% raw %}{% set s = states.sensor.{% endraw %}{{ ha_entity_prefix }}_{{ ha_push_account }}_equity{% raw %} %}
-        {{ s is not none and (now() - s.last_updated).total_seconds() > {% endraw %}{{ ha_stall_minutes * 60 }}{% raw %} }}{% endraw %}
+      value_template: "{% raw %}{% set s = states.sensor.{% endraw %}{{ ha_entity_prefix }}_{{ ha_push_account }}_equity{% raw %} %}{{ s is not none and (now() - s.last_updated).total_seconds() > {% endraw %}{{ ha_stall_minutes * 60 }}{% raw %} }}{% endraw %}"
   actions:
     - action: {{ ha_notify_service }}
       data:
         title: "AI Day Trader - NO CYCLES"
-        message: >-
-          {% raw %}No update from the {% endraw %}{{ ha_push_account }}{% raw %} account for over
-          {% endraw %}{{ ha_stall_minutes }}{% raw %} minutes during market hours - nothing is
-          trading. Check cron on CT 108.{% endraw %}
+        message: "No update from the {{ ha_push_account }} account for over {{ ha_stall_minutes }} minutes during market hours - nothing is trading. Check cron on CT 108."
         data:
           priority: high
           ttl: 0

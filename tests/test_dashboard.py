@@ -75,6 +75,38 @@ class OperationalDashboardStillHasTheControlsTest(unittest.TestCase):
         self.assertRegex(body, r"switch\.")
 
 
+class TrimBlocksSafetyTest(unittest.TestCase):
+    """Ansible renders templates with trim_blocks=True, which swallows the
+    newline immediately after a `%}` tag.
+
+    A line of YAML that ENDS with a Jinja tag therefore gets glued to the next
+    line. That silently folded `data:` into a notification message and left one
+    automation with no actions at all - valid YAML, wrong structure, no error
+    anywhere. It slipped through because it was validated with a plain Jinja
+    environment, which does not trim.
+
+    Standalone control-flow lines ({% if %} / {% endif %} alone on a line) are
+    exempt: swallowing their newline is the entire point of trim_blocks."""
+
+    TEMPLATES_TO_CHECK = ("automations_block.yaml.j2", "dashboard.yaml.j2", "dashboard_team.yaml.j2")
+
+    def test_no_value_line_ends_with_a_jinja_tag(self):
+        for name in self.TEMPLATES_TO_CHECK:
+            path = TEMPLATES / name
+            if not path.is_file():
+                continue
+            for n, line in enumerate(path.read_text().splitlines(), 1):
+                stripped = line.strip()
+                if not stripped.endswith("%}"):
+                    continue
+                standalone = stripped.startswith("{%") and stripped.count("{%") == 1
+                self.assertTrue(
+                    standalone,
+                    f"{name}:{n} ends with a Jinja tag; trim_blocks will glue the next "
+                    f"line onto it. Put the value on one quoted line instead:\n  {stripped}",
+                )
+
+
 class PushNotificationTemplateTest(unittest.TestCase):
     """Push automations exist only when a real notify service is configured -
     persistent_notification is in-app only and never reaches a phone (#86)."""
