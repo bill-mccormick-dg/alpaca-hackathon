@@ -72,15 +72,28 @@ class RiskManager:
         suffix = f"_{self.account}" if self.account else ""
         return self.logs_dir / f"HALT{suffix}_{day.isoformat()}"
 
-    def halted(self, now: datetime | None = None) -> str | None:
+    def halt_state(self, now: datetime | None = None) -> str:
+        """Compact token for the halt sensor / kill-switch switch state,
+        derived from the files themselves rather than from journal events -
+        a halted account runs no cycles, so an event-driven state would
+        freeze at its last value until a human both cleared the halt AND a
+        cycle happened to run. "none" when trading is allowed."""
         if self.global_halt_file().exists():
-            return "global halt"
+            return "global"
         if self.manual_halt_file().exists():
-            return "manual halt"
+            return "manual"
         day = (now or datetime.now(EASTERN)).date()
         if self.daily_halt_file(day).exists():
-            return "daily loss halt"
-        return None
+            return "daily_loss"
+        return "none"
+
+    def halted(self, now: datetime | None = None) -> str | None:
+        return {
+            "none": None,
+            "global": "global halt",
+            "manual": "manual halt",
+            "daily_loss": "daily loss halt",
+        }[self.halt_state(now)]
 
     def in_trading_window(self, now: datetime | None = None) -> bool:
         now = now or datetime.now(EASTERN)
