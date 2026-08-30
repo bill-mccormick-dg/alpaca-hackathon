@@ -1,0 +1,199 @@
+# Farm variant "mixed": the official config in every respect EXCEPT the
+# instrument framing - stock and options are peers here, chosen per idea,
+# rather than options-first with stock as a minor complement.
+#
+# Deliberately a single-variable change against config.yaml: same model, same
+# caps, same research/learning settings. Anything else that differs is a bug -
+# diff against config.yaml when in doubt.
+#
+#   docker compose --profile farm up bot-mixed
+#   farm.py --account mixed --config config-variants/mixed.yaml
+#
+# Needs its own TEST paper account: an `accounts.mixed` block in secrets.yaml
+# (local) or credentials-mixed.env (CT 108). Journal: logs/journal-mixed.jsonl
+#
+# config.yaml — risk/guardrail parameters for the hackathon bot.
+#
+# Every value here is a hard cap enforced in code (bot/risk.py) — the model
+# proposes, this decides. Mirrors alpaca-trader's config.yaml philosophy:
+# the LLM never gets to negotiate a limit, only stay inside one.
+
+# Underlyings this bot is allowed to trade (stock or options on). Option
+# proposals are checked against the underlying, not the OCC option symbol.
+underlyings:
+  - SPY
+  - QQQ
+  - AAPL
+  - MSFT
+  - NVDA
+
+# Per-position notional cap, in dollars (stock market value, or option
+# contracts * qty * 100 * price).
+max_position_usd: 5000
+
+# Max concurrent open positions (stock + option combined).
+max_positions: 4
+
+# Max option contracts in a single order — a backstop against a fat-fingered
+# or hallucinated large size, independent of the dollar cap above.
+max_contracts_per_order: 10
+
+# Daily loss cutoff, % of start-of-day equity. Breaching this should flatten
+# and halt for the day (flatten logic: a later step).
+daily_loss_cutoff_pct: 2.0
+
+# Options expiration window — reject proposals for contracts outside this
+# range. Guards against 0-DTE gamma risk on one side, multi-month decay drag
+# on the other.
+min_days_to_expiration: 1
+max_days_to_expiration: 45
+
+# Option chain research is bounded to strikes within this fraction of the
+# current underlying price (e.g. 0.08 = strikes from -8% to +8% of spot).
+# Without a strike bound, get_option_chain returns whatever the API's
+# default page happens to contain sorted by strike ascending, which (for a
+# high-priced underlying like SPY) is deep out-of-the-money calls only, no
+# puts at all - confirmed live. This keeps the research set relevant and
+# small enough to reason about.
+option_strike_band_pct: 0.08
+
+# How many of the nearest-the-money option contracts per underlying get
+# embedded in the decision prompt (bot/decide.py). Independent of, and
+# smaller than, option_strike_band_pct's fetch window above — this keeps
+# the prompt itself bounded regardless of how many contracts research
+# fetched.
+research_contracts_per_underlying: 12
+
+# The strategy, in the model's own prompt (bot/decide.py appends this block
+# verbatim). This is the highest-leverage end-of-day knob: change the
+# thesis or its tactics here, no code change. Keep it short and factual -
+# the hard limits above are enforced in code regardless of what this says.
+strategy_notes: |
+  THESIS: Trade the most liquid names on evidence you can name, choosing the
+  instrument that fits the thesis - options when the edge is time-bounded and
+  defined-risk, stock when it is not. Code sizes, stops and closes every trade.
+  Choosing the instrument (do this deliberately, and say which and why):
+  - Use OPTIONS when you have a directional view with a horizon: a catalyst, a
+    trend you expect to resolve within days, or implied volatility that looks
+    cheap for the move you expect. Buying premium caps the loss at what you
+    paid, which is what lets the position be sized aggressively for its risk.
+  - Use STOCK when the view is directional but open-ended, when implied
+    volatility looks expensive relative to the contract's peers so premium is
+    a poor way to buy the same exposure, or when the expected move is a slow
+    grind that time decay would eat. Stock has no expiry and no theta.
+  - Neither is the default and neither is a fallback. State the instrument and
+    the reason it beats the other one for this specific idea.
+  Tactics:
+  - Options: BUY calls or puts with 2-14 days to expiration, at or slightly
+    out of the money (|delta| roughly 0.35-0.55). Long premium only - max loss
+    is the premium paid.
+  - Stock: buy or sell shares outright, sized by the same dollar cap. No
+    leverage beyond what the cap allows.
+  - Evidence you can name: the day's price action versus the prior close, a
+    clear intraday trend, implied volatility cheap or rich versus peers.
+    No reason, no trade - holding is the default.
+  - One idea per underlying at a time, in ONE instrument; do not hold stock
+    and options on the same name simultaneously.
+  - Positions are managed by code after entry: stop-loss and take-profit, and
+    a forced close on expiry day for options. You may propose an early exit on
+    a thesis change - say why.
+
+# Model - the Featherless model id and sampling for the decide call. Also
+# runtime-overridable (see bot/overrides.py) for intraday A/B without a
+# deploy; a change here in git is the durable version.
+model: moonshotai/Kimi-K2-Instruct
+temperature: 0.2
+max_tokens: 800 # a JSON array of a few proposals, not prose
+request_timeout_sec: 60
+
+# Transient model failures cost a whole cycle otherwise - the next attempt is
+# the next cron slot, 10 minutes later (issue #85: 21% of early cycles lost a
+# decision this way, split between upstream no_response and a 200 carrying an
+# empty completion). Retries are bounded by BOTH a count and a wall clock, and
+# the budget must stay far inside the 10-minute cadence so a retrying cycle can
+# never overlap the next one. Auth/quota failures and truncated output are
+# never retried - see bot/retry.py.
+decide_max_attempts: 3
+decide_retry_budget_sec: 120
+
+# Research tools (bot/research.py): let the model call a few READ-ONLY
+# Alpaca tools (bars, stock snapshot, option snapshot, news) before it
+# answers, up to research_max_tool_calls per cycle. Every call is
+# journaled. Off on the official config until the challenger proves it.
+research_tools_enabled: false
+research_max_tool_calls: 6
+
+# Learning loop (bot/learning.py): a FACTS-ONLY block in the prompt - the
+# last learning_trades closed round trips over learning_days sessions
+# (from Alpaca's fills + the journal's exit reasons), open positions vs
+# entry, and today's guardrail rejections grouped by rule. Windowed on
+# purpose so one bad morning can't permanently spook the model.
+learning_enabled: false
+learning_days: 2
+learning_trades: 15
+
+# Prediction-market prior (bot/predictions.py): Kalshi's public daily
+# "index close" range markets, summarized into a few crowd-implied facts
+# (implied median close, P(above prior close), P(|move|>1%)) and handed to
+# the model as a PRIOR with an explanation. Read-only, never traded, any
+# failure -> omitted. Off on the official config until the challenger
+# shows it changes decisions for the better.
+predictions_enabled: false
+prediction_series:
+  SPY: KXINX
+  QQQ: KXNASDAQ100
+
+# MQTT side channel for Home Assistant (bot/mqtt.py, issue #14). Publish
+# only, fire-and-forget: every journaled event goes to
+# <topic_prefix>/<account>/event/<event>, a few retained state topics
+# (equity, day_pnl, positions, halt, last_decision) feed HA sensors via
+# MQTT discovery, and the effective config is republished each cycle.
+# Broker host/credentials come from the env (MQTT_HOST, MQTT_PORT,
+# MQTT_USERNAME, MQTT_PASSWORD) - the same files that carry the API keys.
+# No host, or broker down -> no-op. Inbound config/set is mqtt_bridge.py.
+mqtt:
+  enabled: true
+  topic_prefix: alpaca-hackathon
+  ha_discovery: true
+  timeout_sec: 2
+
+# Featherless list prices, $ per 1M tokens (2026-08-29), for eod_review's
+# cost estimate only - billing is whatever the account page says.
+model_prices:
+  moonshotai/Kimi-K2-Instruct: {in: 0.6, out: 2.5}
+  moonshotai/Kimi-K2.6: {in: 0.77, out: 3.5}
+  Qwen/Qwen3.8-Flash-Next: {in: 0.15, out: 0.5}
+
+# Deterministic exits (bot/exits.py), checked at the top of every cycle
+# BEFORE the model is consulted. Percentages are of the entry premium (or
+# entry price for stock): -40 means "close if the position has lost 40% of
+# what was paid". Long premium's worst case is the premium, so the stop is
+# about not sitting in a dead trade, the take-profit about banking gains
+# that theta will otherwise erode.
+stop_loss_pct: 40
+take_profit_pct: 60
+
+# Force-close any option contract with this many days to expiration or
+# fewer, at any cycle - never carry a contract into expiration day's close.
+# 0 = close on expiry day itself.
+expiry_close_dte: 0
+
+# End-of-day backstop (flatten.py --expiring-only, from cron): close option
+# contracts expiring within this many days; hold everything else overnight
+# under the stop/take-profit above. Judging is on Friday-9:30 equity, not
+# daily P&L, so flatten-all every day is deliberately NOT the policy.
+eod_close_dte: 1
+
+# The final day of the event. The score is fixed at the PRIOR close (Alpaca
+# measures equity as of EOD Thu Sep 3), so on/after this date run_cycle
+# makes no new entries and flatten.py ignores --expiring-only and closes
+# everything - post-snapshot cleanup so nothing is held over the weekend.
+final_flatten_date: "2026-09-04"
+
+# Trading window, US/Eastern. No new entries after last_entry; sells stay
+# legal until trade_end. Cycle cadence is NOT set here - cron drives it
+# (homenetwork: alpaca_hackathon_cycle_schedule, every 10 min inside market
+# hours); run_cycle.py just gates itself on the window below.
+trade_start: "09:45"
+trade_end: "15:45"
+last_entry: "15:15"

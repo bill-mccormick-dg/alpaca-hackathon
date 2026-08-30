@@ -122,6 +122,10 @@ model output: [{"instrument":"option","symbol":"NVDA260902P00220000","side":"buy
     <tr><th>End of day</th><td>close contracts expiring within a day; hold the rest under the stops (judged on Thursday's close)</td></tr>
   </table>
   <pre>REJECTED buy 12 SPY260904C00775000: qty 12 exceeds max_contracts_per_order 10</pre>
+  <p class="lead"><b>Stocks and options are both first-class.</b> Every limit above applies to either
+  one - the dollar cap counts <code>contracts x 100 x price</code> or share market value, and the
+  position count is combined. The model states which instrument it wants and why: options when the
+  edge is time-bounded, shares when volatility is expensive or the move is a slow grind.</p>
 </section>
 
 <section>
@@ -174,8 +178,10 @@ $ diff config.yaml config-variants/kimi26.yaml
 &gt; research_tools_enabled: true
 &gt; learning_enabled: true</pre>
   <p class="lead">Different model, different thesis, different risk parameters - same conditions.
-  <code>eod_review</code> / <code>trade_report</code> compare them; a winner is promoted into the
-  official config with a pull request.</p>
+  One variant changes exactly one line: <code>mixed</code> gives stock and options equal footing
+  instead of options-first, so "which instrument should this agent reach for" is answered by the
+  P&amp;L rather than by us. <code>eod_review</code> / <code>trade_report</code> compare them; a
+  winner is promoted into the official config with a pull request.</p>
 </section>
 
 <section>

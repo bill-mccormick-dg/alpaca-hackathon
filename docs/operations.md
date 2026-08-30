@@ -231,6 +231,17 @@ Managed by Ansible in the `homenetwork` repo; logs in `logs/cron-<account>.log`.
 
 ## The experiment farm (local, `docker compose --profile farm`)
 
+Current variants:
+
+| Variant | Changes vs `config.yaml` | Question it answers |
+|---|---|---|
+| `kimi26` | newer model, research tools + learning, no Kalshi prior | is the newer model worth it? |
+| `mixed` | **only** `strategy_notes` — stock and options as peers rather than options-first | which instrument should the agent reach for? |
+
+`mixed` is deliberately a single-variable change: same model, same caps, same
+research settings. Anything else differing from `config.yaml` is a bug.
+
+
 The bot is stateless per cycle, so scaling *experiments* is trivial: one
 container per variant, each with its own config (`config-variants/<name>.yaml`),
 its own **test** paper account (an `accounts.<name>` block in `secrets.yaml`)
