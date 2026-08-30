@@ -31,13 +31,43 @@ EVENT_TOPICS = {
     "daily_loss_halt", "daily_loss_flatten", "flatten", "manual_halt", "error", "eod_review",
     "override_set", "override_cleared", "config", "tool_call",
 }
+# Prefix of every entity_id this project publishes. NOT cosmetic: Home
+# Assistant's MQTT discovery derives entity_id from slugify(device name) +
+# "_" + slugify(entity name) and IGNORES object_id (verified live against
+# HA 2026 with a probe entity - object_id was set and had no effect, both
+# with and without a device block). So the only way to get a predictable
+# entity_id is to control those two names. DEVICE_NAME_FMT slugifies to
+# this prefix, and every entity `name` below is chosen so that it
+# slugifies to exactly its key - which makes the final entity_id
+# "<ENTITY_PREFIX>_<account>_<key>" no matter which rule HA applies.
+# tests/test_mqtt.py::EntityIdDerivationTest locks that invariant in.
+ENTITY_PREFIX = "ai_day_trader"
+DEVICE_NAME_FMT = "AI Day Trader ({account})"
+
 STATE_SENSORS = {  # state topic suffix -> HA discovery attributes
     "equity": {"name": "Equity", "unit_of_measurement": "USD", "state_class": "measurement", "icon": "mdi:cash"},
-    "day_pnl": {"name": "Day P&L", "unit_of_measurement": "USD", "state_class": "measurement", "icon": "mdi:chart-line"},
-    "positions": {"name": "Open positions", "state_class": "measurement", "icon": "mdi:briefcase"},
-    "halt": {"name": "Halt state", "icon": "mdi:octagon"},
+    # Names read a little stiffly ("Day PnL", not "Day P&L") on purpose:
+    # each must slugify to its key above. The dashboard sets its own
+    # display label per row, so this name is only seen in HA's entity list.
+    "day_pnl": {"name": "Day PnL", "unit_of_measurement": "USD", "state_class": "measurement", "icon": "mdi:chart-line"},
+    "positions": {"name": "Positions", "state_class": "measurement", "icon": "mdi:briefcase"},
+    "halt": {"name": "Halt", "icon": "mdi:octagon"},
     "last_decision": {"name": "Last decision", "icon": "mdi:robot"},
 }
+
+
+def entity_object_id(account: str, key: str) -> str:
+    """The entity_id (minus domain) for one account's `key` entity."""
+    return f"{ENTITY_PREFIX}_{account}_{key}"
+
+
+def device_block(account: str) -> dict:
+    return {
+        "identifiers": [f"alpaca_hackathon_{account}"],
+        "name": DEVICE_NAME_FMT.format(account=account),
+        "manufacturer": "alpaca-hackathon",
+        "model": "Long Premium, Short Leash",
+    }
 
 _settings: dict | None = None
 _discovered: set = set()
@@ -106,22 +136,17 @@ def _discovery_once() -> None:
             return
         _discovered.add(_settings["account"])
     acct = _settings["account"]
-    device = {"identifiers": [f"alpaca_hackathon_{acct}"], "name": f"AI Day Trader ({acct})",
-              "manufacturer": "alpaca-hackathon", "model": "Long Premium, Short Leash"}
+    device = device_block(acct)
     for suffix, attrs in STATE_SENSORS.items():
-        uid = f"alpaca_{acct}_{suffix}"
-        # has_entity_name defaults true in current HA and, whenever a device
-        # block is present, makes HA derive entity_id from the device+entity
-        # NAME (slugified, sometimes truncated) instead of honoring object_id
-        # below - confirmed live (entities landed as e.g.
-        # sensor.ai_day_trader_test_equity, not sensor.alpaca_test_equity).
-        # False restores the old, deterministic entity_id = domain.object_id.
+        # unique_id is the stable identity and must never change (it is what
+        # ties an entity to its history); object_id is set to the entity_id
+        # HA derives anyway, so both routes agree - see ENTITY_PREFIX above.
         payload = {
-            "unique_id": uid, "object_id": uid, "has_entity_name": False,
+            "unique_id": f"alpaca_{acct}_{suffix}",
+            "object_id": entity_object_id(acct, suffix),
             "state_topic": topic("state", suffix), "device": device, **attrs,
         }
-        payload["name"] = f"{attrs['name']}"
-        publish(f"homeassistant/sensor/{uid}/config", payload, retain=True)
+        publish(f"homeassistant/sensor/{payload['unique_id']}/config", payload, retain=True)
 
 
 def on_event(record: dict) -> None:

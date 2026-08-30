@@ -87,14 +87,14 @@ NUMBER_KNOBS = {
     "temperature": {"min": 0, "max": 2, "step": 0.1, "name": "Temperature", "icon": "mdi:thermometer"},
     "max_tokens": {"min": 50, "max": 8000, "step": 50, "name": "Max tokens", "icon": "mdi:text-long"},
     "research_contracts_per_underlying": {
-        "min": 1, "max": 60, "step": 1, "name": "Research contracts/underlying", "icon": "mdi:magnify",
+        "min": 1, "max": 60, "step": 1, "name": "Research contracts per underlying", "icon": "mdi:magnify",
     },
     "option_strike_band_pct": {
-        "min": 0.01, "max": 0.5, "step": 0.01, "name": "Strike band %", "icon": "mdi:swap-vertical-bold",
+        "min": 0.01, "max": 0.5, "step": 0.01, "name": "Option strike band pct", "icon": "mdi:swap-vertical-bold",
     },
-    "stop_loss_pct": {"min": 1, "max": 100, "step": 1, "name": "Stop loss %", "icon": "mdi:trending-down"},
-    "take_profit_pct": {"min": 1, "max": 1000, "step": 1, "name": "Take profit %", "icon": "mdi:trending-up"},
-    "eod_close_dte": {"min": 0, "max": 45, "step": 1, "name": "EOD close DTE", "icon": "mdi:calendar-clock"},
+    "stop_loss_pct": {"min": 1, "max": 100, "step": 1, "name": "Stop loss pct", "icon": "mdi:trending-down"},
+    "take_profit_pct": {"min": 1, "max": 1000, "step": 1, "name": "Take profit pct", "icon": "mdi:trending-up"},
+    "eod_close_dte": {"min": 0, "max": 45, "step": 1, "name": "Eod close dte", "icon": "mdi:calendar-clock"},
 }
 
 
@@ -199,12 +199,7 @@ def run_resume(account: str, config_path: str | None) -> str:
 
 
 def _device(account: str) -> dict:
-    return {
-        "identifiers": [f"alpaca_hackathon_{account}"],
-        "name": f"AI Day Trader ({account})",
-        "manufacturer": "alpaca-hackathon",
-        "model": "Long Premium, Short Leash",
-    }
+    return mqtt.device_block(account)
 
 
 def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
@@ -216,13 +211,11 @@ def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
         device = _device(account)
         effective_topic = f"{prefix}/{account}/config/effective"
 
-        # has_entity_name: False on every entity below - HA defaults it true,
-        # which (whenever a device block is present) derives entity_id from
-        # the device+entity NAME instead of honoring object_id, confirmed
-        # live to produce unpredictable/truncated ids (e.g.
-        # number.ai_day_trader_official_research_contracts_underlying
-        # instead of number.alpaca_official_research_contracts_per_underlying).
-        # False restores entity_id = domain.object_id, deterministically.
+        # Every entity's `name` is chosen so it slugifies to its key, and
+        # object_id is set to the same id HA derives from device+entity
+        # name - see bot/mqtt.py::ENTITY_PREFIX for why that matters (HA
+        # ignores object_id, verified live, so the names ARE the contract).
+        #
         # A switch, not a button: a button is stateless, so the dashboard
         # could never show whether the account is actually halted. The
         # switch's state comes from the retained halt topic, which the
@@ -234,8 +227,8 @@ def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
         # rather than "which file stopped it".
         uid = f"alpaca_{account}_kill_switch"
         out.append((f"homeassistant/switch/{uid}/config", {
-            "unique_id": uid, "object_id": uid, "has_entity_name": False,
-            "name": "Kill switch (flatten + halt)",
+            "unique_id": uid, "object_id": mqtt.entity_object_id(account, "kill_switch"),
+            "name": "Kill switch",
             "icon": "mdi:stop-octagon", "device": device,
             "command_topic": f"{prefix}/{account}/command/halt",
             "payload_on": "HALT", "payload_off": "RESUME",
@@ -247,7 +240,7 @@ def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
 
         uid = f"alpaca_{account}_model"
         out.append((f"homeassistant/text/{uid}/config", {
-            "unique_id": uid, "object_id": uid, "has_entity_name": False,
+            "unique_id": uid, "object_id": mqtt.entity_object_id(account, "model"),
             "name": "Model", "icon": "mdi:robot-outline",
             "device": device, "command_topic": f"{prefix}/config/set",
             "command_template": json.dumps({"account": account, "key": "model", "value": "{{ value }}"}),
@@ -257,7 +250,7 @@ def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
         for key, attrs in NUMBER_KNOBS.items():
             uid = f"alpaca_{account}_{key}"
             out.append((f"homeassistant/number/{uid}/config", {
-                "unique_id": uid, "object_id": uid, "has_entity_name": False,
+                "unique_id": uid, "object_id": mqtt.entity_object_id(account, key),
                 "name": attrs["name"], "icon": attrs["icon"],
                 "device": device, "command_topic": f"{prefix}/config/set",
                 "command_template": json.dumps({"account": account, "key": key, "value": "{{ value }}"}),

@@ -4,10 +4,16 @@
 # sensors, published by run_cycle.py each cycle) and mqtt_bridge.py (the
 # kill-switch button + tunable-knob controls, published once at bridge
 # startup - see mqtt_bridge.py's discovery_payloads()). Rows, each one a
-# horizontal-stack with one column per account in ha_accounts: 1 intro
-# (full width), 2 kill switches, 3 State, 4 Day P&L history, 5 tunable
-# knobs. The cross-account equity comparison chart is deliberately left
-# off for now.
+# horizontal-stack with one column per account in ha_accounts: 1 kill
+# switches, 2 state, 3 Day P&L history, 4 tunable knobs. Every card
+# carries its account's label, so there is no separate heading row and no
+# intro blurb - the sidebar title already says what this dashboard is.
+# The cross-account equity comparison chart is deliberately left off.
+#
+# Entity ids: HA derives entity_id from device+entity name and ignores
+# object_id, so these must match bot/mqtt.py's ENTITY_PREFIX scheme
+# (<prefix>_<account>_<key>). ha_entity_prefix exists to keep the two in
+# step if the device name ever changes.
 title: {{ ha_dashboard_title }}
 views:
   - title: Trading
@@ -17,16 +23,9 @@ views:
     cards:
       - type: vertical-stack
         cards:
-          - type: markdown
-            content: >
-              Long Premium, Short Leash — deterministic risk gates, an
-              open-source model proposes, code disposes. Source:
-              [alpaca-hackathon](https://github.com/bill-mccormick-dg/alpaca-hackathon).
-
-          # Kill switches sit directly under the title so they're always the
-          # first thing reachable in an emergency, without scrolling past the
-          # state cards. Each tile names its own account, since this row sits
-          # above the per-account headings below.
+          # Kill switches come first so they're always reachable in an
+          # emergency without scrolling past state cards. Each tile names
+          # its own account.
           #
           # The control is a SWITCH (mqtt_bridge.py publishes it as one), so
           # it shows the account's real halt state rather than being a
@@ -48,11 +47,11 @@ views:
                   - type: conditional
                     conditions:
                       - condition: state
-                        entity: switch.alpaca_{{ acct.id }}_kill_switch
+                        entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
                         state: "off"
                     card:
                       type: tile
-                      entity: switch.alpaca_{{ acct.id }}_kill_switch
+                      entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
                       name: {{ acct.label }} — trading
                       icon: mdi:play-circle
                       color: green
@@ -70,11 +69,11 @@ views:
                   - type: conditional
                     conditions:
                       - condition: state
-                        entity: switch.alpaca_{{ acct.id }}_kill_switch
+                        entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
                         state: "on"
                     card:
                       type: tile
-                      entity: switch.alpaca_{{ acct.id }}_kill_switch
+                      entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
                       name: {{ acct.label }} — HALTED
                       icon: mdi:stop-circle
                       color: red
@@ -91,23 +90,19 @@ views:
           - type: horizontal-stack
             cards:
 {% for acct in ha_accounts %}
-              - type: vertical-stack
-                cards:
-                  - type: heading
-                    heading: {{ acct.label }}
-                    icon: mdi:robot
-                  - type: entities
-                    title: State
-                    entities:
-                      - entity: sensor.alpaca_{{ acct.id }}_equity
+              - type: entities
+                title: {{ acct.label }} — state
+                icon: mdi:robot
+                entities:
+                      - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_equity
                         name: Equity
-                      - entity: sensor.alpaca_{{ acct.id }}_day_pnl
+                      - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_day_pnl
                         name: Day P&L
-                      - entity: sensor.alpaca_{{ acct.id }}_positions
+                      - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_positions
                         name: Open positions
-                      - entity: sensor.alpaca_{{ acct.id }}_halt
+                      - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
                         name: Halt state
-                      - entity: sensor.alpaca_{{ acct.id }}_last_decision
+                      - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_last_decision
                         name: Last decision
 {% endfor %}
 
@@ -118,7 +113,7 @@ views:
                 title: {{ acct.label }} — Day P&L
                 hours_to_show: 24
                 entities:
-                  - entity: sensor.alpaca_{{ acct.id }}_day_pnl
+                  - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_day_pnl
 {% endfor %}
 
           - type: horizontal-stack
@@ -127,20 +122,20 @@ views:
               - type: entities
                 title: {{ acct.label }} — controls
                 entities:
-                  - entity: text.alpaca_{{ acct.id }}_model
+                  - entity: text.{{ ha_entity_prefix }}_{{ acct.id }}_model
                     name: Model
-                  - entity: number.alpaca_{{ acct.id }}_temperature
+                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_temperature
                     name: Temperature
-                  - entity: number.alpaca_{{ acct.id }}_max_tokens
+                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_max_tokens
                     name: Max tokens
-                  - entity: number.alpaca_{{ acct.id }}_research_contracts_per_underlying
+                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_research_contracts_per_underlying
                     name: Research contracts/underlying
-                  - entity: number.alpaca_{{ acct.id }}_option_strike_band_pct
+                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_option_strike_band_pct
                     name: Strike band %
-                  - entity: number.alpaca_{{ acct.id }}_stop_loss_pct
+                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_stop_loss_pct
                     name: Stop loss %
-                  - entity: number.alpaca_{{ acct.id }}_take_profit_pct
+                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_take_profit_pct
                     name: Take profit %
-                  - entity: number.alpaca_{{ acct.id }}_eod_close_dte
+                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_eod_close_dte
                     name: EOD close DTE
 {% endfor %}

@@ -7,7 +7,7 @@ from unittest import mock
 
 import flatten
 import mqtt_bridge
-from bot import journal, overrides
+from bot import journal, mqtt, overrides
 from bot import risk as risk_mod
 
 
@@ -158,13 +158,14 @@ class DiscoveryPayloadsTest(unittest.TestCase):
                 topic = f"homeassistant/{domain}/alpaca_{account}_{key}/config"
                 self.assertIn(topic, self.payloads, f"missing {topic}")
 
-    def test_every_entity_disables_has_entity_name_so_object_id_is_honored(self):
-        # HA defaults has_entity_name true, which (with a device block
-        # present) derives entity_id from the device+entity name instead of
-        # object_id - confirmed live to produce unpredictable/truncated ids.
+    def test_every_entity_declares_the_derived_object_id(self):
+        # HA ignores object_id and derives entity_id from device+entity
+        # name (verified live), so object_id is set to that same derived id
+        # - both routes then agree. tests/test_mqtt.py's
+        # EntityIdDerivationTest checks the names actually derive it.
         for topic, payload in self.payloads.items():
-            self.assertIs(payload["has_entity_name"], False, topic)
-            self.assertEqual(payload["object_id"], payload["unique_id"], topic)
+            self.assertTrue(payload["object_id"].startswith(mqtt.ENTITY_PREFIX), topic)
+            self.assertNotEqual(payload["object_id"], payload["unique_id"], topic)
 
     def test_number_knob_uses_config_set_with_a_command_template(self):
         payload = self.payloads["homeassistant/number/alpaca_test_temperature/config"]

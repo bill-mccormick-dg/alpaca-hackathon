@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import unittest
 from unittest import mock
 
@@ -59,11 +60,9 @@ class MqttTest(unittest.TestCase):
         _, payload = disc[0]
         self.assertEqual(payload["device"]["identifiers"], ["alpaca_hackathon_official"])
         self.assertIn("state_topic", payload)
-        # has_entity_name must stay False: HA otherwise derives entity_id from
-        # the device+entity name instead of honoring object_id, which broke
-        # every entity_id this project publishes (confirmed live).
-        self.assertIs(payload["has_entity_name"], False)
-        self.assertEqual(payload["object_id"], payload["unique_id"])
+        # object_id is set to the id HA derives from device+entity name, so
+        # both routes agree - see EntityIdDerivationTest below.
+        self.assertEqual(payload["object_id"], mqtt.entity_object_id("official", "equity"))
         last = [p for t, p, r in self.cap.calls if t.endswith("/state/last_decision")]
         self.assertEqual(last, ["hold", "2 proposal(s)"])
 
@@ -92,6 +91,42 @@ class MqttTest(unittest.TestCase):
             mqtt.configure({"mqtt": {"enabled": True}}, "test")
             self.assertFalse(mqtt.publish("t", {"a": 1}))
             mqtt.on_event({"event": "cycle_start", "equity": 1})  # must not raise
+
+class EntityIdDerivationTest(unittest.TestCase):
+    """Home Assistant's MQTT discovery IGNORES object_id and derives
+    entity_id from slugify(device name) + "_" + slugify(entity name)
+    (verified live against HA 2026 with a probe entity, both with and
+    without a device block). Every dashboard reference in ansible/ assumes
+    <domain>.<ENTITY_PREFIX>_<account>_<key>, so this test pins the naming
+    that produces it: rename an entity carelessly and this fails rather
+    than silently orphaning a dashboard card."""
+
+    @staticmethod
+    def slugify(text: str) -> str:
+        return re.sub(r"_+", "_", re.sub(r"[^a-z0-9]+", "_", text.lower())).strip("_")
+
+    def derived(self, device_name: str, entity_name: str) -> str:
+        return f"{self.slugify(device_name)}_{self.slugify(entity_name)}"
+
+    def test_state_sensor_names_derive_the_expected_entity_ids(self):
+        for account in ("official", "test"):
+            device_name = mqtt.device_block(account)["name"]
+            for key, attrs in mqtt.STATE_SENSORS.items():
+                want = mqtt.entity_object_id(account, key)
+                self.assertEqual(self.derived(device_name, attrs["name"]), want, key)
+
+    def test_bridge_entity_names_derive_the_expected_entity_ids(self):
+        import mqtt_bridge
+
+        for topic, payload in mqtt_bridge.discovery_payloads("alpaca-hackathon"):
+            device_name = payload["device"]["name"]
+            derived = self.derived(device_name, payload["name"])
+            self.assertEqual(derived, payload["object_id"], topic)
+
+    def test_device_name_slugifies_to_the_prefix(self):
+        for account in ("official", "test"):
+            name = mqtt.device_block(account)["name"]
+            self.assertEqual(self.slugify(name), f"{mqtt.ENTITY_PREFIX}_{account}")
 
 
 if __name__ == "__main__":
