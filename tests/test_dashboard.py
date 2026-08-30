@@ -17,7 +17,8 @@ from pathlib import Path
 
 from bot import mqtt
 
-TEMPLATES = Path(__file__).resolve().parent.parent / "ansible/roles/ha-dashboard/templates"
+ROOT = Path(__file__).resolve().parent.parent
+TEMPLATES = ROOT / "ansible/roles/ha-dashboard/templates"
 TEAM = TEMPLATES / "dashboard_team.yaml.j2"
 OPERATIONAL = TEMPLATES / "dashboard.yaml.j2"
 
@@ -206,7 +207,10 @@ class DeckImagesResolveTest(unittest.TestCase):
     in the exported PDF - visible only in the artifact that goes to judges,
     which is the failure mode this whole export path keeps producing."""
 
-    DECK = TEMPLATES.parent.parent.parent.parent / "submission/video/slides.html"
+    # From the repo root, not by walking four levels up out of the ansible
+    # role's template directory - the deck has nothing to do with that role,
+    # and moving the role would have silently pointed this at the wrong path.
+    DECK = ROOT / "submission/video/slides.html"
 
     def test_every_referenced_image_exists(self):
         deck = self.DECK.read_text()

@@ -203,8 +203,8 @@ project can never disturb the trading host:
    -> PR -> deploy before the next open).
 
 Trading code is `run_cycle.py`, `flatten.py`, `eod_review.py`,
-`mqtt_bridge.py`, anything under `bot/`, `config.yaml`, `config-test.yaml`
-and `requirements.txt`. `mqtt_bridge.py` is on that list deliberately: it
+`mqtt_bridge.py`, anything under `bot/`, `config.yaml`, `config-test.yaml`,
+anything under `config-variants/` and `requirements.txt`. `mqtt_bridge.py` is on that list deliberately: it
 cannot change strategy, but it holds the kill switch and calls
 `flatten.run()`, so a bad bridge deploy can cancel orders and close
 positions.
@@ -217,6 +217,31 @@ fails closed rather than assuming the push is docs-only.
 The bridge restart is also skipped while any halt file exists, so CI cannot
 kill a kill-switch flatten mid-flight; `mqtt_bridge.py`'s own source watcher
 restarts it once idle.
+
+### Finding out what the host is actually running
+
+Read `/opt/alpaca-hackathon/DEPLOYED` - sha, subject line and timestamp,
+written by the deploy job itself.
+
+**Do not use `git log` in that directory.** It answers a different question.
+Two channels write `/opt/alpaca-hackathon`: Ansible clones it and owns the
+`.git`, while CI rsyncs files in with `--exclude='.git'`. The checkout's HEAD
+therefore stays pinned to whatever Ansible last checked out while the files
+move on, so `git log` reports a stale commit and `git status` shows a pile of
+phantom modifications. Both are working as designed and neither tells you
+what is running.
+
+The same split is why a change under `ansible/` never reaches anything on its
+own: `paths-ignore` excludes it from CI on purpose, so those roles only take
+effect when someone runs the playbook. That is easy to forget - the dashboard
+sat pointing at a `text.` entity that had already been replaced by a
+`select.`, so every controls card read "Entity not found" while the template
+in git was correct the whole time. After changing anything under `ansible/`:
+
+```sh
+cd ansible && ansible-playbook -i inventory.ini site.yml --check --diff   # confirm
+cd ansible && ansible-playbook -i inventory.ini site.yml                  # apply
+```
 
 ## CT 108 cron (Central time)
 
