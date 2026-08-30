@@ -22,32 +22,42 @@ stylesheet the export is a single page. The `@media print` block force-shows
 every section, gives each its own page, and keeps the dark background, which
 browsers otherwise drop.
 
-**A slide taller than its page is silently clipped**, because the print rules
-set `overflow:hidden`. Nothing warns you — the PDF just quietly loses the
-bottom of a slide. Both slides added on Aug 30 overflowed (738px and 797px
-against a 720px page) and had to be trimmed.
+**A slide taller than its page loses content, and nothing warns you.** How it
+loses it depends on one declaration: with `overflow:hidden` the excess is
+destroyed and the PDF just quietly ends a slide early; with `overflow:visible`
+it spills onto the next page and paints on top of the following slide. Both
+happened here. The committed `slides.pdf` was clipping eight of fifteen pages,
+including most of the Results slide, and it looked fine in the browser.
 
-Check before exporting:
+It looked fine in the browser because **the browser is not the page box**. On
+screen a `vh` unit resolves against the viewport; in print it resolves against
+the 1280x720 `@page`. Any measurement taken on screen at some other window size
+is therefore measuring a different layout than the one being exported. The check
+that used to live here did exactly that - it hand-rolled an approximation of the
+print rules, dropped their padding, and ran in a temp directory where the deck's
+relative image paths resolved to nothing. It reported "0 overflowing" every time.
+
+Use the fitter instead. It applies the real `@media print` block in a 1280x720
+window, from the deck's own directory so images load, and scales any slide that
+does not fit rather than trimming it:
 
 ```sh
-python3 - <<'PY'
-import pathlib, subprocess, tempfile, re, html
-src = pathlib.Path("submission/video/slides.html").read_text()
-src = src.replace("</style>", """
-  section, section.active { display:flex !important; flex-direction:column;
-    height:720px !important; width:1280px; box-sizing:border-box; overflow:visible; }
-</style>""", 1)
-src = src.replace("</body>", """
-<script>window.addEventListener('load',()=>{document.body.innerHTML='<pre id=out>'+
-[...document.querySelectorAll('section')].map((s,i)=>`${i+1} ${s.scrollHeight>720?'OVERFLOW':'ok'} ${s.scrollHeight}px`).join('\\n')+'</pre>'})</script>
-</body>""", 1)
-p = pathlib.Path(tempfile.mkdtemp())/"m.html"; p.write_text(src)
-out = subprocess.run(["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
-    "--headless=new","--disable-gpu","--virtual-time-budget=4000","--dump-dom",f"file://{p}"],
-    capture_output=True, text=True).stdout
-m = re.search(r'<pre id="?out"?>(.*?)</pre>', out, re.S)
-print(html.unescape(m.group(1)) if m else "could not measure")
-PY
+python scripts/fit_slides.py --check   # gate: exits 1 if any slide overflows
+python scripts/fit_slides.py           # measure, scale to fit, write the block
+```
+
+The scales land in a generated `<!-- fit:auto -->` block in the deck; do not
+hand-edit it. A slide reported at the 72% floor is one the script could not fit
+without making the type too small to read - shrink it further and you have a
+slide nobody can read, so that one needs an editorial cut instead.
+
+`--check` needs Chrome, so it is a pre-export gate rather than a CI test. After
+exporting, verify the artifact itself rather than the source - `pdftotext`
+(`brew install poppler`) will show whether each slide's text actually landed on
+its own page:
+
+```sh
+pdftotext -layout submission/slides.pdf - | grep -c $'\f'   # 14 form feeds = 15 pages
 ```
 
 ## Diagrams
