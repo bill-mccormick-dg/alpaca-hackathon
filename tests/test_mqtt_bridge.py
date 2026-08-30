@@ -300,6 +300,51 @@ class TransientStateTest(HaltFilesTestBase):
             self.assertNotIn("test", mqtt_bridge._inflight)
 
 
+class SourceWatchTest(unittest.TestCase):
+    """A deploy rsyncs new code but cannot restart the bridge (the runner is
+    unprivileged and CT 108 has no sudo), so the bridge watches its own
+    source and exits to let systemd restart it on the new code."""
+
+    def tearDown(self):
+        with mqtt_bridge._inflight_lock:
+            mqtt_bridge._inflight.clear()
+
+    def test_fingerprint_covers_the_bridge_and_the_bot_package(self):
+        names = [p for p, _, _ in mqtt_bridge.source_fingerprint()]
+        self.assertTrue(any(n.endswith("mqtt_bridge.py") for n in names))
+        self.assertTrue(any(n.endswith("flatten.py") for n in names))
+        self.assertTrue(any(n.endswith("bot/risk.py") for n in names))
+        self.assertTrue(any(n.endswith("bot/mqtt.py") for n in names))
+
+    def test_exits_when_the_source_changes(self):
+        readings = iter([("a",), ("a",), ("b",)])
+        with (
+            mock.patch.object(mqtt_bridge.time, "sleep", lambda _s: None),
+            mock.patch.object(mqtt_bridge.os, "_exit", side_effect=SystemExit) as ex,
+            self.assertRaises(SystemExit),
+        ):
+            mqtt_bridge.watch_source_and_exit(0, _fingerprint=lambda: next(readings))
+        ex.assert_called_once_with(0)
+
+    def test_never_exits_while_a_command_is_in_flight(self):
+        mqtt_bridge.begin_command("test")
+        readings = iter([("a",), ("b",), ("b",), ("b",)])
+
+        def fingerprint():
+            try:
+                return next(readings)
+            except StopIteration:
+                raise KeyboardInterrupt from None  # end the loop for the test
+
+        with (
+            mock.patch.object(mqtt_bridge.time, "sleep", lambda _s: None),
+            mock.patch.object(mqtt_bridge.os, "_exit", side_effect=SystemExit) as ex,
+            self.assertRaises(KeyboardInterrupt),
+        ):
+            mqtt_bridge.watch_source_and_exit(0, _fingerprint=fingerprint)
+        ex.assert_not_called()  # a flatten must finish and publish first
+
+
 class ResumeTest(HaltFilesTestBase):
     def test_resume_clears_only_this_accounts_manual_halt(self):
         (self.logs / "HALT_manual_test").write_text("x")

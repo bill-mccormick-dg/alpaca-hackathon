@@ -45,3 +45,36 @@ jobs:
             --exclude='logs' \
             --exclude='__pycache__' \
             "$GITHUB_WORKSPACE"/ /opt/alpaca-hackathon/
+
+      - name: Wait for the MQTT bridge to pick up the new code
+        # cron entrypoints re-read the source every run, so a sync is enough
+        # for them. The bridge is the exception: it is long-running, so
+        # without a restart it keeps serving the OLD code indefinitely -
+        # which once silently invalidated a live test, where a manual
+        # restart landed one second before this rsync.
+        #
+        # This runner cannot restart it: it runs unprivileged as ghdeploy
+        # and CT 108 has no sudo installed. Instead mqtt_bridge.py watches
+        # its own source and exits on change, and systemd's Restart=always
+        # (RestartSec=15) brings it back on the new code. This step just
+        # confirms that actually happened, so a stale bridge is loud rather
+        # than silent. It never fails the deploy - the sync itself
+        # succeeded, and every trading entrypoint is already current.
+        run: |
+          unit=alpaca-hackathon-mqtt-bridge
+          if ! systemctl is-active --quiet "$unit" 2>/dev/null; then
+            echo "::notice::$unit is not running here - nothing to reload"
+            exit 0
+          fi
+          newest=$(find /opt/alpaca-hackathon -name '*.py' -newermt '-10 minutes' -print -quit)
+          [ -z "$newest" ] && { echo "::notice::no Python changed in this deploy"; exit 0; }
+          for _ in $(seq 1 12); do
+            started=$(date -d "$(systemctl show "$unit" -p ActiveEnterTimestamp --value)" +%s 2>/dev/null || echo 0)
+            changed=$(stat -c %Y /opt/alpaca-hackathon/mqtt_bridge.py 2>/dev/null || echo 0)
+            if [ "$started" -gt "$changed" ]; then
+              echo "bridge restarted on the new code ($(date -d @"$started" '+%H:%M:%S') > $(date -d @"$changed" '+%H:%M:%S'))"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::warning::$unit is still running code older than this deploy. It self-restarts within ~25s; if this persists, restart it on the host: systemctl restart $unit"
