@@ -59,6 +59,11 @@ class MqttTest(unittest.TestCase):
         _, payload = disc[0]
         self.assertEqual(payload["device"]["identifiers"], ["alpaca_hackathon_official"])
         self.assertIn("state_topic", payload)
+        # has_entity_name must stay False: HA otherwise derives entity_id from
+        # the device+entity name instead of honoring object_id, which broke
+        # every entity_id this project publishes (confirmed live).
+        self.assertIs(payload["has_entity_name"], False)
+        self.assertEqual(payload["object_id"], payload["unique_id"])
         last = [p for t, p, r in self.cap.calls if t.endswith("/state/last_decision")]
         self.assertEqual(last, ["hold", "2 proposal(s)"])
 

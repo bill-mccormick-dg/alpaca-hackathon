@@ -110,7 +110,16 @@ def _discovery_once() -> None:
               "manufacturer": "alpaca-hackathon", "model": "Long Premium, Short Leash"}
     for suffix, attrs in STATE_SENSORS.items():
         uid = f"alpaca_{acct}_{suffix}"
-        payload = {"unique_id": uid, "object_id": uid, "state_topic": topic("state", suffix), "device": device, **attrs}
+        # has_entity_name defaults true in current HA and, whenever a device
+        # block is present, makes HA derive entity_id from the device+entity
+        # NAME (slugified, sometimes truncated) instead of honoring object_id
+        # below - confirmed live (entities landed as e.g.
+        # sensor.ai_day_trader_test_equity, not sensor.alpaca_test_equity).
+        # False restores the old, deterministic entity_id = domain.object_id.
+        payload = {
+            "unique_id": uid, "object_id": uid, "has_entity_name": False,
+            "state_topic": topic("state", suffix), "device": device, **attrs,
+        }
         payload["name"] = f"{attrs['name']}"
         publish(f"homeassistant/sensor/{uid}/config", payload, retain=True)
 

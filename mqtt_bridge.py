@@ -154,16 +154,25 @@ def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
         device = _device(account)
         effective_topic = f"{prefix}/{account}/config/effective"
 
+        # has_entity_name: False on every entity below - HA defaults it true,
+        # which (whenever a device block is present) derives entity_id from
+        # the device+entity NAME instead of honoring object_id, confirmed
+        # live to produce unpredictable/truncated ids (e.g.
+        # number.ai_day_trader_official_research_contracts_underlying
+        # instead of number.alpaca_official_research_contracts_per_underlying).
+        # False restores entity_id = domain.object_id, deterministically.
         uid = f"alpaca_{account}_kill_switch"
         out.append((f"homeassistant/button/{uid}/config", {
-            "unique_id": uid, "object_id": uid, "name": "Kill switch (flatten + halt)",
+            "unique_id": uid, "object_id": uid, "has_entity_name": False,
+            "name": "Kill switch (flatten + halt)",
             "icon": "mdi:stop-octagon", "device": device,
             "command_topic": f"{prefix}/{account}/command/halt", "payload_press": "HALT",
         }))
 
         uid = f"alpaca_{account}_model"
         out.append((f"homeassistant/text/{uid}/config", {
-            "unique_id": uid, "object_id": uid, "name": "Model", "icon": "mdi:robot-outline",
+            "unique_id": uid, "object_id": uid, "has_entity_name": False,
+            "name": "Model", "icon": "mdi:robot-outline",
             "device": device, "command_topic": f"{prefix}/config/set",
             "command_template": json.dumps({"account": account, "key": "model", "value": "{{ value }}"}),
             "state_topic": effective_topic, "value_template": "{{ value_json.model }}", "mode": "text",
@@ -172,7 +181,8 @@ def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
         for key, attrs in NUMBER_KNOBS.items():
             uid = f"alpaca_{account}_{key}"
             out.append((f"homeassistant/number/{uid}/config", {
-                "unique_id": uid, "object_id": uid, "name": attrs["name"], "icon": attrs["icon"],
+                "unique_id": uid, "object_id": uid, "has_entity_name": False,
+                "name": attrs["name"], "icon": attrs["icon"],
                 "device": device, "command_topic": f"{prefix}/config/set",
                 "command_template": json.dumps({"account": account, "key": key, "value": "{{ value }}"}),
                 "state_topic": effective_topic, "value_template": f"{{{{ value_json.{key} }}}}",
