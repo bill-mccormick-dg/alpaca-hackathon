@@ -76,20 +76,29 @@ broker host/credentials from `MQTT_HOST`, `MQTT_PORT`, `MQTT_USERNAME`,
 `MQTT_PASSWORD` in the same env files that carry the API keys.
 
 **Dashboard**: [`ansible/`](../ansible/) (host-agnostic - no hardcoded network,
-path or container name) deploys a Lovelace dashboard - an equity chart
-comparing every account side by side plus a per-account card - and two
-alert automations (order submitted; halted), driven entirely by the MQTT
-topics above. `cd ansible && cp inventory.example.ini inventory.ini` (fill
-in your HA host) `&& ansible-playbook site.yml`. See `ansible/README.md`.
+path or container name) deploys a Lovelace dashboard - each account's State,
+then Day P&L history, then a Controls row (kill switch + tunable knobs) -
+driven entirely by the MQTT topics above and below. `cd ansible && cp
+inventory.example.ini inventory.ini` (fill in your HA host) `&&
+ansible-playbook site.yml`. See `ansible/README.md`.
 
-Inbound: `mqtt_bridge.py` (long-running) subscribes to
-`<prefix>/config/set` and applies `{"account","key","value","until"?}` through
-the same `set_override()` the CLI uses - allowlisted keys, validated, expiring
-at the close - then republishes the effective config. Errors go to
-`<prefix>/<account>/config/error`. HA automation ideas: a light that goes
-green on `order_submitted` and red on `daily_loss_halt` / `manual_halt`; a
-dashboard card on the equity sensor; a select entity that publishes
-`config/set` for `model`.
+Inbound, both handled by `mqtt_bridge.py` (long-running):
+
+- `<prefix>/config/set` - applies `{"account","key","value","until"?}` through
+  the same `set_override()` the CLI uses - allowlisted keys, validated,
+  expiring at the close - then republishes the effective config. Errors go to
+  `<prefix>/<account>/config/error`. The dashboard's Controls row is this:
+  one HA `number`/`text` entity per knob, per account, each publishing here
+  via a `command_template` - see `mqtt_bridge.py::discovery_payloads()`.
+- `<prefix>/<account>/command/halt` - the kill switch (payload must be
+  exactly `HALT`). Reuses `flatten.py`'s own `run()` to flatten **that
+  account's** positions, but the HALT file it writes is shared across every
+  account on purpose (`bot/risk.py::RiskManager.manual_halt_file`) - either
+  account's button halts trading everywhere. Resuming (`rm logs/HALT`) stays
+  CLI-only, never exposed to HA.
+
+HA automation ideas still open: a light that goes green on `order_submitted`
+and red on `daily_loss_halt` / `manual_halt`.
 
 ## CT 108 cron (Central time)
 
