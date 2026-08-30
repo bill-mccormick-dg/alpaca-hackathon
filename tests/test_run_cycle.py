@@ -1,5 +1,6 @@
 import unittest
 from datetime import datetime
+from pathlib import Path
 
 import run_cycle
 from bot.risk import EASTERN
@@ -68,6 +69,42 @@ class AccountFromSnapshotTest(unittest.TestCase):
     def test_empty_positions(self):
         snap = {"account": {"equity": 1.0, "start_of_day_equity": 1.0, "cash": 1.0, "positions": []}}
         self.assertEqual(run_cycle.account_from_snapshot(snap).positions, {})
+
+
+
+
+class CycleEndAlwaysPublishesTest(unittest.TestCase):
+    """Every cycle-end path must go through run_cycle's end_cycle() helper.
+
+    There are four of them - exits-only, final-day skip, no-proposals, and the
+    normal finish - and an earlier version hooked the trade-report publish to
+    only the first. So the Home Assistant trade card and the team dashboard
+    refreshed only on cycles that closed a position, which on a normal day is
+    never. Nothing failed; the card just sat at `unknown`.
+
+    A static check because the alternative is driving four full cycles."""
+
+    SOURCE = Path(__file__).resolve().parent.parent / "run_cycle.py"
+
+    def test_no_cycle_end_bypasses_the_helper(self):
+        lines = self.SOURCE.read_text().splitlines()
+        offenders = [
+            (n, line.strip())
+            for n, line in enumerate(lines, 1)
+            if 'journal.log("cycle_end"' in line and "def end_cycle" not in line
+        ]
+        # Exactly one is allowed: the call inside end_cycle() itself.
+        self.assertEqual(
+            len(offenders), 1,
+            f"cycle_end must be journaled only via end_cycle(); found {offenders}",
+        )
+
+    def test_the_helper_publishes_the_trade_report(self):
+        source = self.SOURCE.read_text()
+        helper = source.split("def end_cycle", 1)[1].split("journal.log(\"cycle_end\"", 1)[0]
+
+        self.assertIn("publish_report", helper)
+        self.assertIn("recent_trades", helper)
 
 
 if __name__ == "__main__":
