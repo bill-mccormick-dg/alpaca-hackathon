@@ -111,6 +111,21 @@ async def run(args: argparse.Namespace) -> int:
     risk = RiskManager(config, account=args.account)
     now = datetime.now(EASTERN)
 
+    def end_cycle(**fields) -> None:
+        """Journal cycle_end, and refresh the day's trades for the Home
+        Assistant / team view first (#87).
+
+        Every exit path goes through here on purpose. The first version of
+        this hooked only the exits-only early return, so a NORMAL cycle - the
+        overwhelming majority - never republished, and the dashboard's trade
+        card sat at `unknown` all day. Read back from the journal rather than
+        accumulated in memory: each cycle is its own process."""
+        try:
+            mqtt.publish_report("recent_trades", trades_payload(journal.read_events(), args.account))
+        except Exception as exc:  # noqa: BLE001 - a reporting side channel must never fail a cycle
+            print(f"trade report skipped: {describe_error(exc)}", file=sys.stderr)
+        journal.log("cycle_end", **fields)
+
     if args.account == "official" and not args.dry_run and not official_account_may_trade(now):
         print(
             f"refusing: official account may not trade before "
@@ -214,14 +229,7 @@ async def run(args: argparse.Namespace) -> int:
                             exit=True, detail=r.detail, **fields)
                 print(f"EXIT FAILED {p.symbol}: {r.detail}", file=sys.stderr)
         if exit_proposals:
-            # Republish the day's trades for the read-only Home Assistant view
-            # teammates reach over Tailscale (#87). Read back from the journal
-            # rather than accumulated in memory: each cycle is its own process.
-            try:
-                mqtt.publish_report("recent_trades", trades_payload(journal.read_events(), args.account))
-            except Exception as exc:  # noqa: BLE001 - a reporting side channel must never fail a cycle
-                print(f"trade report skipped: {describe_error(exc)}", file=sys.stderr)
-            journal.log("cycle_end", actions=len(exit_proposals), exits_only=True)
+            end_cycle(actions=len(exit_proposals), exits_only=True)
             return 0
 
         # The final day of the event: the score is fixed at the prior close,
@@ -229,7 +237,7 @@ async def run(args: argparse.Namespace) -> int:
         final_day = config.get("final_flatten_date")
         if final_day and now.date() >= date.fromisoformat(str(final_day)):
             print(f"final day ({final_day}) - no new entries")
-            journal.log("cycle_end", actions=0, skipped="final day")
+            end_cycle(actions=0, skipped="final day")
             return 0
 
         # --force skips this too: a rehearsal should exercise the model
@@ -304,7 +312,7 @@ async def run(args: argparse.Namespace) -> int:
             print(f"model output: {raw}")
         if not proposals:
             print("decision: hold (no actions)")
-            journal.log("cycle_end", actions=0)
+            end_cycle(actions=0)
             return 0
 
         for p in proposals:
@@ -332,7 +340,7 @@ async def run(args: argparse.Namespace) -> int:
                 journal.log("order_error", detail=r.detail, **fields)
                 print(f"submit failed for {label}: {r.detail}", file=sys.stderr)
 
-        journal.log("cycle_end", actions=len(proposals))
+        end_cycle(actions=len(proposals))
 
     return 0
 
