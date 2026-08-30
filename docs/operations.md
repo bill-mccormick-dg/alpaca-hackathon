@@ -5,6 +5,23 @@ title: Operations
 
 # Operations
 
+The runbook: how to run the bot, stop it, see what it did, and change it safely
+while it is live. Read [Strategy](strategy.md) for *why* it trades the way it
+does; this page is the *how*.
+
+Three names used throughout, defined once here:
+
+- **CT 108** — the Proxmox LXC (a Linux container on our own hardware) that runs
+  the bot around the clock. Cron drives it; nobody has to be awake. See
+  [Architecture](architecture.md) for the full picture.
+- **MCP** — Model Context Protocol. Alpaca ships an official MCP server, and all
+  market data and orders go through it rather than through raw SDK calls.
+- **Featherless** — the inference provider hosting the open-source model that
+  makes the trading decision.
+
+Everything is **paper trading**: simulated money on a real market feed, with
+`ALPACA_PAPER_TRADE=true` hardcoded and no live-trading code path in the repo.
+
 Everything runs from the repo root with the venv's Python (`./.venv/bin/python`
 on CT 108 at `/opt/alpaca-hackathon`; `docker compose run --rm bot ...`
 locally). Every entrypoint takes `--account <name>` (default **test**) and
@@ -25,20 +42,44 @@ locally). Every entrypoint takes `--account <name>` (default **test**) and
 
 ## Named accounts
 
-`official` reads `credentials.env` on CT 108 and *only* there. Any other name
-reads `credentials-<name>.env` on CT 108, else its `accounts.<name>` block in a
-local `secrets.yaml`, else the legacy `.env.<name>` / `.env`. Two guards keep the
-judging account out of local files: `official` never consults `secrets.yaml` at
-all, and an `official` entry *in* `secrets.yaml` is rejected for every account,
-so pasting its keys there fails loudly instead of trading it under another name.
-A third guard is independent of the file format: `bot/identity.py` compares the
-account number the broker reports against the account name you asked for, and
-refuses a challenger run that resolves to the judging account (or whose account
-number can't be read at all). The official account warns rather than refuses when
-the number is unreadable, so a parsing regression can't halt the judged account. Each account has its own journal (`logs/journal-<name>.jsonl`; the
-official account keeps `logs/journal.jsonl`), its own overrides file and its
-own daily-loss halt file - a challenger breaching its cutoff never halts the
-official account.
+Every entrypoint takes `--account <name>`. Two names matter:
+
+- **`official`** — the judged account (`PA3VS39Y5LE2`). Its equity is the score.
+- **`test`** (and any other name) — a **challenger**: a separate paper account
+  running a variant config against the same live market, so a change can be
+  tried without touching the judged one.
+
+### Where an account's credentials come from
+
+Resolved in this order, first hit wins:
+
+1. environment variables
+2. `credentials.env` (official) or `credentials-<name>.env` on CT 108
+3. *(non-official only)* the `accounts.<name>` block in a local `secrets.yaml`
+4. *(non-official only)* the legacy `.env.<name>`, then `.env`
+
+The judged account can therefore only ever resolve from step 1 or 2 — never
+from a file on someone's laptop.
+
+### Three guards on the judged account
+
+| Guard | What it checks | What it does |
+|---|---|---|
+| Resolution order | is the account named `official`? | skips every local file — steps 3 and 4 do not apply |
+| `secrets.yaml` contents | does the file contain an `official` entry *anywhere*? | rejects the whole file, for **every** account — so pasting the judged keys there fails loudly instead of trading it under another name |
+| `bot/identity.py` | does the broker's own account number match the name asked for? | refuses a challenger that resolves to the judged account, or whose number cannot be read at all |
+
+The third is the only one keyed on the *credentials* rather than on a
+command-line string. Its policy is deliberately asymmetric: a challenger fails
+closed, but the official account **warns and proceeds** when the number is
+unreadable — a parsing regression must not be able to halt the judged account
+mid-session.
+
+### What each account keeps separate
+
+Its own journal (`logs/journal-<name>.jsonl`; the official account keeps
+`logs/journal.jsonl`), its own overrides file, and its own daily-loss halt file
+— so a challenger breaching its cutoff never halts the official account.
 
 ## Halt files (under `logs/`, checked at the top of every cycle)
 
@@ -55,27 +96,58 @@ official account.
 ## Runtime overrides
 
 Two config layers with explicit precedence: `config.yaml` (git) is the base;
-`logs/overrides-<account>.yaml` wins for an allowlisted set of knobs -
-`model`, `temperature`, `max_tokens`, `strategy_notes`,
-`research_contracts_per_underlying`, `option_strike_band_pct`,
-`stop_loss_pct`, `take_profit_pct`, `eod_close_dte`. Hard risk caps are
-git-only on purpose. Overrides **expire at 16:00 ET** unless `--until` is
-given, so intraday tweaks never outlive the day and tomorrow starts from git.
+`logs/overrides-<account>.yaml` wins for an allowlisted set of knobs:
+
+| Knob | Changes |
+|---|---|
+| `model` | which model makes the decision |
+| `temperature`, `max_tokens` | sampling and answer length |
+| `strategy_notes` | the tactics paragraph appended to the prompt — the main dial |
+| `research_contracts_per_underlying` | how many contracts the model is shown |
+| `option_strike_band_pct` | how far from spot the shown strikes reach |
+| `stop_loss_pct`, `take_profit_pct` | when `bot/exits.py` closes a position |
+| `eod_close_dte` | how near expiry the end-of-day backstop closes |
+
+**Hard risk caps are git-only on purpose** — position size, position count, the
+DTE window, the whitelist and the daily-loss cutoff cannot be raised at runtime
+by anything, including the Home Assistant dashboard. Overrides **expire at
+16:00 ET** (the market close) unless `--until` is given, so intraday tweaks
+never outlive the day and tomorrow always starts from git.
 Every cycle journals a `config` event with the effective values, a config
 hash and the active overrides.
 
 ## Journal
 
-`logs/journal[-<account>].jsonl`, one JSON record per event, Eastern `ts`:
-`cycle_start`, `config`, `decision` (raw output, model, usage, latency,
-finish reason, reasoning head, tool calls), `tool_call`, `order_submitted` /
-`order_rejected` (with the rule) / `order_error` / `dry_run`,
-`daily_loss_halt`, `daily_loss_flatten`, `flatten`, `manual_halt`,
-`override_set` / `override_cleared`, `error` (where + detail), `eod_review`,
-`cycle_end`. `logs/` is git-ignored and excluded from the deploy rsync, so
-state on CT 108 survives redeploys.
+`logs/journal[-<account>].jsonl` — one JSON record per event, with an Eastern
+`ts`. It is the single "something happened" record: every report, the
+dashboard and the hourly email are all built from it, so if it is not
+journaled it did not happen.
+
+| Event | Written when |
+|---|---|
+| `cycle_start`, `cycle_end` | each cycle opens / closes, with equity and position count |
+| `config` | the effective config for that cycle: values, a hash, and any active overrides |
+| `decision` | the model answered — raw output, model, token usage, latency, finish reason, reasoning head, tool calls |
+| `tool_call` | the model used one of its four read-only research tools |
+| `order_submitted` / `order_rejected` / `order_error` / `dry_run` | an order's outcome — rejections carry **the rule that rejected them** |
+| `decide_retry` | a transient model failure was retried inside the cycle |
+| `identity_refused` / `identity_unverified` | the broker's account number did not match the account asked for |
+| `daily_loss_halt`, `daily_loss_flatten`, `flatten`, `manual_halt` | trading stopped, and why |
+| `override_set` / `override_cleared` | a runtime knob changed |
+| `error` | anything else, with where and the detail |
+| `eod_review` | the end-of-day digest ran |
+
+`logs/` is git-ignored and excluded from the deploy rsync, so state on CT 108
+survives redeploys.
 
 ## Home Assistant over MQTT
+
+Three terms used below: a **retained** MQTT message is one the broker keeps and
+replays to anyone who subscribes later, so a dashboard opened at 3pm shows the
+day so far rather than an empty card. **MQTT discovery** is Home Assistant's
+convention for a device announcing its own entities, so nothing has to be
+configured by hand on the HA side. **Lovelace** is Home Assistant's dashboard
+format.
 
 Publish-only from the bot, fully decoupled: `bot/mqtt.py` hangs off the
 journal's `log()`, so every journaled event is also published to
