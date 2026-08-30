@@ -156,6 +156,8 @@ class EntityIdDerivationTest(unittest.TestCase):
         import mqtt_bridge
 
         for topic, payload in mqtt_bridge.discovery_payloads("alpaca-hackathon"):
+            if not payload:
+                continue  # an empty payload RETRACTS an entity; it declares nothing
             device_name = payload["device"]["name"]
             derived = self.derived(device_name, payload["name"])
             self.assertEqual(derived, payload["object_id"], topic)

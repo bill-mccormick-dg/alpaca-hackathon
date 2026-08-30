@@ -152,7 +152,7 @@ views:
               - type: entities
                 title: {{ acct.label }} — controls
                 entities:
-                  - entity: text.{{ ha_entity_prefix }}_{{ acct.id }}_model
+                  - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_model
                     name: Model
                   - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_temperature
                     name: Temperature
