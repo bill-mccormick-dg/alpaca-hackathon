@@ -8,6 +8,7 @@ from unittest import mock
 import flatten
 import mqtt_bridge
 from bot import journal, overrides
+from bot import risk as risk_mod
 
 
 class ApplyMessageTest(unittest.TestCase):
@@ -124,13 +125,28 @@ class DiscoveryPayloadsTest(unittest.TestCase):
     def setUp(self):
         self.payloads = dict(mqtt_bridge.discovery_payloads("alpaca-hackathon"))
 
-    def test_one_kill_switch_button_per_known_account(self):
+    def test_kill_switch_is_a_stateful_switch_per_known_account(self):
         for account in mqtt_bridge.KNOWN_ACCOUNTS:
-            topic = f"homeassistant/button/alpaca_{account}_kill_switch/config"
+            topic = f"homeassistant/switch/alpaca_{account}_kill_switch/config"
             self.assertIn(topic, self.payloads)
             payload = self.payloads[topic]
             self.assertEqual(payload["command_topic"], f"alpaca-hackathon/{account}/command/halt")
-            self.assertEqual(payload["payload_press"], "HALT")
+            self.assertEqual(payload["payload_on"], "HALT")
+            self.assertEqual(payload["payload_off"], "RESUME")
+            # State must come from the halt topic, not be assumed optimistically -
+            # that is what makes the control show the real halt state.
+            self.assertEqual(payload["state_topic"], f"alpaca-hackathon/{account}/state/halt")
+            self.assertFalse(payload["optimistic"])
+            self.assertIn("'OFF' if value == 'none' else 'ON'", payload["value_template"])
+
+    def test_the_old_button_entity_is_retired_so_it_cannot_linger(self):
+        for account in mqtt_bridge.KNOWN_ACCOUNTS:
+            self.assertIn(
+                f"homeassistant/button/alpaca_{account}_kill_switch/config",
+                mqtt_bridge.retired_discovery_topics(),
+            )
+        # And it is no longer published as a live entity.
+        self.assertFalse([t for t in self.payloads if t.startswith("homeassistant/button/")])
 
     def test_every_overridable_knob_except_strategy_notes_is_present(self):
         from bot.overrides import OVERRIDABLE_KEYS
@@ -163,6 +179,79 @@ class DiscoveryPayloadsTest(unittest.TestCase):
     def test_discovery_topics_are_unique(self):
         topics = [t for t, _ in mqtt_bridge.discovery_payloads("alpaca-hackathon")]
         self.assertEqual(len(topics), len(set(topics)))
+
+
+class HaltFilesTestBase(unittest.TestCase):
+    """Relocates bot.risk.LOGS_DIR so these tests never touch the real
+    logs/ - run_resume deletes halt files, which would be live state."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        logs = Path(self.tmp.name) / "logs"
+        logs.mkdir()
+        for mod, attr in ((journal, "LOGS_DIR"), (overrides, "LOGS_DIR"), (risk_mod, "LOGS_DIR")):
+            p = mock.patch.object(mod, attr, logs)
+            p.start()
+            self.addCleanup(p.stop)
+        self.addCleanup(lambda: journal.use_account(None))
+        self.addCleanup(lambda: overrides.use_account(None))
+        self.logs = logs
+        self.published = []
+        self.client = mock.Mock()
+        self.client.publish.side_effect = lambda t, p, retain=False: self.published.append((t, p, retain))
+
+    def states(self):
+        self.published.clear()
+        return mqtt_bridge.publish_halt_state(self.client, "alpaca-hackathon", None)
+
+
+class HaltStateTest(HaltFilesTestBase):
+    """The bug this fixes: halt state used to be published only as a side
+    effect of cycle events, but a halted account runs no cycles - so the
+    sensor froze at its last value. It is now derived from the halt files."""
+
+    def test_reports_none_when_nothing_is_halted(self):
+        self.assertEqual(self.states(), {"official": "none", "test": "none"})
+        self.assertTrue(all(retain for _, _, retain in self.published))
+
+    def test_tracks_a_halt_file_created_outside_the_bridge(self):
+        (self.logs / "HALT_manual_test").write_text("x")
+        self.assertEqual(self.states(), {"official": "none", "test": "manual"})
+        # ...and notices when it is removed on the host, with no cycle needed.
+        (self.logs / "HALT_manual_test").unlink()
+        self.assertEqual(self.states(), {"official": "none", "test": "none"})
+
+    def test_global_halt_shows_on_every_account(self):
+        (self.logs / "HALT").write_text("x")
+        self.assertEqual(self.states(), {"official": "global", "test": "global"})
+
+
+class ResumeTest(HaltFilesTestBase):
+    def test_resume_clears_only_this_accounts_manual_halt(self):
+        (self.logs / "HALT_manual_test").write_text("x")
+        (self.logs / "HALT_manual").write_text("x")
+        self.assertEqual(mqtt_bridge.run_resume("test", None), "none")
+        self.assertFalse((self.logs / "HALT_manual_test").exists())
+        self.assertTrue((self.logs / "HALT_manual").exists())  # official untouched
+
+    def test_resume_refuses_to_clear_a_global_halt(self):
+        (self.logs / "HALT").write_text("x")
+        with self.assertRaises(ValueError) as cm:
+            mqtt_bridge.run_resume("test", None)
+        self.assertIn("global", str(cm.exception))
+        self.assertTrue((self.logs / "HALT").exists())
+
+    def test_resume_refuses_to_clear_a_daily_loss_halt(self):
+        risk = mqtt_bridge.risk_for("test", None)
+        risk.daily_halt_file().write_text("x")
+        with self.assertRaises(ValueError) as cm:
+            mqtt_bridge.run_resume("test", None)
+        self.assertIn("daily_loss", str(cm.exception))
+        self.assertTrue(risk.daily_halt_file().exists())
+
+    def test_resume_on_a_running_account_is_a_no_op(self):
+        self.assertEqual(mqtt_bridge.run_resume("test", None), "none")
 
 
 class PublishEffectiveTest(unittest.TestCase):

@@ -9,6 +9,46 @@ Verbatim from Alpaca (via lablab.ai event page, "Build with Alpaca" section),
 copied here 2026-08-28 for a durable, version-controlled reference. See
 [README.md](https://github.com/bill-mccormick-dg/alpaca-hackathon/blob/main/README.md) for how this project's setup maps to these rules.
 
+## 🧾 Account requirements (lablab.ai event page)
+
+Verbatim from the event page's **ACCOUNT REQUIREMENTS** section, copied
+2026-08-30. This is the stricter of the two statements on accounts — Alpaca's
+FAQ below says a testing account "should not be used" for the official
+measurement, while lablab phrases it as an eligibility rule:
+
+> **EXPLORE FREELY — Use any paper account to start building**
+>
+> Sign up for Alpaca and open a paper trading account to explore the API, MCP
+> server, and CLI, prototype your agent, and test strategies. **Use any paper
+> account you like during development.**
+
+> **REQUIRED FOR JUDGING — Submit with a new, fresh account**
+>
+> For your final submission, create a brand-new Alpaca paper trading account
+> dedicated to this hackathon. **Projects run on an existing or reused account
+> will not be eligible for judging.**
+
+Additional requirements from the same section:
+
+- Competition account starting balance must be set to $100,000.
+- One-page write-up covering your AI logic, risk gates, and Alpaca
+  infrastructure implementation.
+
+And from **WHAT TO SUBMIT**:
+
+> **Alpaca account ID — required for judging.** Your final submission must
+> include the Alpaca paper trading account ID used for the hackathon. This
+> allows the judging team to identify your trading activity and evaluate your
+> P&L performance.
+
+**How this project complies**: two accounts, exactly as the "explore freely /
+submit fresh" split intends. `PA3VS39Y5LE2` was created 2026-08-28 solely for
+this event, has never traded (`run_cycle.py`'s `OFFICIAL_TRADING_STARTS` gate
+refuses orders before Mon Aug 31 9:30 ET), and is the only ID in
+`submission/METADATA.md`. The `hackathon_test` challenger account runs the A/B
+config on its own credentials, journal, overrides and halt files, and is never
+submitted. See the README's **Account** section.
+
 ## 📢 Official guidelines from Alpaca
 
 Answers to frequently asked questions about market data, judging,

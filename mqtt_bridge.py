@@ -13,14 +13,23 @@ Clear a key:     {"account": "test", "key": "temperature", "value": null}
 Errors go to     <prefix>/<account>/config/error  (not retained)
 
 Also subscribes to <prefix>/<account>/command/halt - the kill switch
-(issue #14's "two-way control" stretch goal). Payload must be exactly
-"HALT" (matches the HA button's payload_press). Reuses flatten.py's own
-run() as-is: flattens that account's positions and halts THAT ACCOUNT
-ONLY (bot/risk.py::RiskManager.manual_halt_file). The break-glass "halt
-every account" (logs/HALT) is deliberately NOT reachable from here - it
-is CLI-only (flatten.py --halt --all-accounts), so no dashboard tap can
-stop the judged account by accident during the scoring window. Resuming
-(deleting the halt file) likewise stays a deliberate CLI-only step.
+(issue #14's "two-way control" stretch goal), a two-way HA switch:
+
+  HALT    flatten.py's own run(), reused as-is: flattens that account's
+          positions and halts THAT ACCOUNT ONLY. The break-glass "halt
+          every account" (logs/HALT) is deliberately NOT reachable from
+          here - it stays CLI-only (flatten.py --halt --all-accounts), so
+          no dashboard tap can stop the judged account by accident during
+          the scoring window.
+  RESUME  clears that account's own manual halt. Narrow on purpose: it
+          refuses to clear a global or daily-loss halt, which still take
+          the deliberate step on the host they always did.
+
+The switch's state comes from <prefix>/<account>/state/halt, which this
+bridge derives from the halt FILES and republishes after every command
+and every HALT_POLL_SEC. That matters: a halted account runs no cycles,
+so the event-driven state bot/mqtt.py publishes would freeze at its last
+value until a human both cleared the halt AND a cycle happened to run.
 Errors go to <prefix>/<account>/command/error (not retained).
 
 On startup, publishes (retained) MQTT discovery for a kill-switch button
@@ -39,14 +48,23 @@ import asyncio
 import json
 import os
 import sys
+import threading
+import time
 from datetime import datetime
 from pathlib import Path
 
 import flatten
 from bot import journal, mqtt, overrides
+from bot import risk as risk_module
 from bot.config import config_provenance, load_config
 from bot.credentials import validate_account
 from bot.risk import EASTERN
+
+# How often to republish each account's halt state. The state is derived
+# from the halt files, so this also picks up changes made outside the
+# bridge (a `rm logs/HALT_manual_test` on the host, a daily-loss halt
+# written mid-session by run_cycle).
+HALT_POLL_SEC = 20
 
 DEFAULT_ACCOUNT = "test"
 REPO_ROOT = Path(__file__).resolve().parent
@@ -143,6 +161,43 @@ async def run_halt(account: str, config_path: str | None) -> None:
     await flatten.run(ns)
 
 
+def risk_for(account: str, config_path: str | None) -> risk_module.RiskManager:
+    # logs_dir is passed explicitly rather than relying on RiskManager's
+    # default: that default is bound at import time, so it would ignore a
+    # relocated bot.risk.LOGS_DIR (which is how the tests keep their hands
+    # off the real logs/ directory - a resume there would delete live
+    # halt files).
+    journal.use_account(account)
+    overrides.use_account(account)
+    return risk_module.RiskManager(
+        load_config(config_path_for(account, config_path)),
+        logs_dir=risk_module.LOGS_DIR,
+        account=account,
+    )
+
+
+def run_resume(account: str, config_path: str | None) -> str:
+    """Clear THIS account's manual halt, so the kill switch is a real
+    two-way toggle. Deliberately narrow: it never clears the global halt
+    (break-glass, CLI-only to set and to clear) nor the daily-loss halt
+    (the guardrail tripped on its own; overriding it from a phone should
+    take the same deliberate CLI step it always has). Returns the halt
+    state after the attempt."""
+    risk = risk_for(account, config_path)
+    state = risk.halt_state()
+    if state == "manual":
+        risk.manual_halt_file().unlink(missing_ok=True)
+        journal.log("manual_resume", account=account, set_by="mqtt")
+        return risk.halt_state()
+    if state != "none":
+        raise ValueError(
+            f"{account} is under a {state} halt, which the dashboard will not clear - "
+            f"see docs/operations.md (global: flatten.py --halt --all-accounts writes it; "
+            f"daily_loss: the guardrail tripped). Clear it on the trading host."
+        )
+    return state
+
+
 def _device(account: str) -> dict:
     return {
         "identifiers": [f"alpaca_hackathon_{account}"],
@@ -168,12 +223,26 @@ def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
         # number.ai_day_trader_official_research_contracts_underlying
         # instead of number.alpaca_official_research_contracts_per_underlying).
         # False restores entity_id = domain.object_id, deterministically.
+        # A switch, not a button: a button is stateless, so the dashboard
+        # could never show whether the account is actually halted. The
+        # switch's state comes from the retained halt topic, which the
+        # bridge derives from the halt FILES (publish_halt_state) rather
+        # than from journal events - a halted account runs no cycles, so an
+        # event-driven state would freeze at its last value.
+        # value_template maps every halted reason (manual / daily_loss /
+        # global) to ON, so the control reads "is this account stopped?"
+        # rather than "which file stopped it".
         uid = f"alpaca_{account}_kill_switch"
-        out.append((f"homeassistant/button/{uid}/config", {
+        out.append((f"homeassistant/switch/{uid}/config", {
             "unique_id": uid, "object_id": uid, "has_entity_name": False,
             "name": "Kill switch (flatten + halt)",
             "icon": "mdi:stop-octagon", "device": device,
-            "command_topic": f"{prefix}/{account}/command/halt", "payload_press": "HALT",
+            "command_topic": f"{prefix}/{account}/command/halt",
+            "payload_on": "HALT", "payload_off": "RESUME",
+            "state_topic": f"{prefix}/{account}/state/halt",
+            "value_template": "{{ 'OFF' if value == 'none' else 'ON' }}",
+            "state_on": "ON", "state_off": "OFF",
+            "optimistic": False,
         }))
 
         uid = f"alpaca_{account}_model"
@@ -198,9 +267,37 @@ def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
     return out
 
 
+def retired_discovery_topics() -> list[str]:
+    """Discovery topics for entities this bridge used to publish. An empty
+    retained payload is how MQTT discovery deletes an entity - without it
+    the kill switch's previous `button` incarnation would linger in Home
+    Assistant forever alongside the `switch` that replaced it."""
+    return [f"homeassistant/button/alpaca_{account}_kill_switch/config" for account in KNOWN_ACCOUNTS]
+
+
 def publish_discovery(client, prefix: str) -> None:
+    for topic in retired_discovery_topics():
+        client.publish(topic, "", retain=True)
     for topic, payload in discovery_payloads(prefix):
         client.publish(topic, json.dumps(payload), retain=True)
+
+
+def publish_halt_state(client, prefix: str, config_path: str | None) -> dict[str, str]:
+    """Publish each account's halt state (retained), derived from the halt
+    FILES - the source of truth. This is what keeps the kill switch honest:
+    a halted account runs no cycles, so nothing else would ever republish,
+    and it also reflects changes made outside the bridge (someone deleting
+    a halt file on the host, or run_cycle writing a daily-loss halt)."""
+    states = {}
+    for account in KNOWN_ACCOUNTS:
+        try:
+            state = risk_for(account, config_path).halt_state()
+        except (OSError, KeyError) as exc:
+            print(f"[bridge] {account}: could not read halt state: {exc}", file=sys.stderr, flush=True)
+            continue
+        states[account] = state
+        client.publish(f"{prefix}/{account}/state/halt", state, retain=True)
+    return states
 
 
 def publish_effective(client, prefix: str, config_path: str | None) -> None:
@@ -238,15 +335,24 @@ def main() -> int:
     def on_message(client, userdata, msg):
         halt_account = parse_halt_topic(msg.topic)
         if halt_account is not None:
-            if msg.payload.decode(errors="replace").strip() != "HALT":
+            command = msg.payload.decode(errors="replace").strip()
+            if command not in ("HALT", "RESUME"):
                 return
             try:
                 validate_account(halt_account)
-                asyncio.run(run_halt(halt_account, args.config))
-                print(f"[bridge] {halt_account}: kill switch pressed - flattened + halted", flush=True)
+                if command == "HALT":
+                    asyncio.run(run_halt(halt_account, args.config))
+                    print(f"[bridge] {halt_account}: kill switch ON - flattened + halted", flush=True)
+                else:
+                    run_resume(halt_account, args.config)
+                    print(f"[bridge] {halt_account}: kill switch OFF - manual halt cleared", flush=True)
             except Exception as exc:  # noqa: BLE001 - a bad/failed command must not crash the bridge
                 client.publish(f"{prefix}/{halt_account}/command/error", json.dumps({"error": str(exc)}))
-                print(f"[bridge] {halt_account}: kill switch failed: {exc}", flush=True)
+                print(f"[bridge] {halt_account}: {command} failed: {exc}", flush=True)
+            # Always resync from the files afterwards, success or not - the
+            # switch must end up showing what is actually true, including
+            # when a refused RESUME leaves the account halted.
+            publish_halt_state(client, prefix, args.config)
             return
 
         try:
@@ -272,6 +378,19 @@ def main() -> int:
     publish_discovery(client, prefix)
     publish_effective(client, prefix, args.config)
     print(f"[bridge] listening on {host}:{port} {prefix}/config/set and {prefix}/+/command/halt", flush=True)
+
+    # Heartbeat: republish halt state from the files every HALT_POLL_SEC, so
+    # the switch also tracks changes made outside the bridge (a halt file
+    # deleted on the host, or a daily-loss halt written mid-session).
+    def halt_heartbeat():
+        while True:
+            try:
+                publish_halt_state(client, prefix, args.config)
+            except Exception as exc:  # noqa: BLE001 - a side channel must never kill the bridge
+                print(f"[bridge] halt heartbeat failed: {exc}", file=sys.stderr, flush=True)
+            time.sleep(HALT_POLL_SEC)
+
+    threading.Thread(target=halt_heartbeat, daemon=True, name="halt-heartbeat").start()
     client.loop_forever()
     return 0
 

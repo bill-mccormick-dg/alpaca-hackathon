@@ -28,36 +28,64 @@ views:
           # state cards. Each tile names its own account, since this row sits
           # above the per-account headings below.
           #
-          # A kill switch should be hard to fire by accident and easy to fire
-          # on purpose: tile (one compact row) rather than a big button card,
-          # and HOLD-to-fire rather than tap - a stray tap does nothing at
-          # all, a deliberate press-and-hold raises the confirm dialog. Two
-          # deliberate steps. Each halts ONLY its own account; the global
-          # "halt everything" is CLI-only by design (flatten.py --halt
-          # --all-accounts), so nothing here can stop the judged account.
+          # The control is a SWITCH (mqtt_bridge.py publishes it as one), so
+          # it shows the account's real halt state rather than being a
+          # stateless press. A tile's `color` only applies while the entity
+          # is active, and YAML-mode Lovelace has no templated colour, so the
+          # green/red pair is done with two mutually-exclusive conditional
+          # cards - exactly one renders. They live in a vertical-stack per
+          # account so the hidden one can't collapse the row's columns.
+          #
+          # Each halts ONLY its own account; the global "halt everything" is
+          # CLI-only by design (flatten.py --halt --all-accounts), so nothing
+          # here can stop the judged account.
           - type: horizontal-stack
             cards:
 {% for acct in ha_accounts %}
-              - type: tile
-                entity: button.alpaca_{{ acct.id }}_kill_switch
-                name: {{ acct.label }} — kill switch (hold)
-                icon: mdi:stop-octagon
-                color: red
-                hide_state: true
-                tap_action:
-                  action: none
-                hold_action:
-                  action: perform-action
-                  perform_action: button.press
-                  target:
-                    entity_id: button.alpaca_{{ acct.id }}_kill_switch
-                  confirmation:
-                    text: >-
-                      Flatten {{ acct.label }}'s positions and halt
-                      {{ acct.label }}? Other accounts keep trading. A
-                      human has to delete
-                      logs/HALT_manual{{ '_' ~ acct.id if acct.id != 'official' else '' }}
-                      on the trading host to resume.
+              - type: vertical-stack
+                cards:
+                  # Trading (switch off) -> GREEN. Tap halts, with a confirm.
+                  - type: conditional
+                    conditions:
+                      - condition: state
+                        entity: switch.alpaca_{{ acct.id }}_kill_switch
+                        state: "off"
+                    card:
+                      type: tile
+                      entity: switch.alpaca_{{ acct.id }}_kill_switch
+                      name: {{ acct.label }} — trading
+                      icon: mdi:play-circle
+                      color: green
+                      hide_state: true
+                      tap_action:
+                        action: toggle
+                        confirmation:
+                          text: >-
+                            Flatten {{ acct.label }}'s positions and halt
+                            {{ acct.label }}? Other accounts keep trading.
+                  # Halted (switch on) -> RED. Tap resumes, with a confirm.
+                  # A daily-loss or global halt also shows red here, but the
+                  # bridge refuses to clear those from the dashboard and
+                  # republishes the real state, so the tile stays red.
+                  - type: conditional
+                    conditions:
+                      - condition: state
+                        entity: switch.alpaca_{{ acct.id }}_kill_switch
+                        state: "on"
+                    card:
+                      type: tile
+                      entity: switch.alpaca_{{ acct.id }}_kill_switch
+                      name: {{ acct.label }} — HALTED
+                      icon: mdi:stop-circle
+                      color: red
+                      hide_state: true
+                      tap_action:
+                        action: toggle
+                        confirmation:
+                          text: >-
+                            Resume trading on {{ acct.label }}? This only
+                            clears a manual halt - a daily-loss or global
+                            halt still has to be cleared on the host.
 {% endfor %}
 
           - type: horizontal-stack
