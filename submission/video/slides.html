@@ -118,6 +118,24 @@ model output: [{"instrument":"option","symbol":"NVDA260902P00220000","side":"buy
 </section>
 
 <section>
+  <h2>It runs on our own hardware, not a laptop</h2>
+  <p>The agent lives in a Proxmox LXC (CT 108), provisioned by Ansible and driven by
+  <em>cron</em> - not by anyone being awake. The judging account's keys never leave that
+  container: they are root-only files on the box, and the loader refuses to read them from
+  anywhere else.</p>
+  <pre># /etc/cron.d/alpaca-hackathon
+*/10 8-14 * * 1-5   run_cycle.py  --account official   # every 10 min, market hours
+50   14 * * 1-5     flatten.py --expiring-only         # 15:50 ET backstop
+5    15 * * 1-5     eod_review.py                      # 16:05 ET digest</pre>
+  <p>A self-hosted GitHub Actions runner sits <em>on</em> that container, so a merge to
+  <code>main</code> is deployed in about a minute - and a freeze window refuses to sync
+  trading code between 08:20 and 15:15 CT, so live behaviour can never change mid-session.</p>
+  <p class="lead">One guard keys on the credentials rather than the CLI: every cycle compares
+  the broker's own account number against the account it was asked for, and refuses if a
+  challenger ever resolves to the judged account.</p>
+</section>
+
+<section>
   <h2>The daily loop</h2>
   <div class="flow">
     <span>16:05 <code>eod_review</code></span><em>&rarr;</em>
@@ -126,7 +144,7 @@ model output: [{"instrument":"option","symbol":"NVDA260902P00220000","side":"buy
     <span><code>override.py</code> (expires at close) or config PR</span><em>&rarr;</em>
     <span>CI &rarr; self-hosted runner deploys before the open</span>
   </div>
-  <p class="lead" style="margin-top:1em">A second paper account runs a challenger config against the same live market - the only backtest available in four days. 60 PRs, 300 tests, every merge deployed automatically.</p>
+  <p class="lead" style="margin-top:1em">A second paper account runs a challenger config against the same live market - the only backtest available in four days. 68 PRs, 489 tests, every merge deployed automatically.</p>
 </section>
 
 <section>
