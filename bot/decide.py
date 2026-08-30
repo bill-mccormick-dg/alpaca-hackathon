@@ -333,6 +333,15 @@ async def decide(
     else:
         response = await client.chat([{"role": "user", "content": prompt}], **_sampling_kwargs(config))
     latency = time.monotonic() - started
+    # A 200 carrying an error object instead of choices (rate limit, spent
+    # credits, model unavailable) used to surface as a bare
+    # KeyError: 'choices' in the journal, which says nothing about the
+    # actual cause - seen live on both accounts. Keep the provider's own
+    # message: on a metered credit during a scored week, "why did the model
+    # not answer" needs to be answerable from the journal alone.
+    if not response.get("choices"):
+        detail = response.get("error") or response
+        raise RuntimeError(f"model returned no choices: {json.dumps(detail, default=str)[:300]}")
     choice = response["choices"][0]
     message = choice.get("message") or {}
     raw = message.get("content") or ""
