@@ -82,6 +82,25 @@ temperature: 0.2
 max_tokens: 800 # a JSON array of a few proposals, not prose
 request_timeout_sec: 60
 
+model_params:
+  # Applies to every model, and it has to, because the dashboard's model
+  # dropdown can switch this account onto any model in `model_prices` while
+  # the bot is running - and bot/overrides.py accepts `model` but has no way
+  # to supply matching params alongside it.
+  #
+  # Both of the alternatives are thinking models. Measured against this
+  # account's own max_tokens (800) on 2026-08-30, with a realistic decision
+  # prompt: without this toggle Kimi-K2.6 and Qwen3.8-Flash-Next both spend
+  # the entire 800-token budget on hidden reasoning and return
+  # finish_reason=length with EMPTY content - a forfeited cycle, repeating
+  # until the override expires at 16:00 ET. With it, both answer normally
+  # (Qwen in 157 tokens). The current model, Kimi-K2-Instruct, answers with
+  # or without it (515 vs 495 tokens), so this is free insurance rather than
+  # a change to today's behaviour.
+  chat_template_kwargs:
+    enable_thinking: false
+
+
 # Transient model failures cost a whole cycle otherwise - the next attempt is
 # the next cron slot, 10 minutes later (issue #85: 21% of early cycles lost a
 # decision this way, split between upstream no_response and a 200 carrying an
