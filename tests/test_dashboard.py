@@ -22,7 +22,14 @@ TEAM = TEMPLATES / "dashboard_team.yaml.j2"
 OPERATIONAL = TEMPLATES / "dashboard.yaml.j2"
 
 # Entity domains that can change the world from a dashboard card.
-CONTROL_DOMAINS = ("switch", "button", "input_boolean", "input_number", "script", "automation", "climate")
+# `select`, `number` and `text` are the domains THIS bridge publishes its
+# knobs under (mqtt_bridge.discovery_payloads); leaving them out let the
+# team dashboard expose a writable control while this test still passed.
+CONTROL_DOMAINS = (
+    "switch", "button", "select", "number", "text",
+    "input_boolean", "input_number", "input_select", "input_text",
+    "script", "automation", "climate",
+)
 
 
 def _uncommented(path: Path) -> str:

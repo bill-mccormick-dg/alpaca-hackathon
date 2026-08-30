@@ -221,8 +221,17 @@ def model_options(config: dict | None = None) -> list[str]:
 
     Sourced from config.yaml's `model_prices`, which already lists every model
     we have costed - so adding one there for cost tracking offers it here too,
-    with no second list to forget."""
+    with no second list to forget.
+
+    The running model is always included, even if it was never costed. A
+    select whose state is not one of its options is invalid in Home
+    Assistant: the dropdown renders blank and shows the current model as an
+    illegal value, which reads as "the bot is misconfigured" when the only
+    thing wrong is a missing price entry."""
     names = list((config or {}).get("model_prices") or {})
+    active = (config or {}).get("model")
+    if active and active not in names:
+        names.insert(0, active)
     return names or [DEFAULT_MODEL]
 
 
@@ -278,10 +287,6 @@ def discovery_payloads(prefix: str, config: dict | None = None) -> list[tuple[st
             "state_topic": effective_topic, "value_template": "{{ value_json.model }}",
             "options": options,
         }))
-        # Retract the old text entity, otherwise its retained discovery config
-        # keeps a now-dead duplicate in Home Assistant forever.
-        out.append((f"homeassistant/text/{uid}/config", {}))
-
         for key, attrs in NUMBER_KNOBS.items():
             uid = f"alpaca_{account}_{key}"
             out.append((f"homeassistant/number/{uid}/config", {
@@ -299,8 +304,22 @@ def retired_discovery_topics() -> list[str]:
     """Discovery topics for entities this bridge used to publish. An empty
     retained payload is how MQTT discovery deletes an entity - without it
     the kill switch's previous `button` incarnation would linger in Home
-    Assistant forever alongside the `switch` that replaced it."""
-    return [f"homeassistant/button/alpaca_{account}_kill_switch/config" for account in KNOWN_ACCOUNTS]
+    Assistant forever alongside the `switch` that replaced it.
+
+    ORDER MATTERS, and this is why these live here rather than as empty
+    payloads inside discovery_payloads(). Home Assistant keys entities by
+    unique_id, and a unique_id already registered in one domain is not
+    re-created in another: publishing select/alpaca_X_model while
+    text/alpaca_X_model still holds that unique_id makes HA ignore the
+    select, and retracting the text entity afterwards then leaves NO model
+    entity at all. That shipped - every "<account> - controls" card on the
+    operational dashboard led with "Entity not found". publish_discovery()
+    sends everything here first, so the unique_id is free by the time the
+    replacement arrives."""
+    retired = [f"homeassistant/button/alpaca_{account}_kill_switch/config" for account in KNOWN_ACCOUNTS]
+    # The model knob was a `text` entity before it became a `select`.
+    retired += [f"homeassistant/text/alpaca_{account}_model/config" for account in KNOWN_ACCOUNTS]
+    return retired
 
 
 def publish_discovery(client, prefix: str, config: dict | None = None) -> None:

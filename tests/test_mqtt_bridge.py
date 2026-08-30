@@ -154,9 +154,18 @@ class DiscoveryPayloadsTest(unittest.TestCase):
         expected = set(OVERRIDABLE_KEYS) - {"strategy_notes"}
         for account in mqtt_bridge.KNOWN_ACCOUNTS:
             for key in expected:
-                domain = "text" if key == "model" else "number"
+                domain = "select" if key == "model" else "number"
                 topic = f"homeassistant/{domain}/alpaca_{account}_{key}/config"
                 self.assertIn(topic, self.payloads, f"missing {topic}")
+                # A non-empty payload, specifically. This assertion used to
+                # look for the model knob under `text`, where the only thing
+                # present was the RETRACTION of the old text entity - an empty
+                # payload that deletes it. The test therefore passed while the
+                # model knob did not exist in Home Assistant at all.
+                self.assertTrue(
+                    self.payloads[topic],
+                    f"{topic} is an empty payload - that retracts the entity, it does not declare it",
+                )
 
     def test_every_entity_declares_the_derived_object_id(self):
         # HA ignores object_id and derives entity_id from device+entity
@@ -481,12 +490,32 @@ class ModelIsADropdownTest(unittest.TestCase):
     def test_falls_back_to_the_default_model_when_none_are_listed(self):
         self.assertEqual(mqtt_bridge.model_options({}), [mqtt_bridge.DEFAULT_MODEL])
 
-    def test_the_old_text_entity_is_retracted(self):
-        """Without an empty retained payload the superseded text entity lingers
-        in Home Assistant forever as a dead duplicate."""
-        p = self.payloads(MODEL_CONFIG)
+    def test_the_old_text_entity_is_retracted_before_the_select_is_published(self):
+        """The select and the text entity it replaced share a unique_id, and
+        Home Assistant will not re-create a unique_id it already holds in a
+        different domain. Publishing the select first means HA ignores it and
+        the later retraction then removes the only model entity that existed -
+        which is what shipped: every controls card read "Entity not found".
 
-        self.assertEqual(p["homeassistant/text/alpaca_official_model/config"], {})
+        So the retraction has to be in retired_discovery_topics(), which
+        publish_discovery() sends before anything else."""
+        for account in mqtt_bridge.KNOWN_ACCOUNTS:
+            self.assertIn(
+                f"homeassistant/text/alpaca_{account}_model/config",
+                mqtt_bridge.retired_discovery_topics(),
+            )
+
+        published = []
+
+        class Recorder:
+            def publish(self, topic, payload, retain=False):
+                published.append(topic)
+
+        mqtt_bridge.publish_discovery(Recorder(), "alpaca-hackathon", MODEL_CONFIG)
+        for account in mqtt_bridge.KNOWN_ACCOUNTS:
+            retract = published.index(f"homeassistant/text/alpaca_{account}_model/config")
+            select = published.index(f"homeassistant/select/alpaca_{account}_model/config")
+            self.assertLess(retract, select, f"{account}: select published before the text retraction")
 
     def test_every_account_gets_the_dropdown(self):
         p = self.payloads(MODEL_CONFIG)

@@ -68,7 +68,10 @@ jobs:
       - name: Refuse to change trading code while the market is open
         # TRADING code is anything a live cycle executes or reads:
         # run_cycle/flatten/eod_review, the bot package, the configs, the
-        # pinned dependencies. mqtt_bridge.py counts too - it cannot change
+        # pinned dependencies. config-variants/ counts: cron passes those
+        # files to run_cycle with --config (the `mixed` account runs
+        # config-variants/mixed.yaml), so they are live strategy for a real
+        # account, not samples. mqtt_bridge.py counts too - it cannot change
         # strategy, but it holds the kill switch and calls flatten.run(),
         # so a bad bridge deploy can cancel orders and close positions.
         #
@@ -100,7 +103,7 @@ jobs:
             exit 1
           fi
           trading=$(echo "$changed" | grep -E \
-            '^(run_cycle|flatten|eod_review|mqtt_bridge)\.py$|^bot/|^config(-test)?\.yaml$|^requirements\.txt$' \
+            '^(run_cycle|flatten|eod_review|mqtt_bridge)\.py$|^bot/|^config(-test)?\.yaml$|^config-variants/|^requirements\.txt$' \
             || true)
           if [ -z "$trading" ]; then
             echo "no trading-code changes in this push - deploy is safe at any time"
