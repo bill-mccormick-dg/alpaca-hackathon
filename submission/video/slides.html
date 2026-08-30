@@ -118,6 +118,24 @@ model output: [{"instrument":"option","symbol":"NVDA260902P00220000","side":"buy
 </section>
 
 <section>
+  <h2>It runs on our own hardware, not a laptop</h2>
+  <p>The agent lives in a Proxmox LXC (CT 108), provisioned by Ansible and driven by
+  <em>cron</em> - not by anyone being awake. The judging account's keys never leave that
+  container: they are root-only files on the box, and the loader refuses to read them from
+  anywhere else.</p>
+  <pre># /etc/cron.d/alpaca-hackathon
+*/10 8-14 * * 1-5   run_cycle.py  --account official   # every 10 min, market hours
+50   14 * * 1-5     flatten.py --expiring-only         # 15:50 ET backstop
+5    15 * * 1-5     eod_review.py                      # 16:05 ET digest</pre>
+  <p>A self-hosted GitHub Actions runner sits <em>on</em> that container, so a merge to
+  <code>main</code> is deployed in about a minute - and a freeze window refuses to sync
+  trading code between 08:20 and 15:15 CT, so live behaviour can never change mid-session.</p>
+  <p class="lead">One guard keys on the credentials rather than the CLI: every cycle compares
+  the broker's own account number against the account it was asked for, and refuses if a
+  challenger ever resolves to the judged account.</p>
+</section>
+
+<section>
   <h2>The daily loop</h2>
   <div class="flow">
     <span>16:05 <code>eod_review</code></span><em>&rarr;</em>
@@ -126,7 +144,7 @@ model output: [{"instrument":"option","symbol":"NVDA260902P00220000","side":"buy
     <span><code>override.py</code> (expires at close) or config PR</span><em>&rarr;</em>
     <span>CI &rarr; self-hosted runner deploys before the open</span>
   </div>
-  <p class="lead" style="margin-top:1em">A second paper account runs a challenger config against the same live market - the only backtest available in four days. 60 PRs, 300 tests, every merge deployed automatically.</p>
+  <p class="lead" style="margin-top:1em">A second paper account runs a challenger config against the same live market - the only backtest available in four days. 70 PRs, 491 tests, every merge deployed automatically.</p>
 </section>
 
 <section>
@@ -152,14 +170,23 @@ $ diff config.yaml config-variants/kimi26.yaml
   <div class="flow">
     <span class="code">journal.log()</span><em>&rarr;</em>
     <span>MQTT publish (fire-and-forget)</span><em>&rarr;</em>
-    <span>HA auto-discovery: equity, day P&amp;L, positions, halt, last decision</span>
+    <span>HA auto-discovery: equity, day P&amp;L, positions, halt, last decision, trades</span>
   </div>
-  <pre>alpaca-hackathon/test/event/order_submitted   {"side":"buy","symbol":"NVDA...","qty":10,...}
-alpaca-hackathon/test/state/equity            100240.50           [retained]
-homeassistant/sensor/alpaca_test_halt/config  {"device":{"name":"AI Day Trader (test)"},...}</pre>
-  <p class="lead">No broker configured, or broker down &rarr; no-op; a publish can never delay or fail
-  a cycle. And it's two-way: <code>config/set</code> applies a runtime override through the exact
-  same validated, allowlisted path the CLI uses - expiring at the close, same as always.</p>
+  <pre>alpaca-hackathon/official/event/order_submitted  {"side":"buy","symbol":"NVDA...","qty":10,...}
+alpaca-hackathon/official/event/identity_refused {"reason":"resolved credentials for the JUDGING account"}
+alpaca-hackathon/official/state/equity           100240.50           [retained]
+homeassistant/sensor/alpaca_official_halt/config {"device":{"name":"AI Day Trader (official)"},...}</pre>
+  <p>Three audiences, one feed. <strong>Operator:</strong> a dashboard with the kill switch and
+  the tunable knobs. <strong>Team:</strong> a second, read-only dashboard - no switch, no button,
+  no service call - reachable over Tailscale, because Home Assistant has no per-entity
+  permissions, so the separation has to be the dashboard itself. <strong>Phone:</strong> push,
+  but only for problems.</p>
+  <p class="lead">Fills deliberately do <em>not</em> push - a channel that fires on routine
+  activity gets muted, and the halt alert is lost with it. What does: a halt, an account-identity
+  refusal, and a stall detector that notices no cycle has run for 25 minutes during market hours -
+  the failure a dashboard cannot show you, because stale values look exactly like a quiet market.
+  An hourly email carries the day's trades and CSVs for anyone not watching a screen. No broker,
+  or broker down &rarr; no-op: a publish can never delay or fail a cycle.</p>
 </section>
 
 <section>
