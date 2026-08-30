@@ -58,6 +58,7 @@ from bot import journal, mqtt, overrides
 from bot import risk as risk_module
 from bot.config import config_provenance, load_config
 from bot.credentials import load_mqtt_env, validate_account
+from bot.featherless import DEFAULT_MODEL
 from bot.risk import EASTERN
 
 # How often to republish each account's halt state. The state is derived
@@ -82,7 +83,14 @@ REPO_ROOT = Path(__file__).resolve().parent
 # its config from the bridge's own --config); it just won't have dashboard
 # controls until added to both lists.
 KNOWN_ACCOUNTS = ("official", "test", "mixed")
-ACCOUNT_CONFIG_PATH: dict[str, str] = {"test": str(REPO_ROOT / "config-test.yaml")}
+# Which config file each account actually runs with. An account missing here
+# falls back to config.yaml, which is right for `official` and wrong for any
+# variant - a knob primed from the wrong file makes the dashboard report a
+# model or a stop-loss the account is not using.
+ACCOUNT_CONFIG_PATH: dict[str, str] = {
+    "test": str(REPO_ROOT / "config-test.yaml"),
+    "mixed": str(REPO_ROOT / "config-variants" / "mixed.yaml"),
+}
 
 # Numeric knobs to expose as HA `number` entities: bot/overrides.py's
 # OVERRIDABLE_KEYS minus model (a `text` entity, not numeric) and
@@ -208,10 +216,21 @@ def _device(account: str) -> dict:
     return mqtt.device_block(account)
 
 
-def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
+def model_options(config: dict | None = None) -> list[str]:
+    """Model ids to offer in the dashboard's dropdown.
+
+    Sourced from config.yaml's `model_prices`, which already lists every model
+    we have costed - so adding one there for cost tracking offers it here too,
+    with no second list to forget."""
+    names = list((config or {}).get("model_prices") or {})
+    return names or [DEFAULT_MODEL]
+
+
+def discovery_payloads(prefix: str, config: dict | None = None) -> list[tuple[str, dict]]:
     """(discovery_topic, payload) pairs for every kill-switch button and
     knob entity, for every account in KNOWN_ACCOUNTS. Pure/testable;
     publishing (retained) is the caller's job."""
+    options = model_options(config)
     out: list[tuple[str, dict]] = []
     for account in KNOWN_ACCOUNTS:
         device = _device(account)
@@ -244,14 +263,24 @@ def discovery_payloads(prefix: str) -> list[tuple[str, dict]]:
             "optimistic": False,
         }))
 
+        # A SELECT, not free text. `model` is the only knob bot/overrides.py
+        # accepts as any non-empty string - every other one is range-checked -
+        # so a thumb-typo on a phone was writable, and the next cycle would
+        # fail at the model call, retry, and forfeit the slot. A dropdown makes
+        # the wrong value unreachable from the dashboard. The CLI keeps the
+        # escape hatch for a model that is not on the list.
         uid = f"alpaca_{account}_model"
-        out.append((f"homeassistant/text/{uid}/config", {
+        out.append((f"homeassistant/select/{uid}/config", {
             "unique_id": uid, "object_id": mqtt.entity_object_id(account, "model"),
             "name": "Model", "icon": "mdi:robot-outline",
             "device": device, "command_topic": f"{prefix}/config/set",
             "command_template": json.dumps({"account": account, "key": "model", "value": "{{ value }}"}),
-            "state_topic": effective_topic, "value_template": "{{ value_json.model }}", "mode": "text",
+            "state_topic": effective_topic, "value_template": "{{ value_json.model }}",
+            "options": options,
         }))
+        # Retract the old text entity, otherwise its retained discovery config
+        # keeps a now-dead duplicate in Home Assistant forever.
+        out.append((f"homeassistant/text/{uid}/config", {}))
 
         for key, attrs in NUMBER_KNOBS.items():
             uid = f"alpaca_{account}_{key}"
@@ -274,11 +303,14 @@ def retired_discovery_topics() -> list[str]:
     return [f"homeassistant/button/alpaca_{account}_kill_switch/config" for account in KNOWN_ACCOUNTS]
 
 
-def publish_discovery(client, prefix: str) -> None:
+def publish_discovery(client, prefix: str, config: dict | None = None) -> None:
     for topic in retired_discovery_topics():
         client.publish(topic, "", retain=True)
-    for topic, payload in discovery_payloads(prefix):
-        client.publish(topic, json.dumps(payload), retain=True)
+    for topic, payload in discovery_payloads(prefix, config):
+        # An empty payload retracts an entity (see the retired text model knob);
+        # publish "" rather than "{}", which HA reads as a config with no fields.
+        body = json.dumps(payload) if payload else ""
+        client.publish(topic, body, retain=True)
 
 
 def source_fingerprint() -> tuple:
@@ -472,7 +504,7 @@ def main() -> int:
     client.connect(host, port, keepalive=60)
     client.subscribe(f"{prefix}/config/set", qos=1)
     client.subscribe(f"{prefix}/+/command/halt", qos=1)
-    publish_discovery(client, prefix)
+    publish_discovery(client, prefix, config)
     publish_effective(client, prefix, args.config)
     print(f"[bridge] listening on {host}:{port} {prefix}/config/set and {prefix}/+/command/halt", flush=True)
 

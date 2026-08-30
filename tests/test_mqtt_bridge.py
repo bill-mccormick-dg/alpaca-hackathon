@@ -164,6 +164,8 @@ class DiscoveryPayloadsTest(unittest.TestCase):
         # - both routes then agree. tests/test_mqtt.py's
         # EntityIdDerivationTest checks the names actually derive it.
         for topic, payload in self.payloads.items():
+            if not payload:
+                continue  # retraction, not a declaration
             self.assertTrue(payload["object_id"].startswith(mqtt.ENTITY_PREFIX), topic)
             self.assertNotEqual(payload["object_id"], payload["unique_id"], topic)
 
@@ -423,6 +425,74 @@ class PublishEffectiveTest(unittest.TestCase):
         for account in mqtt_bridge.KNOWN_ACCOUNTS:
             self.assertIn(f"alpaca-hackathon/{account}/config/effective", topics)
         self.assertTrue(all(retain for _, retain in published))
+
+
+class AccountConfigMappingTest(unittest.TestCase):
+    """Each account's knobs must be primed from the config it actually runs.
+
+    Caught from a dashboard screenshot: all three accounts showed
+    moonshotai/Kimi-K2-Instruct, while the `test` account has been running
+    Qwen the whole time. A knob primed from the wrong file reports a model,
+    a stop-loss or a strike band the account is not using - and the A/B
+    dashboard is the one place someone goes to check exactly that."""
+
+    def test_every_variant_account_maps_to_its_own_config(self):
+        for account in mqtt_bridge.KNOWN_ACCOUNTS:
+            if account == "official":
+                continue  # official is config.yaml, the fallback
+            self.assertIn(
+                account, mqtt_bridge.ACCOUNT_CONFIG_PATH,
+                f"{account} would be primed from config.yaml, not its own config",
+            )
+
+    def test_mapped_configs_exist_on_disk(self):
+        for account, path in mqtt_bridge.ACCOUNT_CONFIG_PATH.items():
+            self.assertTrue(Path(path).is_file(), f"{account} maps to a missing config: {path}")
+
+    def test_mapped_configs_are_distinct(self):
+        paths = list(mqtt_bridge.ACCOUNT_CONFIG_PATH.values())
+        self.assertEqual(len(paths), len(set(paths)), "two accounts share a config file")
+
+
+MODEL_CONFIG = {"model_prices": {"a/one": {}, "b/two": {}}}
+
+
+class ModelIsADropdownTest(unittest.TestCase):
+    """`model` is the only knob bot/overrides.py accepts as any non-empty
+    string - every other one is range-checked. A thumb-typo on a phone was
+    therefore writable, and the next cycle would fail at the model call, burn
+    its retries and forfeit the slot. A select makes the wrong value
+    unreachable from the dashboard; the CLI keeps the escape hatch."""
+
+    def payloads(self, config=None):
+        return dict(mqtt_bridge.discovery_payloads("alpaca-hackathon", config))
+
+    def test_model_is_published_as_a_select_with_options(self):
+        p = self.payloads(MODEL_CONFIG)
+        topic = "homeassistant/select/alpaca_official_model/config"
+
+        self.assertIn(topic, p)
+        self.assertEqual(p[topic]["options"], ["a/one", "b/two"])
+
+    def test_options_come_from_model_prices(self):
+        """One list, not two: a model costed in config.yaml is offered here."""
+        self.assertEqual(mqtt_bridge.model_options(MODEL_CONFIG), ["a/one", "b/two"])
+
+    def test_falls_back_to_the_default_model_when_none_are_listed(self):
+        self.assertEqual(mqtt_bridge.model_options({}), [mqtt_bridge.DEFAULT_MODEL])
+
+    def test_the_old_text_entity_is_retracted(self):
+        """Without an empty retained payload the superseded text entity lingers
+        in Home Assistant forever as a dead duplicate."""
+        p = self.payloads(MODEL_CONFIG)
+
+        self.assertEqual(p["homeassistant/text/alpaca_official_model/config"], {})
+
+    def test_every_account_gets_the_dropdown(self):
+        p = self.payloads(MODEL_CONFIG)
+
+        for account in mqtt_bridge.KNOWN_ACCOUNTS:
+            self.assertIn(f"homeassistant/select/alpaca_{account}_model/config", p)
 
 
 if __name__ == "__main__":

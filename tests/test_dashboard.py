@@ -192,5 +192,28 @@ class DiagramsAreInSyncTest(unittest.TestCase):
                       "README diagram differs from docs/architecture.md - run the render script")
 
 
+class DeckImagesResolveTest(unittest.TestCase):
+    """Every image the deck references must exist on disk.
+
+    A broken `src` renders as a broken-image icon on screen and as an empty box
+    in the exported PDF - visible only in the artifact that goes to judges,
+    which is the failure mode this whole export path keeps producing."""
+
+    DECK = TEMPLATES.parent.parent.parent.parent / "submission/video/slides.html"
+
+    def test_every_referenced_image_exists(self):
+        deck = self.DECK.read_text()
+        srcs = re.findall(r'<img[^>]+src="([^"]+)"', deck)
+
+        self.assertTrue(srcs, "no images in the deck - did the references change shape?")
+        for src in srcs:
+            path = (self.DECK.parent / src).resolve()
+            self.assertTrue(path.is_file(), f"deck references a missing image: {src}")
+
+    def test_images_carry_alt_text(self):
+        for tag in re.findall(r"<img[^>]*>", self.DECK.read_text()):
+            self.assertIn("alt=", tag, f"image without alt text: {tag[:60]}")
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -26,6 +26,10 @@
   .flow em { color:var(--accent); font-style:normal; }
   .foot { position:fixed; bottom:2vh; right:3vw; color:var(--dim); font-size:.5em; }
   .fill { color:#e3b341; }
+  /* A screenshot must never make a slide overflow: the print stylesheet sets
+     overflow:hidden, so an over-tall slide is silently clipped in the PDF. */
+  section img { max-width:100%; max-height:46vh; height:auto; border-radius:8px;
+    border:1px solid #2a3644; align-self:flex-start; }
 
   /* Export to PDF: `print to PDF` in the browser, or headless Chrome -
      see submission/README-export.md. Without this block the export is a
@@ -210,10 +214,7 @@ $ diff config.yaml config-variants/kimi26.yaml
     <span>MQTT publish (fire-and-forget)</span><em>&rarr;</em>
     <span>HA auto-discovery: equity, day P&amp;L, positions, halt, last decision, trades</span>
   </div>
-  <pre>alpaca-hackathon/official/event/order_submitted  {"side":"buy","symbol":"NVDA...","qty":10,...}
-alpaca-hackathon/official/event/identity_refused {"reason":"resolved credentials for the JUDGING account"}
-alpaca-hackathon/official/state/equity           100240.50           [retained]
-homeassistant/sensor/alpaca_official_halt/config {"device":{"name":"AI Day Trader (official)"},...}</pre>
+  <img src="../images/ha-dashboard.png" alt="The operational Home Assistant dashboard: equity, day P&amp;L, positions, halt state, last decision and today's trades, for all three accounts">
   <p>Three audiences, one feed. <strong>Operator:</strong> kill switch and tunable knobs.
   <strong>Team:</strong> a second, read-only dashboard over Tailscale - no switch, no button,
   because HA has no per-entity permissions, so the separation has to <em>be</em> the dashboard.
@@ -226,6 +227,7 @@ homeassistant/sensor/alpaca_official_halt/config {"device":{"name":"AI Day Trade
 
 <section>
   <h2>Results <span class="fill">(fill Thu Sep 3 after the close)</span></h2>
+  <img src="../images/equity-curve.png" alt="Equity curve, Monday open to Thursday close, official versus challenger versus mixed">
   <p class="big">Equity Mon open &rarr; Thu close: <span class="fill">$___ &rarr; $___ (__%)</span></p>
   <p>Round trips: <span class="fill">__</span> - exits: <span class="fill">__ stop / __ take-profit / __ expiry / __ model / __ flatten</span></p>
   <p>Official vs challenger vs mixed instruments: <span class="fill">__</span></p>
