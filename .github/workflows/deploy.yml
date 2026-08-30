@@ -46,35 +46,32 @@ jobs:
             --exclude='__pycache__' \
             "$GITHUB_WORKSPACE"/ /opt/alpaca-hackathon/
 
-      - name: Wait for the MQTT bridge to pick up the new code
+      - name: Restart the MQTT bridge onto the new code
         # cron entrypoints re-read the source every run, so a sync is enough
         # for them. The bridge is the exception: it is long-running, so
         # without a restart it keeps serving the OLD code indefinitely -
         # which once silently invalidated a live test, where a manual
         # restart landed one second before this rsync.
         #
-        # This runner cannot restart it: it runs unprivileged as ghdeploy
-        # and CT 108 has no sudo installed. Instead mqtt_bridge.py watches
-        # its own source and exits on change, and systemd's Restart=always
-        # (RestartSec=15) brings it back on the new code. This step just
-        # confirms that actually happened, so a stale bridge is loud rather
-        # than silent. It never fails the deploy - the sync itself
-        # succeeded, and every trading entrypoint is already current.
+        # The runner is unprivileged, so homenetwork's alpaca-hackathon role
+        # grants it exactly one sudo rule - `systemctl restart` on this one
+        # unit, nothing else (roles/alpaca-hackathon, tag runner-sudoers).
+        # If that rule is absent the restart is skipped, not failed:
+        # mqtt_bridge.py also watches its own source and exits for systemd
+        # to bring it back, so the bridge still converges within ~25s. Never
+        # fails the deploy either way - the sync succeeded and the whole
+        # trading path is already current.
         run: |
           unit=alpaca-hackathon-mqtt-bridge
           if ! systemctl is-active --quiet "$unit" 2>/dev/null; then
             echo "::notice::$unit is not running here - nothing to reload"
             exit 0
           fi
-          newest=$(find /opt/alpaca-hackathon -name '*.py' -newermt '-10 minutes' -print -quit)
-          [ -z "$newest" ] && { echo "::notice::no Python changed in this deploy"; exit 0; }
-          for _ in $(seq 1 12); do
-            started=$(date -d "$(systemctl show "$unit" -p ActiveEnterTimestamp --value)" +%s 2>/dev/null || echo 0)
-            changed=$(stat -c %Y /opt/alpaca-hackathon/mqtt_bridge.py 2>/dev/null || echo 0)
-            if [ "$started" -gt "$changed" ]; then
-              echo "bridge restarted on the new code ($(date -d @"$started" '+%H:%M:%S') > $(date -d @"$changed" '+%H:%M:%S'))"
-              exit 0
-            fi
-            sleep 5
-          done
-          echo "::warning::$unit is still running code older than this deploy. It self-restarts within ~25s; if this persists, restart it on the host: systemctl restart $unit"
+          if sudo -n /usr/bin/systemctl restart "$unit" 2>/dev/null; then
+            sleep 3
+            systemctl is-active --quiet "$unit" \
+              && echo "restarted $unit onto $(git -C "$GITHUB_WORKSPACE" rev-parse --short HEAD)" \
+              || echo "::warning::$unit did not come back after restart - check journalctl -u $unit"
+            exit 0
+          fi
+          echo "::warning::no sudo rule to restart $unit (apply homenetwork roles/alpaca-hackathon --tags runner-sudoers). Falling back to its own source watcher, which restarts it within ~25s."
