@@ -3,6 +3,19 @@
 Deadline **Thu Sep 4, 2026, 10:00 AM CDT**. Every field below is pasted into
 the form as-is; edit here, not in the text box.
 
+Form: <https://lablab.ai/ai-hackathons/alpaca-ai-trading-agents-hackathon/razorsedge/submission>
+(team **RazorsEdge**; reachable as "Update Project" on the event page).
+It is a **3-step wizard**, and a filled draft is *not* a submission — the
+team page says "Submission draft in progress" until the last step is
+completed.
+
+**Status checked 2026-08-30: Step 1 of 3, 36% complete.** The event's live
+page counts us in "drafts in progress" (37), not "submissions" (19). There
+is **no P&L leaderboard** for this event (the FAQ says so outright, and
+`/live` is momentum stats + a social feed) — nothing to appear on, so the
+submission itself is the only thing that puts the project in front of
+judges.
+
 ## Pre-flight (do in this order on Thu morning)
 
 - [ ] Repo flipped to **public** (`gh repo edit bill-mccormick-dg/alpaca-hackathon --visibility public`) and `LICENSE` present
@@ -12,6 +25,22 @@ the form as-is; edit here, not in the text box.
 - [ ] Account ID below matches the official account exactly
 - [ ] Final `eod_review` numbers pasted into WRITEUP.md results section
 - [ ] Social post links collected (up to 5)
+
+## Form state (what is actually left)
+
+- [x] **Step 1 — Basic Information**: title (41/50), short description
+      (237/255), long description (893/2000), categories (Finance, Coding),
+      track (Options Alpha Agents), technologies (Alpaca, Featherless,
+      GitHub Copilot, Anthropic Claude) — all filled.
+- [ ] **Step 1 — social post links are still empty.** Five fields, and the
+      LinkedIn post already exists; pasting it costs nothing and is the only
+      thing feeding the Social Engagement prize ($500 to each of 2 teams,
+      plus a month of Algo Trader Plus per member).
+- [ ] **Step 2** — not started (cover image / video / slides).
+- [ ] **Step 3** — not started (GitHub URL, demo URL, **Alpaca account ID**,
+      which the rules call out as required for judging).
+- [ ] **Actually submit.** Completing the last step is what moves the team
+      out of "draft in progress". Do not leave this to 09:59 on Thu Sep 4.
 
 ## Fields
 
