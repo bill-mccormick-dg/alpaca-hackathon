@@ -135,3 +135,19 @@ Why the two layers never fight:
   `alpaca-hackathon/config/effective` — the same payload as the `config`
   journal event. Home Assistant always sees what the bot is actually
   running, which is the whole "no fight" guarantee.
+
+**Kill switch + dashboard knobs** (mqtt_bridge.py, #14's "two-way control"
+stretch goal): the bridge also subscribes to
+`alpaca-hackathon/<account>/command/halt` — payload must be exactly `HALT`
+(matches the HA button's `payload_press`) — and reuses `flatten.py`'s own
+`run()` to flatten **only that account's** positions. The HALT file it
+writes (`bot/risk.py::RiskManager.manual_halt_file`) is intentionally
+shared across accounts on purpose, so pressing either account's kill
+switch halts trading everywhere, not just that account — resuming
+(`rm logs/HALT`) stays a deliberate CLI-only step, never exposed to HA.
+On startup the bridge also publishes (retained) MQTT discovery for that
+button and for `number`/`text` entities covering every overridable knob
+except `strategy_notes` (prose — stays `override.py set strategy_notes
+@file`/PR-only), one set per account, each wired to `config/set` via a
+`command_template` so `mqtt_bridge.py`'s existing validation path is
+untouched.
