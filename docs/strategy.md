@@ -142,7 +142,7 @@ show:
 | Gate | Default | Catches |
 |---|---|---|
 | `predictions_min_volume` | 250 | nobody has traded it, so there is no crowd to imply anything |
-| `predictions_max_flatness` | 0.97 | quotes too close to uniform to carry information |
+| `predictions_max_flatness` | 0.93 | quotes too close to uniform to carry information |
 
 **Flatness** is Shannon entropy over `log(n)`: `1.0` is perfectly uniform,
 lower is more peaked. Normalising by bucket count is what makes it comparable -
@@ -204,10 +204,29 @@ action):
   P(down>1%) 0.409; volume 70.0
 ```
 
-The flatness threshold is calibrated on a single weekend observation and is
-deliberately the looser of the two gates - on that sample the volume floor is
-what caught both underlyings. Revisit it once there is intraday data; both
-thresholds are config keys precisely so tuning needs no code change.
+### The flatness gate's blind spot
+
+Flatness cannot distinguish *these quotes carry no information* from *the crowd
+genuinely expects a wide day*. Modelled against well-priced 30-bucket
+distributions:
+
+| Session | Flatness | At 0.93 |
+|---|---|---|
+| calm, daily sigma 0.5% | 0.602 | shown |
+| normal, 0.8% | 0.740 | shown |
+| active, 1.2% | 0.858 | shown |
+| volatile, 1.8% | 0.948 | **suppressed** |
+| very volatile, 2.5% | 0.983 | **suppressed** |
+
+So a correctly-priced high-volatility session is withheld precisely when a
+second opinion is worth the most. **Volume is the load-bearing gate**; treat
+flatness as a backstop against flat quotes. If it starts suppressing liquid
+days, raise it rather than concluding the market is broken - it is a config
+key, so that is an override rather than a deploy.
+
+The real fix is to measure quote *width* instead of distribution shape: an
+unpriced market is one where every bucket carries a wide bid/ask, and that
+stays true however volatile the day is.
 
 ## What the code enforces regardless of the notes
 

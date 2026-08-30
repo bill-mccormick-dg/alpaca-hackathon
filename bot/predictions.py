@@ -48,7 +48,29 @@ DEFAULT_SERIES = {"SPY": "KXINX", "QQQ": "KXNASDAQ100"}
 #              (modal bucket as a multiple of uniform, say) rates a genuinely
 #              peaked 6-bucket market the same as a flat 30-bucket one.
 MIN_VOLUME = 250.0
-MAX_FLATNESS = 0.97
+# 0.93. Modelled against well-priced 30-bucket distributions (normal, spread
+# over a +/-4% range) this passes a calm-to-normal session and suppresses the
+# unpriced weekend market that motivated the gate:
+#
+#     daily sigma 0.5%  -> 0.602      live SPY, 70 contracts   -> 0.957
+#     daily sigma 0.8%  -> 0.740      live QQQ, 14.6 contracts -> 0.941
+#     daily sigma 1.2%  -> 0.858      perfectly uniform        -> 1.000
+#
+# KNOWN BLIND SPOT, and it is the important line in this file: flatness cannot
+# tell "these quotes carry no information" apart from "the crowd genuinely
+# expects a wide day". The same table continues:
+#
+#     daily sigma 1.8%  -> 0.948   suppressed
+#     daily sigma 2.5%  -> 0.983   suppressed
+#
+# So a correctly-priced high-volatility session is withheld precisely when a
+# second opinion is worth most. VOLUME is therefore the load-bearing gate;
+# treat this one as a backstop against flat quotes, and if it starts
+# suppressing liquid days, raise it rather than assuming the market is broken.
+# The real fix is to measure quote WIDTH rather than distribution shape - an
+# unpriced market is one where every bucket has a wide bid/ask, which stays
+# true however volatile the day is. See issue for that.
+MAX_FLATNESS = 0.93
 
 
 def _f(v):
