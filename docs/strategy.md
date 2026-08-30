@@ -96,6 +96,119 @@ default and is treated as a good decision.
   propose an early exit on a thesis change and must say why.
 - Stock only as a small directional complement.
 
+## The second opinion: a prediction-market prior
+
+The option chain tells you what *options traders* are pricing. Kalshi's daily
+index-close markets tell you what a different crowd, betting on the same close,
+believes. Where those disagree is worth the model's attention, so the agent is
+handed both.
+
+Kalshi lists one YES contract per price bucket for the S&P 500 (`KXINX`) and
+Nasdaq-100 (`KXNASDAQ100`) close. The set of YES prices across ~30 buckets *is*
+a crowd-implied probability distribution of today's close. `bot/predictions.py`
+normalises it (raw YES prices sum above 1 - that overround is the bookmaker's
+edge, divided out) and reduces it to a few facts the chain cannot give:
+
+- **implied median close**, and the move that implies from yesterday
+- **P(close above yesterday's close)**
+- **P(up > 1%)** and **P(down > 1%)**
+- the **volume** behind all of it
+
+Yesterday's settled market carries `expiration_value`, the actual index close,
+which supplies the reference level.
+
+### It is a prior, not a signal
+
+Nothing in the code acts on it. `risk.py`, `execute.py` and `exits.py` never
+see it; it appears in exactly one place, the prompt, labelled:
+
+> PREDICTION MARKETS (Kalshi, crowd-implied, read-only - a PRIOR to weigh, not
+> a signal to copy; compare to what the option chain implies and to today's
+> price action)
+
+So it can only influence a trade by persuading the model, and anything it
+inspires still passes the same `check_order()` funnel as every other proposal.
+Read-only, no API key, never traded, cached for five minutes, and silently
+omitted on any failure.
+
+### When it is withheld
+
+A range market that has barely traded still quotes every bucket, and the
+midpoint of thirty wide spreads is noise. Normalising noise does not make it a
+belief - it makes a *flat* distribution that looks authoritative. That is worse
+than showing the model nothing, so two gates decide whether the prior is fit to
+show:
+
+| Gate | Default | Catches |
+|---|---|---|
+| `predictions_min_volume` | 250 | nobody has traded it, so there is no crowd to imply anything |
+| `predictions_max_flatness` | 0.97 | quotes too close to uniform to carry information |
+
+**Flatness** is Shannon entropy over `log(n)`: `1.0` is perfectly uniform,
+lower is more peaked. Normalising by bucket count is what makes it comparable -
+Kalshi splits some days into 6 buckets and some into 30, and a raw measure
+(modal bucket as a multiple of uniform, say) rates a genuinely peaked 6-bucket
+market the same as a flat 30-bucket one.
+
+A withheld prior is still **journalled, with the reason**, so "the model got no
+second opinion today" is an answerable question rather than an absence.
+
+### A worked example
+
+Run it against the live feed any time:
+
+```sh
+python scripts/verify_predictions.py            # official config
+python scripts/verify_predictions.py --no-cache
+```
+
+Real output, taken the evening before the 2026-08-31 session opened:
+
+```
+gates               volume >= 250.0, flatness <= 0.97
+
+--- SPY via KXINX ---
+  event            KXINX-26AUG31H1600  (index close 2026-08-31T20:00Z)
+  reference close  7730.99
+  implied median   7712.5  (-0.24%)
+  P(above prior)   0.453
+  P(up >1%)        0.32
+  P(down >1%)      0.409
+  buckets/volume   30 buckets, volume 70.0
+  flatness         0.952   (1.0 = uniform = no information)
+                   <-7375.0  0.058
+           7675.0-7699.9999  0.048
+           7700.0-7724.9999  0.048
+  VERDICT          thin: volume 70.0 < 250.0
+
+=== what the model is handed ===
+(nothing - every prior was withheld by the gates above)
+```
+
+That is the gates earning their place. Read the numbers: a 4.6% **down** move
+(`<-7375.0`) is the single most likely bucket, and P(up>1%) + P(down>1%) = 0.73
+implies a roughly three-in-four chance of a >1% session - against a real base
+rate nearer one in five. On 70 contracts, those are not beliefs, they are wide
+spreads. Handing that to the model as "what the crowd thinks" would actively
+mislead it toward buying more premium than the day warrants.
+
+During market hours, with volume behind the buckets, the block the model
+receives looks like this:
+
+```
+PREDICTION MARKETS (Kalshi, crowd-implied, read-only - a PRIOR to weigh, not a
+signal to copy; compare to what the option chain implies and to today's price
+action):
+- SPY via KXINX (index close 2026-08-31T20:00Z); prior close 7,731, implied
+  median 7,712 (-0.24%); P(above prior close) 0.453, P(up>1%) 0.32,
+  P(down>1%) 0.409; volume 70.0
+```
+
+The flatness threshold is calibrated on a single weekend observation and is
+deliberately the looser of the two gates - on that sample the volume floor is
+what caught both underlyings. Revisit it once there is intraday data; both
+thresholds are config keys precisely so tuning needs no code change.
+
 ## What the code enforces regardless of the notes
 
 `config.yaml` is the source of truth, and every value there is a hard cap in

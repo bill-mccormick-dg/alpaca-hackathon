@@ -131,9 +131,18 @@ learning_trades: 15
 # "index close" range markets, summarized into a few crowd-implied facts
 # (implied median close, P(above prior close), P(|move|>1%)) and handed to
 # the model as a PRIOR with an explanation. Read-only, never traded, any
-# failure -> omitted. Off on the official config until the challenger
-# shows it changes decisions for the better.
-predictions_enabled: false
+# failure -> omitted.
+#
+# This was off here, gated on the challenger showing it changes decisions for
+# the better. It is on ahead of that evidence, deliberately: the submission
+# presents it as part of how this agent reasons, and shipping a deck that
+# describes a second opinion the judged account never receives is worse than
+# running with an unproven prior. The prior has no mechanical force - risk.py,
+# execute.py and exits.py never see it, so the worst case is prompt tokens the
+# model ignores. Every cycle journals what it was handed (`predictions` event),
+# so whether it earned its place is answerable after the fact rather than
+# argued.
+predictions_enabled: true
 prediction_series:
   SPY: KXINX
   QQQ: KXNASDAQ100
