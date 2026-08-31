@@ -541,6 +541,58 @@ After each close: `eod_review.py` (the end-of-day digest) → read the digest �
 the new version. Promote the test-account challenger config (the two-account A/B) when it
 wins convincingly.
 
+
+### The critique comes from a model that did not trade
+
+The digest ends with an advisory read of the day and **one** recommended change.
+That paragraph is what the daily loop turns on, so where it comes from matters:
+a model reviewing its own reasoning tends to explain rather than challenge it.
+
+So `eod_review.py` asks a *different* model. The choice is computed, not
+configured — `bot/config.py::resolve_review_model()` walks
+`review_model_preference` in order and takes the first entry that is not this
+account's own `model`:
+
+| Account | Trades on | Reviewed by |
+|---|---|---|
+| `official` | Kimi-K2-Instruct | **Kimi-K2.6** |
+| `test` | Qwen3.8-Flash-Next | **Kimi-K2.6** |
+| `mixed` | Kimi-K2-Instruct | **Kimi-K2.6** |
+
+Nothing trades on K2.6, so all three critiques are independent. It costs one
+call a day.
+
+**It is recomputed every time, deliberately.** The trading model is changeable
+at runtime from the dashboard. Had the reviewer been resolved once and stored,
+switching an account onto K2.6 would quietly leave it grading its own homework —
+the failure would be invisible, because the digest would still arrive and still
+read plausibly. Recomputing means the property holds without anyone maintaining
+it: switch `official` to K2.6 and the reviewer drops to K2-Instruct on the next
+run. `tests/test_config.py` pins exactly that transition.
+
+Set `review_model` — in config, or as a runtime override, or from the
+dashboard's **Review model** selector — to pin one instead of computing it.
+Unset is the normal case.
+
+#### What it actually produces
+
+From a verification run on Kimi-K2.6 (against a *synthetic* digest — no real
+trading had happened yet):
+
+> "…one explicitly rejected by the guardrails because the requested quantity of
+> 14 contracts exceeded the configured maximum of 10 per order. **This rejection
+> indicates a mismatch between the agent's sizing logic and the current risk
+> limits, rather than a market failure.**"
+
+That distinction — a guardrail firing because the *prompt* is wrong, not because
+the market was — is the read worth having, and it is the one a self-review is
+least likely to volunteer.
+
+**It is advisory and nothing more.** No code acts on it. `eod_review.py` places
+no orders, the recommendation is prose in a markdown file, and a human decides
+whether it becomes an override or a config PR. `--no-model` skips it entirely
+and still produces the numbers.
+
 ## Runtime overrides (intraday, no deploy)
 
 `config.yaml` in git is the base. `logs/overrides.yaml` on the CT — written
