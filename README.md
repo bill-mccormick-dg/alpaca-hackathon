@@ -113,6 +113,7 @@ flowchart LR
   mcp[(Alpaca MCP<br/>paper only)] --> jrnl[("journal.jsonl<br/>one record per event")]
   jrnl --> ha["MQTT → Home Assistant"]
   jrnl --> rpt["status · trade_report<br/>eod_review · mail_report"]
+  jrnl --> web["journal viewer<br/>bot.wpmccormick.pw"]
 
   flat["flatten.py<br/>cancel + close"] -. "bypasses the gate:<br/>only ever reduces exposure" .-> mcp
 
@@ -233,6 +234,7 @@ config (Qwen3.8-Flash-Next); run it with
 | `status.py [--json]` | Halt state, runtime overrides, account, positions, today's journal summary. Read-only — safe on the official account any time |
 | `override.py show \| set <key> <value> [--until] \| clear <key>\|--all` | Intraday config tweaks without a deploy — see **Runtime overrides** below |
 | `mail_report.py [--dry-run] [--force]` | Hourly team email: summary plus trades / cycles / equity as CSV attachments. A quiet hour (no orders, no flatten closes) sends nothing - so a missing hourly email means an idle hour, not a broken report; a halt or `--force` always sends, and the cron's 15:00 wrap-up entry passes `--force` so the end-of-day report survives quiet afternoons. Read-only, its own cron entry, sends nothing when no recipients are configured |
+| `journal_viewer.py [--port 8300]` | The journal stream in a browser, live - read-only by construction (no credentials, no POST route). On CT 108 it runs as a systemd unit, published for the team and judges at <https://bot.wpmccormick.pw> (Cloudflare Access, email one-time PIN) |
 | `python -m unittest discover -s tests` | Credential-free guardrail tests |
 | `scripts/verify_*.py` | Manual live checks (Alpaca connectivity, Featherless, snapshot) |
 

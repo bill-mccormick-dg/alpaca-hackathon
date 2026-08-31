@@ -34,6 +34,11 @@ account gets its own entry and its own log, so the three stay separable:
 (Cron runs in **Central** time - the container's timezone - so 15:05 CT is the
 16:05 ET row above. Output goes to `logs/cron-<account>.log`.)
 
+To *watch* this loop happen rather than read about it, open the live journal
+at [bot.wpmccormick.pw](https://bot.wpmccormick.pw) - every cycle, prior,
+order and flatten below streams there as it lands
+([Operations](operations.md#the-journal-in-a-browser)).
+
 `eod_review.py` is deliberately last: market close is 16:00 ET and the
 expiring-only backstop runs at 15:50, so by 16:05 the session is finished, the
 sweep has happened and the equity figure is final. It places no orders - there

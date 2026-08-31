@@ -245,6 +245,49 @@ grep '"order_rejected"' logs/journal.jsonl | tail -5
 grep '"decision"' logs/journal.jsonl | tail -1
 ```
 
+## The journal in a browser
+
+**<https://bot.wpmccormick.pw>** - the third window onto the same journal
+(after the greps above and the HA cards below), and the only one that needs
+nothing but an email address: enter yours, Cloudflare Access emails a one-time
+PIN, and you're in for six hours. The current policy deliberately admits
+*anyone with a working email* - judges can't pre-register - so treat the page
+as public; it is read-only by construction (no credentials loaded, no POST
+route - see `journal_viewer.py`'s docstring).
+
+What you get: all three accounts' journals streaming live (the page follows
+the end like `tail -f`), one line per event in the terminal watcher's idiom.
+Controls along the top:
+
+- **account checkboxes** (`official` / `test` / `mixed`) - filter the stream
+- **tool/config chatter** - off by default; ticks in the model's research
+  tool calls and per-cycle config records
+- **replay** date picker - re-render any prior day in full, via
+  `bot/journal.py`'s own reader (Eastern dates, same as the files)
+
+The live view trims old events from the page to stay responsive; the date
+picker is the way to see a full day with scrollback.
+
+When it misbehaves:
+
+- **502 after login** - the tunnel is fine, the *unit* is down:
+  `systemctl status alpaca-hackathon-journal-viewer` on CT 108. The role only
+  installs the unit when `journal_viewer.py` exists in the checkout
+  (`alpaca_hackathon_journal_viewer_enabled` in homenetwork turns it off
+  entirely).
+- **"sign-in is restricted to members of the account" or a login loop** -
+  Cloudflare Access dashboard state has regressed, not anything on the CT.
+  The app must *accept all available identity providers*; pinned to the
+  Cloudflare IdP it locks out everyone but Cloudflare-account members
+  (happened 2026-08-31).
+- **Login flaky for everyone at once** - check
+  [Cloudflare status](https://www.cloudflarestatus.com/) for an Access
+  degradation before debugging anything of ours.
+
+Deploy/tunnel/Access mechanics live in the private `homenetwork` repo
+(`roles/alpaca-hackathon` and `roles/cloudflared` READMEs) - this page is
+about using it.
+
 ## Home Assistant over MQTT
 
 Three terms used below: a **retained** MQTT message is one the broker keeps and
