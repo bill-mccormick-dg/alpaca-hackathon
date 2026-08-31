@@ -74,6 +74,24 @@ class CsvTest(unittest.TestCase):
 
         self.assertEqual(rows[0]["reason"], "Bought calls, sized to the cap, per the thesis")
 
+    def test_csv_timestamps_convert_to_the_callers_clock_keeping_the_offset(self):
+        """The body reads Central; the attachments should too. The rewrite is
+        lossless - the ISO offset travels with the value - so a pivot in any
+        tool still parses the true instant."""
+        rows = _parse(mail_report.trades_csv(EVENTS, tz=ZoneInfo("America/Chicago")))
+
+        self.assertEqual(rows[0]["ts"], "2026-09-01T09:15:00-05:00")
+
+    def test_csv_timestamps_pass_through_untouched_without_a_tz(self):
+        rows = _parse(mail_report.trades_csv(EVENTS))
+
+        self.assertEqual(rows[0]["ts"], "2026-09-01T10:15:00-04:00")
+
+    def test_a_malformed_timestamp_survives_the_conversion(self):
+        rows = _parse(mail_report.trades_csv([dict(FILL, ts="not-a-date")], tz=ZoneInfo("America/Chicago")))
+
+        self.assertEqual(rows[0]["ts"], "not-a-date")
+
     def test_equity_csv_reads_the_multiday_log(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "equity.jsonl"

@@ -73,24 +73,40 @@ def recipients(settings: dict) -> list[str]:
     return [addr.strip() for addr in raw.replace(";", ",").split(",") if addr.strip()]
 
 
-def _rows(events, columns, keep) -> str:
+def _ts_local(value, tz):
+    """A journal timestamp rewritten onto `tz`, offset kept - lossless (the
+    ISO offset travels with it), just readable against the body and the cron
+    logs without mental arithmetic. Anything unparseable passes through."""
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except ValueError:
+        return value
+    if dt.tzinfo is None:
+        return value
+    return dt.astimezone(tz).isoformat(timespec="seconds")
+
+
+def _rows(events, columns, keep, tz=None) -> str:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore")
     writer.writeheader()
     for record in events:
         if keep(record):
-            writer.writerow({c: record.get(c, "") for c in columns})
+            row = {c: record.get(c, "") for c in columns}
+            if tz and row.get("ts"):
+                row["ts"] = _ts_local(row["ts"], tz)
+            writer.writerow(row)
     return buf.getvalue()
 
 
-def trades_csv(events) -> str:
+def trades_csv(events, tz=None) -> str:
     """Every order-shaped event, with the reason the model gave."""
-    return _rows(events, TRADE_COLUMNS, lambda r: r.get("event") in report.TRADE_EVENTS)
+    return _rows(events, TRADE_COLUMNS, lambda r: r.get("event") in report.TRADE_EVENTS, tz)
 
 
-def cycles_csv(events) -> str:
+def cycles_csv(events, tz=None) -> str:
     """One row per cycle - the intra-day equity curve, for a pivot table."""
-    return _rows(events, CYCLE_COLUMNS, lambda r: r.get("event") == "cycle_start")
+    return _rows(events, CYCLE_COLUMNS, lambda r: r.get("event") == "cycle_start", tz)
 
 
 def equity_csv(path=None) -> str:
@@ -257,8 +273,8 @@ def run(args: argparse.Namespace) -> int:
     summary = summarize(events, args.account, halt, tz=now.tzinfo)
     day = now.astimezone(EASTERN).date().isoformat()
     attachments = {
-        f"trades-{day}-{args.account}.csv": trades_csv(events),
-        f"cycles-{day}-{args.account}.csv": cycles_csv(events),
+        f"trades-{day}-{args.account}.csv": trades_csv(events, tz=now.tzinfo),
+        f"cycles-{day}-{args.account}.csv": cycles_csv(events, tz=now.tzinfo),
         f"equity-{args.account}.csv": equity_csv(),
     }
     msg = build_message(summary, attachments, settings, now)
