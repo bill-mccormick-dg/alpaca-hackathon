@@ -315,6 +315,140 @@ async def fetch_predictions(config: dict, now: datetime | None = None, cache_fil
     return data
 
 
+# --- the chain's own odds (#140) ---------------------------------------------
+# Idea credit: greatfriend#8857 (Discord, hackathon server) - "every option
+# price is a probability in disguise". P(S > K) = -dC/dK read straight off
+# call prices: the chain is itself a prediction market, and it is one we are
+# already fetching every cycle. Rendered beside the Kalshi line in the same
+# shape so the model can compare like with like - disagreement between two
+# independent crowds is the signal; agreement is just the base rate.
+
+CHAIN_MIN_STRIKES = 6
+# The survival curve must be non-increasing, but raw quote mids wiggle by a
+# couple of cents, so raw -dC/dK violates monotonicity CONSTANTLY on a $1
+# ladder - measured live, 60 of 68 increments on SPY. Counting violations is
+# therefore useless as a noise gate. Instead the curve is smoothed to the
+# closest non-increasing sequence (pool-adjacent-violators) and the gate is
+# how far the smoothing had to MOVE it: a mean absolute adjustment above
+# this is a curve that was noise wearing a distribution, the same failure
+# flatness catches for Kalshi.
+CHAIN_MAX_MEAN_ADJUSTMENT = 0.05
+
+
+def _isotonic_decreasing(values: list[float]) -> list[float]:
+    """Closest (least-squares) non-increasing sequence: pool adjacent
+    violators. Textbook PAVA on the negated sequence, unweighted - the
+    strike spacing is uniform inside the fetched band."""
+    blocks = [[v, 1] for v in values]  # [mean, count]
+    i = 0
+    while i < len(blocks) - 1:
+        if blocks[i][0] < blocks[i + 1][0]:  # violation of non-increasing
+            total = blocks[i][0] * blocks[i][1] + blocks[i + 1][0] * blocks[i + 1][1]
+            count = blocks[i][1] + blocks[i + 1][1]
+            blocks[i] = [total / count, count]
+            del blocks[i + 1]
+            i = max(i - 1, 0)
+        else:
+            i += 1
+    out = []
+    for mean, count in blocks:
+        out.extend([mean] * count)
+    return out
+
+
+def _call_mids(contracts: dict) -> tuple[str | None, list[tuple[float, float]]]:
+    """(expiry_iso, [(strike, mid)...]) for the NEAREST expiry's two-sided
+    calls. Nearest, because that is the closest analogue to Kalshi's
+    same-day close market the chain offers (min_days_to_expiration keeps us
+    off literal 0DTE)."""
+    from bot.occ import parse_occ_symbol
+
+    by_expiry: dict = {}
+    for symbol, raw in (contracts or {}).items():
+        try:
+            occ = parse_occ_symbol(symbol)
+        except ValueError:
+            continue
+        if occ.option_type != "call":
+            continue
+        quote = raw.get("latestQuote") or {}
+        bid, ask = quote.get("bp"), quote.get("ap")
+        if not (bid and ask and bid > 0 and ask > 0):
+            continue
+        by_expiry.setdefault(occ.expiration, []).append((occ.strike, (bid + ask) / 2, ask - bid))
+    if not by_expiry:
+        return None, []
+    expiry = min(by_expiry)
+    return expiry.isoformat(), sorted(by_expiry[expiry])
+
+
+def chain_summary(contracts: dict, reference: float | None) -> dict | None:
+    """The option chain's own implied distribution, in the Kalshi summary's
+    shape. None when there are no usable calls at all; a dict with
+    `suppressed` set when there are calls but the curve is not fit to show."""
+    expiry, mids = _call_mids(contracts)
+    if not mids:
+        return None
+    out = {"source": "chain", "expiry": expiry, "strikes": len(mids)}
+    if len(mids) < CHAIN_MIN_STRIKES:
+        out["suppressed"] = f"thin: only {len(mids)} usable call quotes"
+        return out
+
+    # P(S > K) at the midpoint of each adjacent strike pair = -dC/dK -
+    # but only where the quotes are precise enough to differentiate. Deep
+    # ITM calls carry $1-3 spreads against $1 strike gaps (measured live),
+    # so their mid noise is LARGER than the derivative step and one such
+    # pair poisons the whole curve. An increment is used only when both
+    # quotes' spreads are smaller than the gap they span; the discarded
+    # deep-ITM side saturates toward P=1 anyway, and the reference sits in
+    # the liquid zone near spot.
+    ks, raw = [], []
+    for (k1, c1, sp1), (k2, c2, sp2) in zip(mids, mids[1:]):
+        gap = k2 - k1
+        if max(sp1, sp2) >= gap:
+            continue
+        ks.append((k1 + k2) / 2)
+        raw.append(min(max((c1 - c2) / gap, 0.0), 1.0))
+    out["strikes"] = len(ks) + 1
+    if len(ks) < CHAIN_MIN_STRIKES - 1:
+        out["suppressed"] = f"thin: only {len(ks) + 1} tight-quoted call strikes"
+        return out
+    smoothed = _isotonic_decreasing(raw)
+    mean_adjustment = sum(abs(a - b) for a, b in zip(raw, smoothed)) / len(raw)
+    if mean_adjustment > CHAIN_MAX_MEAN_ADJUSTMENT:
+        out["suppressed"] = f"noisy: isotonic fit moved probabilities {mean_adjustment:.3f} on average"
+        return out
+    points = list(zip(ks, smoothed))
+
+    def survival(x: float) -> float:
+        if x <= points[0][0]:
+            return points[0][1]
+        if x >= points[-1][0]:
+            return points[-1][1]
+        for (x1, p1), (x2, p2) in zip(points, points[1:]):
+            if x1 <= x <= x2:
+                return p1 + (p2 - p1) * (x - x1) / (x2 - x1)
+        return points[-1][1]
+
+    # Median: where the survival curve crosses 0.5 (linear interp).
+    median = None
+    for (x1, p1), (x2, p2) in zip(points, points[1:]):
+        if p1 >= 0.5 >= p2:
+            median = x1 if p1 == p2 else x1 + (x2 - x1) * (p1 - 0.5) / (p1 - p2)
+            break
+    if median is not None:
+        out["implied_median"] = round(median, 2)
+    if reference:
+        out["reference_close"] = reference
+        out["p_above_reference"] = round(survival(reference), 3)
+        out["p_up_over_1pct"] = round(survival(reference * 1.01), 3)
+        out["p_down_over_1pct"] = round(1 - survival(reference * 0.99), 3)
+        if median is not None:
+            out["implied_move_pct"] = round((median / reference - 1) * 100, 2)
+    out["suppressed"] = None
+    return out
+
+
 def journal_fields(predictions: dict) -> dict:
     """The prior, compact enough to sit in one journal record.
 
@@ -342,30 +476,52 @@ def journal_fields(predictions: dict) -> dict:
             # fetched but withheld.
             "suppressed": s.get("suppressed"),
         }
+        if s.get("chain"):
+            out[underlying]["chain"] = s["chain"]
     return out
 
 
 def prompt_block(predictions: dict) -> str:
-    """The lines the model sees. Empty string when there is nothing usable."""
+    """The lines the model sees. Empty string when there is nothing usable.
+
+    Two crowds per underlying when both are fit to show: Kalshi's event
+    market and the option chain's own prices (#140). The header says what to
+    do with the pair, because the pair is the point."""
     if not predictions:
         return ""
     header = (
-        "PREDICTION MARKETS (Kalshi, crowd-implied, read-only - a PRIOR to weigh, not a signal to copy; "
-        "compare to what the option chain implies and to today's price action):"
+        "PREDICTION MARKETS (crowd-implied, read-only - PRIORS to weigh, not signals to copy): "
+        "Kalshi's event market on the index close, and the option chain's own implied odds "
+        "(P(S>K) = -dC/dK from call prices). They are independent crowds measuring nearly the "
+        "same thing - DISAGREEMENT between them is information; agreement is just the base rate. "
+        "Compare both to today's price action:"
     )
-    usable = {u: s for u, s in predictions.items() if not s.get("suppressed")}
-    if not usable:
+    lines = []
+    for underlying, s in predictions.items():
+        if s.get("series") and not s.get("suppressed"):
+            ref = s.get("reference_close")
+            bits = [f"{underlying} via {s.get('series')} (index close {str(s.get('close_time'))[:16]}Z)"]
+            if ref:
+                bits.append(f"prior close {ref:,.0f}, implied median {s['implied_median']:,.0f} ({s.get('implied_move_pct'):+.2f}%)")
+                bits.append(f"P(above prior close) {s.get('p_above_reference')}, P(up>1%) {s.get('p_up_over_1pct')}, "
+                            f"P(down>1%) {s.get('p_down_over_1pct')}")
+            else:
+                bits.append(f"implied median {s['implied_median']:,.0f}")
+            bits.append(f"volume {s.get('volume')}")
+            lines.append("- " + "; ".join(bits))
+        chain = s.get("chain")
+        if chain and not chain.get("suppressed"):
+            ref = chain.get("reference_close")
+            bits = [f"{underlying} via option chain (calls exp {chain.get('expiry')})"]
+            if ref:
+                if chain.get("implied_median") is not None:
+                    bits.append(f"prior close {ref:,.2f}, implied median {chain['implied_median']:,.2f} "
+                                f"({chain.get('implied_move_pct'):+.2f}%)")
+                bits.append(f"P(above prior close) {chain.get('p_above_reference')}, "
+                            f"P(up>1%) {chain.get('p_up_over_1pct')}, P(down>1%) {chain.get('p_down_over_1pct')}")
+            elif chain.get("implied_median") is not None:
+                bits.append(f"implied median {chain['implied_median']:,.2f}")
+            lines.append("- " + "; ".join(bits))
+    if not lines:
         return ""
-    lines = [header]
-    for underlying, s in usable.items():
-        ref = s.get("reference_close")
-        bits = [f"{underlying} via {s.get('series')} (index close {str(s.get('close_time'))[:16]}Z)"]
-        if ref:
-            bits.append(f"prior close {ref:,.0f}, implied median {s['implied_median']:,.0f} ({s.get('implied_move_pct'):+.2f}%)")
-            bits.append(f"P(above prior close) {s.get('p_above_reference')}, P(up>1%) {s.get('p_up_over_1pct')}, "
-                        f"P(down>1%) {s.get('p_down_over_1pct')}")
-        else:
-            bits.append(f"implied median {s['implied_median']:,.0f}")
-        bits.append(f"volume {s.get('volume')}")
-        lines.append("- " + "; ".join(bits))
-    return "\n".join(lines) + "\n\n"
+    return "\n".join([header, *lines]) + "\n\n"
