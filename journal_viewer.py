@@ -241,6 +241,11 @@ PAGE = r"""<!doctype html>
   .banner { color:#e8b34b; font-weight:700; margin:10px 0; }
   input[type=date] { background:#1a2733; color:var(--fg); border:1px solid #2a3947; border-radius:4px; padding:2px 6px; }
   a { color:#6fb3e8; }
+  #jump { position:fixed; right:18px; bottom:18px; z-index:5; display:none;
+    background:#2a6f9e; color:#fff; border:0; border-radius:16px; padding:7px 14px;
+    font:inherit; cursor:pointer; box-shadow:0 2px 10px rgba(0,0,0,.5); }
+  #jump.show { display:block; }
+  #trimmed { color:var(--dim); font-style:italic; padding:4px 0; }
 </style></head><body>
 <header>
   <b>AI Day Trader — journal</b>
@@ -252,10 +257,17 @@ PAGE = r"""<!doctype html>
   <label>replay <input type="date" id="day"></label>
 </header>
 <div id="feed"></div>
+<button id="jump">↓ <span id="jumpn"></span> new</button>
 <script>
 const feed = document.getElementById('feed'), status = document.getElementById('status');
+const jump = document.getElementById('jump'), jumpn = document.getElementById('jumpn');
 const NOISY = new Set(['tool_call','config']);
-let lastDay = null, rows = [];
+// A cycle writes ~10 events and there are ~40 cycles a day across three
+// accounts, so an unbounded feed reaches five figures of DOM nodes by the
+// close and the tab crawls. Keep a window; the whole journal is always one
+// day-replay away.
+const MAX_ROWS = 600;
+let lastDay = null, rows = [], unseen = 0;
 
 function fmt(ts){ try { return new Date(ts).toLocaleTimeString('en-US',{hour12:false}); } catch(e){ return '--:--:--'; } }
 function dayOf(ts){ try { return new Date(ts).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); } catch(e){ return ''; } }
@@ -294,9 +306,27 @@ function push(r, live){
   el.innerHTML = line(r);
   feed.appendChild(el); rows.push(el);
   applyFilters(el);
-  if (live && nearBottom()) el.scrollIntoView({block:'end'});
+  trim();
+  if (!live) return;
+  if (pinned()) { toBottom(); }
+  else { unseen++; jumpn.textContent = unseen; jump.classList.add('show'); }
 }
-function nearBottom(){ return window.innerHeight + window.scrollY > document.body.offsetHeight - 200; }
+
+function trim(){
+  if (rows.length <= MAX_ROWS) return;
+  const drop = rows.splice(0, rows.length - MAX_ROWS);
+  for (const el of drop) el.remove();
+  let note = document.getElementById('trimmed');
+  if (!note){ note = document.createElement('div'); note.id='trimmed'; feed.prepend(note); }
+  note.textContent = '… older events trimmed from view — use the date picker to replay a full day';
+}
+
+// "Pinned" means the reader is at the live end and wants to stay there.
+// Anyone scrolled up is reading something and must not be yanked away.
+function pinned(){ return window.innerHeight + window.scrollY >= document.body.offsetHeight - 60; }
+function toBottom(){ window.scrollTo(0, document.body.scrollHeight); unseen = 0; jump.classList.remove('show'); }
+jump.addEventListener('click', toBottom);
+window.addEventListener('scroll', () => { if (pinned()) toBottom(); });
 function applyFilters(only){
   const accts = new Set([...document.querySelectorAll('.acct:checked')].map(c=>c.value));
   const chatter = document.getElementById('chatter').checked;
@@ -311,7 +341,7 @@ function connectLive(){
   feed.innerHTML=''; rows=[]; lastDay=null;
   es = new EventSource('/events');
   let live = false;
-  es.addEventListener('live', ()=>{ live = true; status.textContent='live'; });
+  es.addEventListener('live', ()=>{ live = true; status.textContent='live'; toBottom(); });
   es.onmessage = ev => push(JSON.parse(ev.data), live);
   es.onerror = ()=>{ status.textContent='reconnecting…'; };
 }
@@ -323,6 +353,8 @@ document.getElementById('day').addEventListener('change', async ev=>{
   const r = await fetch('/history?day='+day); const records = await r.json();
   feed.innerHTML=''; rows=[]; lastDay=null;
   records.forEach(rec=>push(rec,false));
+  unseen = 0; jump.classList.remove('show');
+  window.scrollTo(0, 0);  // a replay is history: start at the beginning of it
   if (!records.length) feed.innerHTML = '<div class="dim">nothing journaled that day</div>';
 });
 connectLive();
