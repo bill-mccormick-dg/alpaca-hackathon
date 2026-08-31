@@ -114,6 +114,11 @@ OVERRIDABLE_KEYS = {
     # 2026-08-31 (a stale reference close mid-session) there was no way to
     # pull a misleading prior without a deploy the freeze refuses.
     "predictions_enabled": _bool,
+    # The churn guard (#132): how long a model-opened position must be held
+    # before the model may sell it, and the drawdown that overrides the wait
+    # because the position is headed for the stop anyway.
+    "min_hold_minutes": _int_in(0, 390),
+    "early_exit_drawdown_pct": _float_in(1, 100),
 }
 
 

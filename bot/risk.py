@@ -32,6 +32,56 @@ def _eastern_time(now: datetime) -> time:
     return now.time()
 
 
+MIN_HOLD_MINUTES = 30
+EARLY_EXIT_DRAWDOWN_PCT = 25.0
+
+
+def early_exit_block(proposal, position, entered_ts: str | None, config: dict,
+                     now: datetime) -> str | None:
+    """Why a MODEL-proposed sell of a just-opened position should be refused,
+    or None to allow it. The code-exit paths (exits.py's stop/take-profit/DTE
+    and flatten.py) never come through here.
+
+    Exists because prose failed twice in one morning (2026-08-31, issue
+    #132): the judged account bought the same SPY put twice and market-sold
+    it ~10 and ~20 minutes later on a ~9% adverse mark - once before the
+    anti-churn strategy notes, once straight through them, the second time
+    dressed in the permitted "thesis change" wording. The stop exists so the
+    model does not have to react to marks; this makes that mechanical.
+
+    Fail-open on missing data, deliberately: no entry timestamp today means
+    the position is from a prior session (held overnight - selling it is not
+    churn), and no drawdown measure means we cannot claim the exit is
+    mark-driven. The guard blocks exactly the case it can prove.
+    """
+    if proposal.side != "sell":
+        return None
+    if entered_ts is None or position is None:
+        return None
+    min_hold = float(config.get("min_hold_minutes", MIN_HOLD_MINUTES))
+    threshold = float(config.get("early_exit_drawdown_pct", EARLY_EXIT_DRAWDOWN_PCT))
+    try:
+        entered = datetime.fromisoformat(entered_ts)
+    except ValueError:
+        return None
+    held_min = (now - entered).total_seconds() / 60.0
+    if held_min >= min_hold:
+        return None
+    entry, current = position.avg_entry_price, position.current_price
+    drawdown = None
+    if entry and current and entry > 0:
+        drawdown = (entry - current) / entry * 100.0
+    if drawdown is not None and drawdown > threshold:
+        # Well on its way to the stop anyway - let the model out.
+        return None
+    return (
+        f"model exit blocked: opened {held_min:.0f} min ago (min_hold_minutes={min_hold:.0f}) "
+        f"and drawdown {'%.1f%%' % drawdown if drawdown is not None else 'unknown'} "
+        f"<= early_exit_drawdown_pct={threshold:.0f} - the stop/take-profit own marks; "
+        f"sell again after the hold or let the leash work"
+    )
+
+
 class RiskManager:
     def __init__(self, config: dict, logs_dir: Path = LOGS_DIR, account: str | None = None):
         # account: scopes BOTH halt kinds to one account, so a challenger can

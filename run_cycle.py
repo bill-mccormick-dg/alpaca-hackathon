@@ -30,7 +30,7 @@ from bot.models import AccountState, Position
 from bot.orders import INCOMPLETE
 from bot.report import trades_payload
 from bot.retry import RetryBudget, call_with_retry, summarize
-from bot.risk import EASTERN, RiskManager
+from bot.risk import EASTERN, RiskManager, early_exit_block
 from bot.snapshot import _data, build_snapshot, price_for_proposal, quote_option_mid
 from bot.trades import pair_round_trips
 
@@ -324,7 +324,22 @@ async def run(args: argparse.Namespace) -> int:
             end_cycle(actions=0)
             return 0
 
+        # Entry times for the min-hold guard: the last submitted BUY per
+        # symbol today, from the journal. Read once per cycle, not per
+        # proposal - and only the model's sells are guarded; exits.py and
+        # flatten.py never pass this way.
+        entries_today = {}
+        for rec in journal.read_events(events=("order_submitted",)):
+            if rec.get("side") == "buy" and rec.get("symbol"):
+                entries_today[rec["symbol"]] = rec.get("ts")
+
         for p in proposals:
+            block = early_exit_block(p, acct.positions.get(p.symbol), entries_today.get(p.symbol), config, now)
+            if block:
+                journal.log("order_rejected", detail=block, side=p.side, qty=p.qty,
+                            symbol=p.symbol, instrument=p.instrument, price=None, reason=p.reason)
+                print(f"REJECTED {p.side} {p.qty} {p.symbol}: {block}")
+                continue
             price = price_for_proposal(snap, p)
             price_source = "snapshot"
             if price is None and p.instrument == "option":

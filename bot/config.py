@@ -30,6 +30,10 @@ TRACKED_KEYS = (
     # the prompt, so flipping it must show up as a config change when a P&L
     # swing is being attributed.
     "predictions_enabled",
+    # The churn guard's thresholds (#132/#138): they change when a model
+    # exit is allowed, so they belong in the hash - and the dashboard's
+    # number rows read them from config/effective, which is this dict.
+    "min_hold_minutes", "early_exit_drawdown_pct",
 )
 
 

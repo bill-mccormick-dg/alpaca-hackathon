@@ -4,7 +4,8 @@ from datetime import date, datetime
 from pathlib import Path
 
 from bot.models import AccountState, Position, Proposal
-from bot.risk import RiskManager
+from bot import risk
+from bot.risk import EASTERN, RiskManager
 
 UNDERLYINGS = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA"]
 
@@ -326,3 +327,62 @@ class DailyLossBreachTest(RiskManagerTestBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class EarlyExitBlockTest(unittest.TestCase):
+    """The churn guard (#132). On 2026-08-31 the judged account bought the
+    same SPY put twice and market-sold it 10 and 20 minutes later on a ~9%
+    adverse mark - the second time through prompt language forbidding
+    exactly that. This is the mechanical version."""
+
+    NOW = datetime(2026, 8, 31, 12, 0, tzinfo=EASTERN)
+
+    def _pos(self, entry=2.44, current=2.27):
+        return Position(symbol="SPY260902P00765000", instrument="option", qty=10,
+                        market_value=2270, underlying="SPY",
+                        avg_entry_price=entry, current_price=current)
+
+    def _sell(self):
+        return Proposal("option", "SPY260902P00765000", "sell", 10, underlying="SPY")
+
+    def test_blocks_a_fresh_sell_on_a_small_drawdown(self):
+        block = risk.early_exit_block(self._sell(), self._pos(),
+                                      "2026-08-31T11:50:00-04:00", {}, self.NOW)
+        self.assertIsNotNone(block)
+        self.assertIn("min_hold_minutes", block)
+
+    def test_allows_the_sell_once_the_hold_has_passed(self):
+        self.assertIsNone(risk.early_exit_block(self._sell(), self._pos(),
+                                                "2026-08-31T11:20:00-04:00", {}, self.NOW))
+
+    def test_a_deep_drawdown_overrides_the_hold(self):
+        """Headed for the stop anyway - blocking would only make the loss
+        bigger for the sake of a rule."""
+        pos = self._pos(entry=2.44, current=1.70)  # -30%
+        self.assertIsNone(risk.early_exit_block(self._sell(), pos,
+                                                "2026-08-31T11:55:00-04:00", {}, self.NOW))
+
+    def test_buys_are_never_blocked(self):
+        p = Proposal("option", "SPY260902P00765000", "buy", 10, underlying="SPY")
+        self.assertIsNone(risk.early_exit_block(p, self._pos(),
+                                                "2026-08-31T11:59:00-04:00", {}, self.NOW))
+
+    def test_overnight_positions_are_sellable(self):
+        """No entry today = held from a prior session; selling it is not
+        churn, and the guard fails open."""
+        self.assertIsNone(risk.early_exit_block(self._sell(), self._pos(), None, {}, self.NOW))
+
+    def test_unknown_position_fails_open(self):
+        self.assertIsNone(risk.early_exit_block(self._sell(), None,
+                                                "2026-08-31T11:59:00-04:00", {}, self.NOW))
+
+    def test_thresholds_come_from_config(self):
+        cfg = {"min_hold_minutes": 5, "early_exit_drawdown_pct": 3}
+        self.assertIsNone(risk.early_exit_block(self._sell(), self._pos(),
+                                                "2026-08-31T11:50:00-04:00", cfg, self.NOW))
+        pos = self._pos(current=2.42)  # -0.8% < 3%
+        self.assertIsNotNone(risk.early_exit_block(self._sell(), pos,
+                                                   "2026-08-31T11:58:00-04:00", cfg, self.NOW))
+
+    def test_unparseable_entry_ts_fails_open(self):
+        self.assertIsNone(risk.early_exit_block(self._sell(), self._pos(), "garbage", {}, self.NOW))
