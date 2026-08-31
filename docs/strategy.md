@@ -171,9 +171,44 @@ replaces those notes with explicit criteria and forbids a default:
 - *"Neither is the default and neither is a fallback. State the instrument and
   the reason it beats the other one for this specific idea."*
 
+#### "Directional but open-ended", unpacked
+
+That phrase carries the whole distinction, and it is the deliberate opposite of
+*"a directional view with a horizon"* in the bullet above it.
+
+**Directional** means you have a view on *which way*. **Open-ended** means you
+have no view on *when* — nothing in your reasoning says the move should arrive
+by Thursday rather than three weeks out.
+
+That decides the instrument, because an option is a bet on two things at once:
+direction **and** timing. It expires. Buy a 7-day call and the move you
+predicted arrives on day nine, and you lose the whole premium — being right and
+late is indistinguishable from being wrong. The deadline is not a side effect,
+it is most of what you paid for; a longer-dated contract costs more precisely
+because it carries more time.
+
+Shares are a bet on direction alone. No expiry, no theta, so being early costs
+opportunity and nothing else. So "directional but open-ended" means **an option
+would charge you for a deadline your thesis does not have** — you would be
+paying for precision you cannot supply.
+
+| The view | Has a clock? | Instrument |
+|---|---|---|
+| "NVDA reports Thursday and I think they beat" | yes — a dated event resolves it | option |
+| "NVDA's uptrend has further to run" | no — real view, no deadline | stock |
+
+Read together, the three stock criteria are one idea from three angles, all
+saying the option's *pricing* works against this particular thesis rather than
+that the thesis is weak: you are paying for a deadline you do not need
+(open-ended), overpaying for the same exposure (expensive IV), or watching theta
+eat the move before it arrives (a slow grind).
+
 That is the whole experiment: two accounts, same market, same cadence, one
 difference — whether instrument choice is a deliberate decision or an
-afterthought — and the P&L answers it instead of us.
+afterthought — and the P&L answers it instead of us. Because the notes force the
+model to *name* the instrument and say why it beats the other one, the journal
+carries that reasoning per trade, which is what lets `eod_review` attribute P&L
+to instrument choice rather than to luck.
 
 ### What the code does differently for shares
 
