@@ -26,7 +26,7 @@ import json
 import sys
 from datetime import datetime
 
-from bot import journal, mqtt, overrides, review
+from bot import journal, mqtt, overrides, prior_scores, review
 from bot.config import load_config
 from bot.credentials import load_credentials, validate_account
 from bot.featherless import DEFAULT_MODEL, FeatherlessClient
@@ -46,7 +46,10 @@ Below is the day's digest as JSON: equity, completed round trips with how each e
 (holds vs proposals, rejections grouped by the guardrail rule that refused them, errors), the \
 configs in effect, and your raw output each cycle. An empty array "[]" is a deliberate HOLD - \
 counted under "holds", never an error; "errors" are separate events (timeouts, malformed \
-output, broker failures) and are listed with their text.
+output, broker failures) and are listed with their text. A "prior_scores" block, when \
+present, grades the prediction-market priors themselves (Brier score, lower is better; \
+the 0.5 coin flip scores 0.25) - use it to judge whether the priors deserved the weight \
+you gave them, and which crowd to trust when Kalshi and the chain disagree.
 
 Write plain text for the operator - no markdown headings, no JSON:
 1. 3-6 sentences on what actually happened and why, in plain language. Be specific: name the \
@@ -132,6 +135,14 @@ async def run(args: argparse.Namespace) -> int:
 
     digest = review.build_digest(day, args.account, records, trade_summary, trips, price_table=config.get("model_prices"))
     append_equity_log(day, args.account, digest["equity"])
+
+    if records:
+        try:
+            scores = await prior_scores.score_day(day, args.account, records)
+            if scores:
+                digest["prior_scores"] = scores
+        except Exception as exc:  # noqa: BLE001 - grading the inputs must never take the digest down
+            digest["prior_scores"] = {"error": f"{type(exc).__name__}: {exc}"}
 
     if not args.no_model and records:
         try:

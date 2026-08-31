@@ -73,47 +73,40 @@ def recipients(settings: dict) -> list[str]:
     return [addr.strip() for addr in raw.replace(";", ",").split(",") if addr.strip()]
 
 
-def _rows(events, columns, keep) -> str:
+def _ts_local(value, tz):
+    """A journal timestamp rewritten onto `tz`, offset kept - lossless (the
+    ISO offset travels with it), just readable against the body and the cron
+    logs without mental arithmetic. Anything unparseable passes through."""
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except ValueError:
+        return value
+    if dt.tzinfo is None:
+        return value
+    return dt.astimezone(tz).isoformat(timespec="seconds")
+
+
+def _rows(events, columns, keep, tz=None) -> str:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore")
     writer.writeheader()
     for record in events:
         if keep(record):
-            writer.writerow({c: record.get(c, "") for c in columns})
+            row = {c: record.get(c, "") for c in columns}
+            if tz and row.get("ts"):
+                row["ts"] = _ts_local(row["ts"], tz)
+            writer.writerow(row)
     return buf.getvalue()
 
 
-def trades_csv(events) -> str:
+def trades_csv(events, tz=None) -> str:
     """Every order-shaped event, with the reason the model gave."""
-    return _rows(events, TRADE_COLUMNS, lambda r: r.get("event") in report.TRADE_EVENTS)
+    return _rows(events, TRADE_COLUMNS, lambda r: r.get("event") in report.TRADE_EVENTS, tz)
 
 
-def trades_in_window(events, now: datetime, window_minutes: int = 60) -> list[dict]:
-    """Trade-shaped events that occurred within the last `window_minutes`."""
-    cutoff = now - timedelta(minutes=window_minutes)
-    window_trades = []
-    for record in events:
-        if record.get("event") not in report.TRADE_EVENTS:
-            continue
-        ts_raw = record.get("ts")
-        if not ts_raw:
-            continue
-        try:
-            ts = datetime.fromisoformat(str(ts_raw))
-            if ts.tzinfo is None and now.tzinfo is not None:
-                ts = ts.replace(tzinfo=now.tzinfo)
-            elif ts.tzinfo is not None and now.tzinfo is None:
-                ts = ts.astimezone(EASTERN).replace(tzinfo=None)
-            if ts >= cutoff:
-                window_trades.append(record)
-        except (ValueError, TypeError):
-            continue
-    return window_trades
-
-
-def cycles_csv(events) -> str:
+def cycles_csv(events, tz=None) -> str:
     """One row per cycle - the intra-day equity curve, for a pivot table."""
-    return _rows(events, CYCLE_COLUMNS, lambda r: r.get("event") == "cycle_start")
+    return _rows(events, CYCLE_COLUMNS, lambda r: r.get("event") == "cycle_start", tz)
 
 
 def equity_csv(path=None) -> str:
@@ -140,17 +133,58 @@ def equity_csv(path=None) -> str:
     return buf.getvalue()
 
 
-def summarize(events, account: str, halt: str = "none") -> dict:
+def _is_activity(record: dict) -> bool:
+    """A journal event that represents something happening to money.
+
+    Trade-shaped events always count. A `flatten` event counts only when it
+    actually touched a position: flatten's closes never journal as orders
+    (bot/flatten.py writes no journal events), so without this the hour the
+    bot closed everything would read as "no trades" - while the 14:50
+    backstop logs an empty flatten every day, which is exactly the quiet
+    hour suppression exists for."""
+    event = record.get("event")
+    if event in report.TRADE_EVENTS:
+        return True
+    return event == "flatten" and bool(record.get("closed") or record.get("attempted"))
+
+
+def suppress_reason(events, now: datetime, halt: str, force: bool = False, window_minutes: int = 60) -> str | None:
+    """Why the hourly email should NOT go out, or None to send (issue #153).
+
+    Suppression is the exception, so anything unusual falls toward sending:
+    a halt (any value but "none" - including "unknown" when config is
+    unreadable) must always reach the team, --force always wins, and an
+    unparseable timestamp is skipped rather than trusted. Journal timestamps
+    are always offset-aware (bot/journal.py stamps Eastern ISO), so the
+    comparison is aware-vs-aware regardless of the clock `now` is on."""
+    if force or halt != "none":
+        return None
+    cutoff = now - timedelta(minutes=window_minutes)
+    for record in events:
+        if not _is_activity(record):
+            continue
+        try:
+            ts = datetime.fromisoformat(str(record.get("ts")))
+        except (TypeError, ValueError):
+            continue
+        if ts.tzinfo is not None and ts >= cutoff:
+            return None
+    return f"no trading activity in the last {window_minutes}m"
+
+
+def summarize(events, account: str, halt: str = "none", tz=None) -> dict:
     """The numbers that go in the subject line and the top of the body.
 
     `halt` is the CURRENT state, derived from the halt files by the caller -
     not from journal events. A manual_halt event stays in today's journal
     after the halt is cleared, so an event-derived flag would mark the
     account halted for the rest of the day and teach everyone to ignore the
-    subject line. Same reasoning as RiskManager.halt_state() (#74)."""
+    subject line. Same reasoning as RiskManager.halt_state() (#74).
+
+    `tz` renders trade times on that clock; journal timestamps are Eastern."""
     cycles = [r for r in events if r.get("event") == "cycle_start"]
     latest = cycles[-1] if cycles else {}
-    trades = report.recent_trades(events, limit=0)
+    trades = report.recent_trades(events, limit=0, tz=tz)
     errors = [r for r in events if r.get("event") == "error"]
     retries = [r for r in events if r.get("event") == "decide_retry"]
     equity = latest.get("equity")
@@ -210,7 +244,10 @@ def body_text(s: dict, now: datetime) -> str:
         lines.append("")
         lines.append(f"  *** THIS ACCOUNT IS HALTED ({s['halt']}) — it is not trading. ***")
     lines += ["", "Trades so far today", "-------------------", ""]
-    lines.append(report.render_trades_markdown(s["trades"][-12:], s["account"]))
+    # All of today's trades, reasons unclipped (reason_chars=0): the 12-entry
+    # and 400-char caps exist for Home Assistant's sensor limits, and in an
+    # email they cut entries mid-sentence under a heading that says "today".
+    lines.append(report.render_trades_markdown(s["trades"], s["account"], reason_chars=0))
     lines += [
         "",
         "",
@@ -259,7 +296,11 @@ def run(args: argparse.Namespace) -> int:
         )
         return 0
 
-    now = datetime.now(EASTERN)
+    # The host's local clock (America/Chicago on CT 108), not Eastern: the
+    # subject, the "As of" line and the trade times should agree with the
+    # cron logs and the team's own clocks, not cite EDT. Market logic below
+    # (halt_state) still runs on Eastern via its own conversion.
+    now = datetime.now().astimezone()
     events = journal.read_events()
     # Current halt state comes from the halt FILES via the same helper the
     # dashboard uses, never from journal events - see summarize().
@@ -268,25 +309,17 @@ def run(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001 - a report must still send if config is unreadable
         print(f"halt state unavailable ({type(exc).__name__}: {exc})", file=sys.stderr)
         halt = "unknown"
-    window_minutes = getattr(args, "window_minutes", 60)
-    force = getattr(args, "force", False)
-    recent = trades_in_window(events, now, window_minutes=window_minutes)
-
-    if not force and halt == "none" and not recent:
-        if args.dry_run:
-            print(
-                f"[suppressed] no trades in the last {window_minutes}m for account {args.account!r} "
-                "(use --force to send)"
-            )
-        else:
-            print(f"no trades in the last {window_minutes}m for account {args.account!r} — skipping email")
+    reason = suppress_reason(events, now, halt, force=args.force, window_minutes=args.window_minutes)
+    if reason:
+        tag = "[suppressed] " if args.dry_run else ""
+        print(f"{tag}{reason} for account {args.account!r} — skipping email (--force sends anyway)")
         return 0
 
-    summary = summarize(events, args.account, halt)
-    day = now.date().isoformat()
+    summary = summarize(events, args.account, halt, tz=now.tzinfo)
+    day = now.astimezone(EASTERN).date().isoformat()
     attachments = {
-        f"trades-{day}-{args.account}.csv": trades_csv(events),
-        f"cycles-{day}-{args.account}.csv": cycles_csv(events),
+        f"trades-{day}-{args.account}.csv": trades_csv(events, tz=now.tzinfo),
+        f"cycles-{day}-{args.account}.csv": cycles_csv(events, tz=now.tzinfo),
         f"equity-{args.account}.csv": equity_csv(),
     }
     msg = build_message(summary, attachments, settings, now)
@@ -311,13 +344,10 @@ def main() -> int:
     ap.add_argument("--account", default="test", help="named account: official, test, or a variant")
     ap.add_argument("--config", default=None, help="config file (default config.yaml) - read for the halt-file paths")
     ap.add_argument("--dry-run", action="store_true", help="print the message instead of sending it")
-    ap.add_argument("--force", action="store_true", help="send even if there were no trades in the recorded window")
-    ap.add_argument(
-        "--window-minutes",
-        type=int,
-        default=60,
-        help="activity window in minutes to check for trade activity (default 60)",
-    )
+    ap.add_argument("--force", action="store_true",
+                    help="send even with no recent activity - the cron's 15:00 wrap-up entry uses this")
+    ap.add_argument("--window-minutes", type=int, default=60,
+                    help="how far back to look for trading activity before suppressing (default 60)")
     return run(ap.parse_args())
 
 

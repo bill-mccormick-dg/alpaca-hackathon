@@ -31,20 +31,29 @@ REASON_CHARS = 400
 VERDICT_PREFIX = "why: "
 
 
-def _fmt_time(ts: str) -> str:
-    """HH:MM from a journal ISO timestamp, falling back to the raw value."""
+def _fmt_time(ts: str, tz=None) -> str:
+    """HH:MM from a journal ISO timestamp, falling back to the raw value.
+
+    Journal timestamps are written in Eastern (bot/journal.py); pass `tz` to
+    render them on another clock - the email shows the host's local time so
+    its lines agree with the cron logs and the viewer."""
     try:
-        return datetime.fromisoformat(ts).strftime("%H:%M")
+        dt = datetime.fromisoformat(ts)
+        if tz is not None and dt.tzinfo is not None:
+            dt = dt.astimezone(tz)
+        return dt.strftime("%H:%M")
     except (TypeError, ValueError):
         return str(ts or "")[:5]
 
 
 def _clip(text: str, limit: int) -> str:
     text = " ".join(str(text or "").split())
+    if not limit:
+        return text
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
-def recent_trades(events, limit: int = DEFAULT_TRADE_LIMIT) -> list[dict]:
+def recent_trades(events, limit: int = DEFAULT_TRADE_LIMIT, tz=None) -> list[dict]:
     """The most recent trade-shaped journal events, newest last.
 
     `events` is any iterable of journal records - the caller decides whether
@@ -56,7 +65,7 @@ def recent_trades(events, limit: int = DEFAULT_TRADE_LIMIT) -> list[dict]:
             continue
         trades.append(
             {
-                "time": _fmt_time(record.get("ts")),
+                "time": _fmt_time(record.get("ts"), tz),
                 "event": event,
                 "side": record.get("side") or "",
                 "qty": record.get("qty"),
@@ -75,7 +84,7 @@ def recent_trades(events, limit: int = DEFAULT_TRADE_LIMIT) -> list[dict]:
     return trades[-limit:] if limit else trades
 
 
-def _trade_line(t: dict) -> str:
+def _trade_line(t: dict, reason_chars: int = REASON_CHARS) -> str:
     verb = {
         "order_submitted": "FILLED",
         "order_rejected": "rejected",
@@ -90,22 +99,23 @@ def _trade_line(t: dict) -> str:
     # Why the funnel refused / what broke - first, because it is the fact a
     # reader of "rejected" is looking for.
     if t["event"] in ("order_rejected", "order_error") and t.get("detail"):
-        lines.append(f"  {VERDICT_PREFIX}{_clip(t['detail'], REASON_CHARS)}")
-    # 400, not 160: the model's reasons run 150-250 chars, and at 160 nearly
-    # every one ended in "…" one clause before the point. The CSV attachment
-    # carries the full text either way; this is the readable version.
+        lines.append(f"  {VERDICT_PREFIX}{_clip(t['detail'], reason_chars)}")
+    # The default is 400, not 160: the model's reasons run 150-250 chars, and
+    # at 160 nearly every one ended in "…" one clause before the point. That
+    # cap is for the HA card; a caller with no size constraint (the email)
+    # passes reason_chars=0 for the full text.
     if t.get("reason"):
-        lines.append(f"  {_clip(t['reason'], REASON_CHARS)}")
+        lines.append(f"  {_clip(t['reason'], reason_chars)}")
     return "\n".join(lines)
 
 
-def render_trades_markdown(trades: list[dict], account: str = "") -> str:
+def render_trades_markdown(trades: list[dict], account: str = "", reason_chars: int = REASON_CHARS) -> str:
     """A markdown card body for the trade list. Newest last, so it reads like
-    a log rather than a leaderboard."""
+    a log rather than a leaderboard. reason_chars=0 disables clipping."""
     if not trades:
         who = f" for **{account}**" if account else ""
         return f"_No trades yet today{who}._"
-    return "\n\n".join(_trade_line(t) for t in trades)
+    return "\n\n".join(_trade_line(t, reason_chars) for t in trades)
 
 
 def trades_summary(trades: list[dict]) -> str:

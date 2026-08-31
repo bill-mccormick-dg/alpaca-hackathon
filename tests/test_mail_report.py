@@ -14,6 +14,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 import mail_report
 from bot import credentials
@@ -73,6 +74,24 @@ class CsvTest(unittest.TestCase):
         rows = _parse(mail_report.trades_csv(events))
 
         self.assertEqual(rows[0]["reason"], "Bought calls, sized to the cap, per the thesis")
+
+    def test_csv_timestamps_convert_to_the_callers_clock_keeping_the_offset(self):
+        """The body reads Central; the attachments should too. The rewrite is
+        lossless - the ISO offset travels with the value - so a pivot in any
+        tool still parses the true instant."""
+        rows = _parse(mail_report.trades_csv(EVENTS, tz=ZoneInfo("America/Chicago")))
+
+        self.assertEqual(rows[0]["ts"], "2026-09-01T09:15:00-05:00")
+
+    def test_csv_timestamps_pass_through_untouched_without_a_tz(self):
+        rows = _parse(mail_report.trades_csv(EVENTS))
+
+        self.assertEqual(rows[0]["ts"], "2026-09-01T10:15:00-04:00")
+
+    def test_a_malformed_timestamp_survives_the_conversion(self):
+        rows = _parse(mail_report.trades_csv([dict(FILL, ts="not-a-date")], tz=ZoneInfo("America/Chicago")))
+
+        self.assertEqual(rows[0]["ts"], "not-a-date")
 
     def test_equity_csv_reads_the_multiday_log(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -192,6 +211,32 @@ class MessageTest(unittest.TestCase):
     def test_marked_auto_generated_so_it_does_not_trip_vacation_responders(self):
         self.assertEqual(self._message()["Auto-Submitted"], "auto-generated")
 
+    def test_body_carries_the_full_reason_never_an_ellipsis(self):
+        """The 400-char clip is a Home Assistant constraint; in the email it
+        cut journal entries mid-sentence (the CSVs had the full text, but
+        nobody opens a CSV to finish a sentence)."""
+        reason = "because " * 100  # ~800 chars, past every historical cap
+        body = self._message([dict(FILL, reason=reason.strip())]).get_body(
+            preferencelist=("plain",)).get_content()
+
+        self.assertIn(reason.strip(), body)
+        self.assertNotIn("…", body)
+
+    def test_body_lists_every_trade_today_not_the_last_twelve(self):
+        events = [dict(FILL, symbol=f"SYM{i}") for i in range(15)]
+        body = self._message(events).get_body(preferencelist=("plain",)).get_content()
+
+        for i in range(15):
+            self.assertIn(f"SYM{i}", body)
+
+    def test_trade_times_render_on_the_callers_clock(self):
+        """Journal timestamps are Eastern; the report passes the host's tz
+        (Central on CT 108) so the email agrees with the cron logs instead
+        of citing EDT."""
+        s = mail_report.summarize([FILL], "official", tz=ZoneInfo("America/Chicago"))
+
+        self.assertEqual(s["trades"][0]["time"], "09:15")  # 10:15-04:00
+
 
 class SettingsResolutionTest(unittest.TestCase):
     """Cron inherits almost no environment - the same trap that silently
@@ -234,185 +279,121 @@ class SettingsResolutionTest(unittest.TestCase):
             self.assertEqual(mail_report.load_report_env("official"), {})
 
 
-class TradesInWindowTest(unittest.TestCase):
-    def test_returns_trades_within_cutoff(self):
-        now = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
-        recent_trade = {
-            "ts": "2026-09-01T10:15:00-04:00",
-            "event": "order_submitted",
-            "symbol": "SPY",
-        }
-        res = mail_report.trades_in_window([recent_trade], now, window_minutes=60)
-        self.assertEqual(len(res), 1)
+class SuppressReasonTest(unittest.TestCase):
+    """Idle-hour suppression (issue #153): the decision is a pure function of
+    (events, now, halt, force, window), so it is tested with plain datetimes -
+    no mocking the clock out of the module."""
 
-    def test_excludes_trades_outside_cutoff(self):
-        now = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
-        old_trade = {
-            "ts": "2026-09-01T09:30:00-04:00",
-            "event": "order_submitted",
-            "symbol": "SPY",
-        }
-        res = mail_report.trades_in_window([old_trade], now, window_minutes=60)
-        self.assertEqual(len(res), 0)
+    NOW = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
 
-    def test_excludes_non_trade_events(self):
-        now = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
-        cycle = {
-            "ts": "2026-09-01T10:50:00-04:00",
-            "event": "cycle_start",
-        }
-        res = mail_report.trades_in_window([cycle], now, window_minutes=60)
-        self.assertEqual(len(res), 0)
+    def _trade(self, ts):
+        return {"ts": ts, "event": "order_submitted", "symbol": "SPY"}
 
-    def test_handles_naive_and_malformed_timestamps(self):
-        now = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
-        naive = {"ts": "2026-09-01T10:30:00", "event": "order_submitted"}
-        malformed = {"ts": "invalid-ts", "event": "order_submitted"}
-        missing = {"event": "order_submitted"}
-        res = mail_report.trades_in_window([naive, malformed, missing], now, window_minutes=60)
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0], naive)
+    def test_sends_when_a_trade_landed_inside_the_window(self):
+        events = [self._trade("2026-09-01T10:15:00-04:00")]
+
+        self.assertIsNone(mail_report.suppress_reason(events, self.NOW, "none"))
+
+    def test_suppresses_when_the_only_trade_is_older_than_the_window(self):
+        events = [self._trade("2026-09-01T09:30:00-04:00")]
+
+        reason = mail_report.suppress_reason(events, self.NOW, "none")
+
+        self.assertIn("no trading activity", reason)
+
+    def test_cycles_and_other_chatter_are_not_activity(self):
+        events = [{"ts": "2026-09-01T10:50:00-04:00", "event": "cycle_start"},
+                  {"ts": "2026-09-01T10:55:00-04:00", "event": "decision"}]
+
+        self.assertIsNotNone(mail_report.suppress_reason(events, self.NOW, "none"))
+
+    def test_a_halt_always_sends_even_with_no_activity(self):
+        for halt in ("daily_loss", "manual", "unknown"):
+            self.assertIsNone(mail_report.suppress_reason([], self.NOW, halt), halt)
+
+    def test_force_always_sends(self):
+        self.assertIsNone(mail_report.suppress_reason([], self.NOW, "none", force=True))
+
+    def test_a_flatten_that_closed_positions_counts_as_activity(self):
+        """flatten's closes never journal as orders (bot/flatten.py writes no
+        journal events) - without this the hour the bot closed everything
+        would read as a quiet hour and the report would be suppressed."""
+        events = [{"ts": "2026-09-01T10:50:00-04:00", "event": "flatten", "closed": ["SPY260904C00770000"]}]
+
+        self.assertIsNone(mail_report.suppress_reason(events, self.NOW, "none"))
+
+    def test_the_daily_empty_flatten_backstop_is_not_activity(self):
+        events = [{"ts": "2026-09-01T10:50:00-04:00", "event": "flatten",
+                   "attempted": [], "closed": [], "failed": []}]
+
+        self.assertIsNotNone(mail_report.suppress_reason(events, self.NOW, "none"))
+
+    def test_malformed_or_missing_timestamps_are_skipped_not_trusted(self):
+        events = [self._trade("not-a-date"), {"event": "order_submitted"}]
+
+        self.assertIsNotNone(mail_report.suppress_reason(events, self.NOW, "none"))
+
+    def test_a_wider_window_reaches_an_older_trade(self):
+        events = [self._trade("2026-09-01T09:30:00-04:00")]
+
+        self.assertIsNone(mail_report.suppress_reason(events, self.NOW, "none", window_minutes=120))
 
 
-class SuppressionTest(unittest.TestCase):
-    def setUp(self):
-        self.args = argparse.Namespace(
-            account="test",
-            config=None,
-            dry_run=False,
-            force=False,
-            window_minutes=60,
-        )
+class SuppressionRunTest(unittest.TestCase):
+    """One thin integration test per outcome: run() respects suppress_reason.
+    The clock is real - a quiet hour is simulated with an empty journal, an
+    active one with an event stamped moments ago."""
 
-    @mock.patch("mail_report.send")
-    @mock.patch("mail_report.RiskManager")
-    @mock.patch("mail_report.journal.read_events")
-    @mock.patch("mail_report.load_report_env")
-    @mock.patch("mail_report.credentials.validate_account")
-    def test_suppresses_when_no_recent_trades_and_not_halted(
-        self, mock_val, mock_env, mock_events, mock_rm, mock_send
-    ):
-        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
-        mock_events.return_value = [
-            {"ts": "2026-09-01T08:00:00-04:00", "event": "order_submitted"}
-        ]
-        mock_rm.return_value.halt_state.return_value = "none"
+    def _args(self, **over):
+        base = {"account": "test", "config": None, "dry_run": False, "force": False, "window_minutes": 60}
+        base.update(over)
+        return argparse.Namespace(**base)
 
-        with mock.patch("mail_report.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
-            mock_dt.fromisoformat = datetime.fromisoformat
-            ret = mail_report.run(self.args)
+    def _run(self, events, halt="none", args=None):
+        rm = mock.Mock()
+        rm.halt_state.return_value = halt
+        with mock.patch.object(mail_report, "send") as send, \
+                mock.patch.object(mail_report, "RiskManager", return_value=rm), \
+                mock.patch.object(mail_report, "load_config"), \
+                mock.patch.object(mail_report.journal, "read_events", return_value=events), \
+                mock.patch.object(mail_report.journal, "use_account"), \
+                mock.patch.object(mail_report, "load_report_env",
+                                  return_value={"REPORT_EMAIL_TO": "team@example.com"}), \
+                mock.patch.object(mail_report, "equity_csv", return_value=""):
+            ret = mail_report.run(args or self._args())
+        return ret, send
 
-        self.assertEqual(ret, 0)
-        mock_send.assert_not_called()
-
-    @mock.patch("mail_report.send")
-    @mock.patch("mail_report.RiskManager")
-    @mock.patch("mail_report.journal.read_events")
-    @mock.patch("mail_report.load_report_env")
-    @mock.patch("mail_report.credentials.validate_account")
-    def test_sends_when_recent_trades_exist(
-        self, mock_val, mock_env, mock_events, mock_rm, mock_send
-    ):
-        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
-        mock_events.return_value = [
-            {"ts": "2026-09-01T10:30:00-04:00", "event": "order_submitted", "side": "buy", "qty": 1, "symbol": "SPY", "price": 100}
-        ]
-        mock_rm.return_value.halt_state.return_value = "none"
-
-        with mock.patch("mail_report.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
-            mock_dt.fromisoformat = datetime.fromisoformat
-            ret = mail_report.run(self.args)
+    def test_a_quiet_hour_sends_nothing(self):
+        ret, send = self._run([])
 
         self.assertEqual(ret, 0)
-        mock_send.assert_called_once()
+        send.assert_not_called()
 
-    @mock.patch("mail_report.send")
-    @mock.patch("mail_report.RiskManager")
-    @mock.patch("mail_report.journal.read_events")
-    @mock.patch("mail_report.load_report_env")
-    @mock.patch("mail_report.credentials.validate_account")
-    def test_sends_when_halted_even_without_recent_trades(
-        self, mock_val, mock_env, mock_events, mock_rm, mock_send
-    ):
-        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
-        mock_events.return_value = []
-        mock_rm.return_value.halt_state.return_value = "daily_loss"
+    def test_a_recent_trade_sends(self):
+        events = [{"ts": datetime.now(EASTERN).isoformat(timespec="seconds"),
+                   "event": "order_submitted", "side": "buy", "qty": 1, "symbol": "SPY", "price": 1.0}]
 
-        with mock.patch("mail_report.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
-            mock_dt.fromisoformat = datetime.fromisoformat
-            ret = mail_report.run(self.args)
+        ret, send = self._run(events)
 
         self.assertEqual(ret, 0)
-        mock_send.assert_called_once()
+        send.assert_called_once()
 
-    @mock.patch("mail_report.send")
-    @mock.patch("mail_report.RiskManager")
-    @mock.patch("mail_report.journal.read_events")
-    @mock.patch("mail_report.load_report_env")
-    @mock.patch("mail_report.credentials.validate_account")
-    def test_force_bypasses_suppression(
-        self, mock_val, mock_env, mock_events, mock_rm, mock_send
-    ):
-        self.args.force = True
-        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
-        mock_events.return_value = []
-        mock_rm.return_value.halt_state.return_value = "none"
+    def test_a_halt_sends_despite_the_quiet_hour(self):
+        _, send = self._run([], halt="daily_loss")
 
-        with mock.patch("mail_report.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
-            mock_dt.fromisoformat = datetime.fromisoformat
-            ret = mail_report.run(self.args)
+        send.assert_called_once()
 
-        self.assertEqual(ret, 0)
-        mock_send.assert_called_once()
+    def test_force_sends_despite_the_quiet_hour(self):
+        _, send = self._run([], args=self._args(force=True))
 
-    @mock.patch("mail_report.send")
-    @mock.patch("mail_report.RiskManager")
-    @mock.patch("mail_report.journal.read_events")
-    @mock.patch("mail_report.load_report_env")
-    @mock.patch("mail_report.credentials.validate_account")
-    def test_dry_run_suppresses_and_prints_message(
-        self, mock_val, mock_env, mock_events, mock_rm, mock_send
-    ):
-        self.args.dry_run = True
-        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
-        mock_events.return_value = []
-        mock_rm.return_value.halt_state.return_value = "none"
+        send.assert_called_once()
 
-        with mock.patch("mail_report.datetime") as mock_dt, mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
-            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
-            mock_dt.fromisoformat = datetime.fromisoformat
-            ret = mail_report.run(self.args)
+    def test_dry_run_marks_the_suppression(self):
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            _, send = self._run([], args=self._args(dry_run=True))
 
-        self.assertEqual(ret, 0)
-        self.assertIn("[suppressed]", mock_out.getvalue())
-        mock_send.assert_not_called()
-
-    @mock.patch("mail_report.send")
-    @mock.patch("mail_report.RiskManager")
-    @mock.patch("mail_report.journal.read_events")
-    @mock.patch("mail_report.load_report_env")
-    @mock.patch("mail_report.credentials.validate_account")
-    def test_custom_window_minutes_includes_older_trade(
-        self, mock_val, mock_env, mock_events, mock_rm, mock_send
-    ):
-        self.args.window_minutes = 120
-        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
-        mock_events.return_value = [
-            {"ts": "2026-09-01T09:30:00-04:00", "event": "order_submitted", "side": "buy", "qty": 1, "symbol": "SPY", "price": 100}
-        ]
-        mock_rm.return_value.halt_state.return_value = "none"
-
-        with mock.patch("mail_report.datetime") as mock_dt:
-            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
-            mock_dt.fromisoformat = datetime.fromisoformat
-            ret = mail_report.run(self.args)
-
-        self.assertEqual(ret, 0)
-        mock_send.assert_called_once()
+        self.assertIn("[suppressed]", out.getvalue())
+        send.assert_not_called()
 
 
 if __name__ == "__main__":
