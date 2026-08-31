@@ -34,7 +34,8 @@ Fifteen slides, one idea each. Real screenshots over diagrams wherever a screens
     that need no API keys and no network; the whole thing runnable with nothing installed but
     Docker; `--dry-run`/`--force` making a full cycle testable at 2am; runtime overrides that
     change strategy without a deploy. Six of those tests exist because something broke.
-11. **The daily loop** — eod_review → override (expires at close) or config PR → CI →
+11. **The daily loop** — eod_review, whose critique is written by a model that did *not*
+    trade the day → override (expires at close) or config PR → CI →
     self-hosted runner deploys before the open. 82 PRs, 506 tests, every merge deployed.
 12. **The experiment farm — real A/B, not a backtest** — four days is not a backtest and the
     free feed has no historical options data, so the A/B runs *live*: three paper accounts

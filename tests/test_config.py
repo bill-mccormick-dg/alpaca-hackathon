@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from bot import overrides
-from bot.config import CONFIG_FILE, config_provenance, load_config
+from bot.config import CONFIG_FILE, config_provenance, load_config, resolve_review_model
 from bot.risk import EASTERN
 
 NOW = datetime(2026, 9, 1, 10, 30, tzinfo=EASTERN)
@@ -69,6 +69,59 @@ class LoadConfigTest(unittest.TestCase):
         self.assertIn("min_days_to_expiration", config)
         self.assertIn("max_days_to_expiration", config)
         self.assertLess(config["min_days_to_expiration"], config["max_days_to_expiration"])
+
+
+class ResolveReviewModelTest(unittest.TestCase):
+    """A model grading its own reasoning is the weakest form of review, so the
+    default is the first preference entry that did not trade the day."""
+
+    PREF = ("b-model", "a-model", "c-model")
+
+    def test_picks_the_first_preference_that_is_not_the_trading_model(self):
+        cfg = {"model": "b-model", "review_model_preference": list(self.PREF)}
+
+        self.assertEqual(resolve_review_model(cfg), "a-model")
+
+    def test_explicit_review_model_wins(self):
+        cfg = {"model": "a-model", "review_model": "c-model",
+               "review_model_preference": list(self.PREF)}
+
+        self.assertEqual(resolve_review_model(cfg), "c-model")
+
+    def test_none_when_every_preference_is_the_trading_model(self):
+        cfg = {"model": "a-model", "review_model_preference": ["a-model"]}
+
+        self.assertIsNone(resolve_review_model(cfg))
+
+    def test_none_without_a_preference_list(self):
+        self.assertIsNone(resolve_review_model({"model": "a-model"}))
+
+    def test_recomputed_so_switching_the_trading_model_cannot_collide(self):
+        """The trading model is changeable at runtime from the dashboard. Were
+        the choice resolved once and stored, switching the account onto the
+        reviewer would silently end the independence this key exists for."""
+        cfg = {"model": "a-model", "review_model_preference": list(self.PREF)}
+        self.assertEqual(resolve_review_model(cfg), "b-model")
+
+        cfg["model"] = "b-model"
+
+        self.assertEqual(resolve_review_model(cfg), "a-model")
+
+    def test_provenance_publishes_the_resolved_value(self):
+        """config/effective feeds the dashboard selector's state, so it must
+        carry the model that will actually run, not an unset raw key."""
+        cfg = {"model": "b-model", "review_model_preference": list(self.PREF)}
+
+        self.assertEqual(config_provenance(cfg)["review_model"], "a-model")
+
+    def test_review_model_does_not_churn_the_config_hash(self):
+        """It cannot affect trading, so it must not invalidate the hash that
+        attributes a P&L change to a config change."""
+        base = {"model": "b-model", "review_model_preference": list(self.PREF)}
+        pinned = {**base, "review_model": "c-model"}
+
+        self.assertEqual(config_provenance(base)["config_hash"],
+                         config_provenance(pinned)["config_hash"])
 
 
 if __name__ == "__main__":

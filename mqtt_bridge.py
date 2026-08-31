@@ -287,6 +287,19 @@ def discovery_payloads(prefix: str, config: dict | None = None) -> list[tuple[st
             "state_topic": effective_topic, "value_template": "{{ value_json.model }}",
             "options": options,
         }))
+        # Which model critiques the day (eod_review.py). A second select rather
+        # than a number: same fixed option list as the trading model, and the
+        # same reason free text is wrong for it.
+        uid = f"alpaca_{account}_review_model"
+        out.append((f"homeassistant/select/{uid}/config", {
+            "unique_id": uid, "object_id": mqtt.entity_object_id(account, "review_model"),
+            "name": "Review model", "icon": "mdi:clipboard-check-outline",
+            "device": device, "command_topic": f"{prefix}/config/set",
+            "command_template": json.dumps({"account": account, "key": "review_model", "value": "{{ value }}"}),
+            "state_topic": effective_topic, "value_template": "{{ value_json.review_model }}",
+            "options": options,
+        }))
+
         for key, attrs in NUMBER_KNOBS.items():
             uid = f"alpaca_{account}_{key}"
             out.append((f"homeassistant/number/{uid}/config", {

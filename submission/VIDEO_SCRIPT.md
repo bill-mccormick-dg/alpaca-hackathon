@@ -53,8 +53,10 @@ Command: `./.venv/bin/python flatten.py --halt --account test`
 
 Command: `./.venv/bin/python eod_review.py --account official --date <yesterday>`
 > "At the close, one command reconstructs every round trip from Alpaca's fills,
-> groups rejections by rule, appends the equity curve, and the model writes
-> its own read of the day with one recommended change. We apply it with an
+> groups rejections by rule, appends the equity curve, and then a *different*
+> model - one that did not trade today - writes its read of the day with one
+> recommended change. Featherless is twenty thousand models behind one API, so
+> the reviewer costs one call and is not grading its own homework. We apply it with an
 > override that expires at the close, or a config PR that CI deploys to the
 > box before the open." Show `override.py show` and the PR list briefly.
 

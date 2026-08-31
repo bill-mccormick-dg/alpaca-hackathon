@@ -50,6 +50,32 @@ def load_config(
     return config
 
 
+def resolve_review_model(config: dict) -> str | None:
+    """Which model critiques the day in eod_review.py.
+
+    An explicit `review_model` (config or a runtime override) always wins. With
+    none set, walk `review_model_preference` in order and take the first entry
+    that is NOT the model that traded the day - a model grading its own
+    reasoning is the weakest form of review, and the whole point of the key is
+    that the critique comes from somewhere else.
+
+    Recomputed on every call rather than resolved once and stored, because the
+    trading model is changeable at runtime from the dashboard. Freezing the
+    choice would let someone switch the account onto the review model and
+    silently lose the independence this exists to provide.
+
+    Returns None when there is nothing to pick, and the caller falls back to the
+    trading model - a same-model review is worth more than no review."""
+    explicit = config.get("review_model")
+    if explicit:
+        return str(explicit)
+    trading = config.get("model")
+    for candidate in config.get("review_model_preference") or []:
+        if candidate and candidate != trading:
+            return str(candidate)
+    return None
+
+
 def config_provenance(config: dict) -> dict:
     """What to journal: effective tracked values, a hash of them (plus the
     notes), the notes' first line + hash, and the active overrides."""
@@ -62,6 +88,12 @@ def config_provenance(config: dict) -> dict:
         "strategy_notes_sha": notes_sha,
         "strategy_notes_head": notes.strip().splitlines()[0][:120] if notes.strip() else "",
         "config_hash": digest,
+        # The RESOLVED review model, not the raw key: this is what
+        # config/effective publishes, so the dashboard's selector shows the
+        # model that will actually critique the day rather than a blank when
+        # the key is unset. Deliberately not in TRACKED_KEYS - it does not
+        # affect trading, so it should not churn config_hash.
+        "review_model": resolve_review_model(config),
         "config_file": config.get("_config_file"),
         "overrides": config.get("_overrides", {}),
     }
