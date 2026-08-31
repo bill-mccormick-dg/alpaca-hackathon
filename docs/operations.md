@@ -96,7 +96,10 @@ Its own journal (`logs/journal-<name>.jsonl`; the official account keeps
 ## Runtime overrides
 
 Two config layers with explicit precedence: `config.yaml` (git) is the base;
-`logs/overrides-<account>.yaml` wins for an allowlisted set of knobs:
+the account's overrides file wins for an allowlisted set of knobs. That file is
+`logs/overrides.yaml` for **official** and `logs/overrides-<account>.yaml` for
+the others — the same naming as the journals, so a challenger's intraday tweak
+can never leak into the judged account.
 
 | Knob | Changes |
 |---|---|
@@ -107,6 +110,38 @@ Two config layers with explicit precedence: `config.yaml` (git) is the base;
 | `option_strike_band_pct` | how far from spot the shown strikes reach |
 | `stop_loss_pct`, `take_profit_pct` | when `bot/exits.py` closes a position |
 | `eod_close_dte` | how near expiry the end-of-day backstop closes |
+
+### Two ways to set one, one way in
+
+| Path | How | Recorded as |
+|---|---|---|
+| CLI | `override.py --account <name> set <key> <value> [--until]` / `clear <key>` / `--all` | `set_by: cli` |
+| Home Assistant | the `select` and `number` entities on the dashboard | `set_by: mqtt` |
+
+The dashboard is not a second implementation. Each HA entity is wired to
+`<prefix>/config/set` with a `command_template` carrying
+`{"account": ..., "key": ..., "value": ...}`, and `mqtt_bridge.py` hands that
+straight to the same `overrides.set_override()` the CLI calls — same allowlist,
+same range checks, same file, same expiry. A value HA cannot propose is a value
+the CLI would have rejected. Validation failures are published to
+`<prefix>/config/error` rather than applied silently.
+
+Both paths journal `override_set` / `override_cleared` with `set_by`, so
+"who turned this knob" is answerable afterwards:
+
+```sh
+grep '"override_set"' logs/journal.jsonl | tail -5
+```
+
+**And the dashboard shows what is actually running, not what was requested.**
+After every cycle the bot publishes its effective config — the same payload as
+the `config` journal event — retained on
+`<prefix>/<account>/config/effective`, and the HA entities read their state
+from that topic. So a knob that was rejected, expired, or overridden by
+something else shows its real value on the next cycle rather than the one you
+typed. The bridge also primes that topic at startup so the controls are never
+blank. See [Home Assistant over MQTT](#home-assistant-over-mqtt) for the
+transport.
 
 **Hard risk caps are git-only on purpose** — position size, position count, the
 DTE window, the whitelist and the daily-loss cutoff cannot be raised at runtime
