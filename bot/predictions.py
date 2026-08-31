@@ -72,6 +72,34 @@ MIN_VOLUME = 250.0
 # true however volatile the day is. See issue for that.
 MAX_FLATNESS = 0.93
 
+# How stale the reference close may be before we withhold it entirely.
+#
+# The reference is the previous session's actual index close, and every figure
+# derived from it - implied_move_pct, P(above prior close), P(|move| > 1%) - is
+# measured against it. Pointing it at the wrong day biases all four in the same
+# direction at once, which is the failure this constant and latest_settlement()
+# exist to stop.
+#
+# Measured on 2026-08-31, before the fix: the code took the FIRST settled market
+# the API returned, and Kalshi's status=settled page is not ordered by date. It
+# returned Thursday Aug 27 (7730.99) while Friday Aug 28 (7711.76) sat further
+# down the page. A 0.25% error in the reference moved the numbers handed to the
+# model like this:
+#
+#                        SPY  Thu ref -> Fri ref     QQQ  Thu ref -> Fri ref
+#     implied move      -0.56%  ->  -0.31%          -0.98%  ->  -0.28%
+#     P(above prior)     0.153  ->   0.297           0.323  ->   0.490
+#     P(down > 1%)       0.356  ->   0.287           0.445  ->   0.323
+#
+# QQQ went from a clearly bearish prior to a coin flip. Nothing looked wrong:
+# the distribution was real, the volume gate passed, the flatness gate passed.
+# Only the yardstick was off.
+#
+# 5 days covers the longest ordinary gap (Thursday's close before a Friday
+# holiday and a long weekend). Beyond that the feed has a problem, and no
+# reference is better than a confidently wrong one.
+MAX_REFERENCE_AGE_DAYS = 5.0
+
 
 def _f(v):
     try:
@@ -176,6 +204,42 @@ async def _get(client: httpx.AsyncClient, path: str, **params) -> dict:
     return r.json()
 
 
+def latest_settlement(markets: list[dict], now: datetime,
+                      max_age_days: float = MAX_REFERENCE_AGE_DAYS) -> float | None:
+    """The most recently settled index close, chosen by close_time.
+
+    Never by position in the response. Kalshi's /markets page for
+    status=settled is not ordered by date, and taking the first row that
+    carried an expiration_value is the bug this function exists to prevent -
+    see MAX_REFERENCE_AGE_DAYS above for what it cost.
+
+    None when nothing has settled, or when the newest settlement is too old to
+    be "the previous close" - a stale reference is worse than no reference,
+    because every derived probability is quietly measured against the wrong
+    day while still looking authoritative.
+    """
+    best_value, best_close = None, None
+    for m in markets:
+        value = _f(m.get("expiration_value"))
+        if value is None:
+            continue
+        try:
+            close = datetime.fromisoformat(str(m.get("close_time", "")).replace("Z", "+00:00"))
+        except ValueError:
+            continue
+        # A close_time still ahead of us has not actually settled, whatever the
+        # status field says; it cannot be the previous close.
+        if close > now:
+            continue
+        if best_close is None or close > best_close:
+            best_value, best_close = value, close
+    if best_close is None:
+        return None
+    if (now - best_close).total_seconds() > max_age_days * 86400:
+        return None
+    return best_value
+
+
 async def fetch_series(client: httpx.AsyncClient, series: str, now: datetime) -> dict | None:
     open_markets = (await _get(client, "/markets", series_ticker=series, status="open", limit=200)).get("markets", [])
     event = nearest_event(open_markets, now)
@@ -183,9 +247,13 @@ async def fetch_series(client: httpx.AsyncClient, series: str, now: datetime) ->
         return None
     reference = None
     try:
-        settled = (await _get(client, "/markets", series_ticker=series, status="settled", limit=40)).get("markets", [])
-        values = [_f(m.get("expiration_value")) for m in settled if _f(m.get("expiration_value"))]
-        reference = values[0] if values else None
+        # limit=200, not 40: each session lists ~30 buckets, so a 40-row page
+        # holds barely one day and a bit. On 2026-08-31 Friday's settled event
+        # was not in the first 40 rows at all, so picking by close_time would
+        # still have missed it. The page has to be wide enough to contain the
+        # most recent settlement before choosing within it means anything.
+        settled = (await _get(client, "/markets", series_ticker=series, status="settled", limit=200)).get("markets", [])
+        reference = latest_settlement(settled, now)
     except (httpx.HTTPError, ValueError):
         reference = None
     summary = summarize_range_event(event, reference)

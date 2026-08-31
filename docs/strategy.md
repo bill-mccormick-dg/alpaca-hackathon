@@ -71,7 +71,7 @@ glossary for the terms these docs use.
 - **"Prior" vs "prior close"** — unrelated, unfortunately. *Prior close* is
   simply the **previous session's closing price**, the reference level the
   Kalshi numbers are measured against. The two senses sit in the same sentence
-  more than once ("prior close 7,731 … a PRIOR to weigh"), so it is worth
+  more than once ("prior close 7,712 … a PRIOR to weigh"), so it is worth
   reading slowly.
 
 </details>
@@ -344,47 +344,89 @@ python scripts/verify_predictions.py            # official config
 python scripts/verify_predictions.py --no-cache
 ```
 
-Real output, taken the evening before the 2026-08-31 session opened:
+Real output, taken in the early hours of 2026-08-31, before that session
+opened. One run, both outcomes:
 
 ```
-gates               volume >= 250.0, flatness <= 0.97
+gates               volume >= 250.0, flatness <= 0.93
 
 --- SPY via KXINX ---
   event            KXINX-26AUG31H1600  (index close 2026-08-31T20:00Z)
-  reference close  7730.99
-  implied median   7712.5  (-0.24%)
-  P(above prior)   0.453
-  P(up >1%)        0.32
-  P(down >1%)      0.409
-  buckets/volume   30 buckets, volume 70.0
-  flatness         0.952   (1.0 = uniform = no information)
-                   <-7375.0  0.058
-           7675.0-7699.9999  0.048
-           7700.0-7724.9999  0.048
-  VERDICT          thin: volume 70.0 < 250.0
+  reference close  7711.76
+  implied median   7687.5  (-0.31%)
+  P(above prior)   0.293
+  P(up >1%)        0.049
+  P(down >1%)      0.15
+  buckets/volume   30 buckets, volume 756.3
+  flatness         0.689   (1.0 = uniform = no information)
+           7675.0-7699.9999  0.268
+           7650.0-7674.9999  0.187
+           7700.0-7724.9999  0.159
+           7625.0-7649.9999  0.102
+  VERDICT          usable - shown to the model
 
-=== what the model is handed ===
-(nothing - every prior was withheld by the gates above)
+--- QQQ via KXNASDAQ100 ---
+  event            KXNASDAQ100-26AUG31H1600  (index close 2026-08-31T20:00Z)
+  reference close  29433.43
+  implied median   29450.0  (+0.06%)
+  P(above prior)   0.514
+  buckets/volume   30 buckets, volume 45.5
+  flatness         0.801   (1.0 = uniform = no information)
+  VERDICT          thin: volume 45.5 < 250.0
 ```
 
-That is the gates earning their place. Read the numbers: a 4.6% **down** move
-(`<-7375.0`) is the single most likely bucket, and P(up>1%) + P(down>1%) = 0.73
-implies a roughly three-in-four chance of a >1% session - against a real base
-rate nearer one in five. On 70 contracts, those are not beliefs, they are wide
-spreads. Handing that to the model as "what the crowd thinks" would actively
-mislead it toward buying more premium than the day warrants.
+SPY clears both gates on 756 contracts and a distribution with a clear peak, so
+it is shown. QQQ quotes all thirty buckets just as confidently on **45**, so it
+is withheld. Nothing about the QQQ numbers looks broken - that is the point.
+A thin market does not announce itself; it produces a plausible-looking
+distribution that nobody has put money behind. Volume is the gate that catches
+it, and the model is told nothing rather than something unearned.
 
-During market hours, with volume behind the buckets, the block the model
-receives looks like this:
+The block the model actually receives is then just the surviving line:
 
 ```
 PREDICTION MARKETS (Kalshi, crowd-implied, read-only - a PRIOR to weigh, not a
 signal to copy; compare to what the option chain implies and to today's price
 action):
-- SPY via KXINX (index close 2026-08-31T20:00Z); prior close 7,731, implied
-  median 7,712 (-0.24%); P(above prior close) 0.453, P(up>1%) 0.32,
-  P(down>1%) 0.409; volume 70.0
+- SPY via KXINX (index close 2026-08-31T20:00Z); prior close 7,712, implied
+  median 7,688 (-0.31%); P(above prior close) 0.293, P(up>1%) 0.049,
+  P(down>1%) 0.15; volume 756.3
 ```
+
+### The reference close has to be the right day
+
+Every figure above except the median is measured **against the previous
+session's close**, so that one number is a yardstick the whole block depends on.
+Getting it wrong does not produce an obvious error - it produces the same
+confident output, silently shifted.
+
+That is not hypothetical. Until the early hours of 2026-08-31 the code asked
+Kalshi for settled markets and took the first one the response happened to
+contain. That page is not ordered by date: it returned **Thursday** Aug 27's
+close (7730.99) while **Friday** Aug 28's (7711.76) sat further down - past the
+40-row window the code was even asking for. A 0.25% error in the yardstick moved
+the numbers handed to the model like this:
+
+| | SPY, Thu ref -> Fri ref | QQQ, Thu ref -> Fri ref |
+|---|---|---|
+| implied move | -0.56% -> **-0.31%** | -0.98% -> **-0.28%** |
+| P(above prior close) | 0.153 -> **0.297** | 0.323 -> **0.490** |
+| P(down > 1%) | 0.356 -> **0.287** | 0.445 -> **0.323** |
+
+QQQ went from a clearly bearish prior to a coin flip. Both gates passed
+throughout - the distribution was real and the volume was what it was. Only the
+yardstick was wrong, and every error it caused pointed the same way.
+
+`latest_settlement()` now picks by `close_time` rather than by position, over a
+page wide enough to contain the most recent settlement, and **withholds the
+reference entirely** if the newest one is more than five days old rather than
+measuring against a stale close. Five days covers the longest ordinary gap, a
+Thursday close before a Friday holiday.
+
+The general lesson is the one this codebase keeps relearning: a gate can only
+catch the failure it measures. Volume and flatness both ask *is this
+distribution worth believing*. Neither asks *is it being compared to the right
+day*.
 
 ### The flatness gate's blind spot
 
