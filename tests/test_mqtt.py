@@ -235,3 +235,32 @@ class CronEnvironmentTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TokenCountersTest(unittest.TestCase):
+    """The tokens_today / tokens_total sensors (#136)."""
+
+    def test_sums_tolerate_missing_usage(self):
+        events = [
+            {"event": "decision", "usage": {"total_tokens": 6000}},
+            {"event": "decision", "usage": None},
+            {"event": "decision"},
+            {"event": "decision", "usage": {"total_tokens": 250}},
+        ]
+        self.assertEqual(mqtt._token_sums(events), 6250)
+
+    def test_decision_publishes_both_counters(self):
+        cap = Capture()
+        with mock.patch.object(mqtt, "_publisher", cap), \
+             mock.patch.object(mqtt, "_discovered", set()), \
+             mock.patch.dict(os.environ, {"MQTT_HOST": "b"}, clear=True):
+            mqtt.configure({"mqtt": {"enabled": True}}, "test")
+            with mock.patch("bot.journal.read_events", side_effect=[
+                [{"event": "decision", "usage": {"total_tokens": 100}}],
+                [{"event": "decision", "usage": {"total_tokens": 100}},
+                 {"event": "decision", "usage": {"total_tokens": 900}}],
+            ]):
+                mqtt.on_event({"event": "decision", "count": 0})
+        published = {t: p for t, p, _ in cap.calls}
+        self.assertEqual(published.get("alpaca-hackathon/test/state/tokens_today"), "100")
+        self.assertEqual(published.get("alpaca-hackathon/test/state/tokens_total"), "1000")

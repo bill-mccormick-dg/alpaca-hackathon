@@ -63,6 +63,11 @@ STATE_SENSORS = {  # state topic suffix -> HA discovery attributes
     "positions": {"name": "Positions", "state_class": "measurement", "icon": "mdi:briefcase"},
     "halt": {"name": "Halt", "icon": "mdi:octagon"},
     "last_decision": {"name": "Last decision", "icon": "mdi:robot"},
+    # What the models actually cost (#136). Today's count resets with the
+    # Eastern date because the journal read is day-scoped; the all-time one
+    # is total_increasing so HA's long-term statistics graph it.
+    "tokens_today": {"name": "Tokens today", "state_class": "measurement", "icon": "mdi:counter"},
+    "tokens_total": {"name": "Tokens total", "state_class": "total_increasing", "icon": "mdi:sigma"},
 }
 
 # Sensors whose useful content is far longer than HA's 255-character state
@@ -223,6 +228,28 @@ def _publish_feed() -> None:
     publish(topic("state", "journal_feed"), _report.feed_payload(events, _settings["account"]), retain=True)
 
 
+def _token_sums(events) -> int:
+    """Total total_tokens across decision events. Tolerates records with no
+    usage - early error cycles journal usage: null."""
+    return sum((r.get("usage") or {}).get("total_tokens") or 0 for r in events)
+
+
+def _publish_token_counts() -> None:
+    """Token spend, re-read from the journal (#136) - same
+    each-cycle-is-its-own-process reasoning as the feed and trade report.
+    The all-time scan is a whole-file read of a tens-of-KB file once per
+    decision; not worth an offset cache."""
+    from bot import journal as _journal  # noqa: PLC0415 - journal imports this module at load time
+
+    try:
+        today = _token_sums(_journal.read_events(events=("decision",)))
+        all_time = _token_sums(_journal.read_events(day="all", events=("decision",)))
+    except OSError:
+        return
+    publish(topic("state", "tokens_today"), str(today), retain=True)
+    publish(topic("state", "tokens_total"), str(all_time), retain=True)
+
+
 def on_event(record: dict) -> None:
     """Called by journal.log() with the record it just wrote."""
     if not enabled():
@@ -247,6 +274,7 @@ def on_event(record: dict) -> None:
     elif event == "decision":
         n = int(record.get("count") or 0)
         publish(topic("state", "last_decision"), "hold" if n == 0 else f"{n} proposal(s)", retain=True)
+        _publish_token_counts()
     elif event == "daily_loss_halt":
         publish(topic("state", "halt"), "daily_loss", retain=True)
     elif event == "manual_halt":
