@@ -83,6 +83,20 @@ services:
   # Docs site (Docusaurus) rendering ./docs - the onboarding + reference
   # site. `docker compose up docs` then open http://localhost:3000. The
   # markdown is bind-mounted, so edits hot-reload; no Node on the host.
+  # Read-only journal viewer (issue #135) - the live stream in a browser.
+  # Same profile pattern as docs: opt-in, not part of `docker compose up`.
+  # In production this runs as a systemd unit on the trading host instead;
+  # this service is the dev-studio version against the local ./logs.
+  viewer:
+    build: .
+    command: python journal_viewer.py --port 8300 --logs-dir /app/logs
+    ports:
+      - "8300:8300"
+    volumes:
+      - ./logs:/app/logs
+    profiles: ["viewer"]
+    restart: unless-stopped
+
   docs:
     build: ./docs-site
     image: alpaca-hackathon-docs:latest
