@@ -36,8 +36,13 @@ glossary for the terms these docs use.
   market expects. High IV means options are expensive.
 - **Mark** — the broker's current mid-price for a position, used to value it
   without selling.
-- **Notional** — the position's full economic size (`contracts x 100 x price`),
-  not the premium paid. The `$5,000` cap below is notional.
+- **Notional** — what the position costs to open. For an option that is
+  `contracts x 100 x contract price`, which *is* the premium paid, because the
+  price fed to the cap is the contract's own bid/ask mid
+  (`bot/snapshot.py::price_for_proposal`). It is **not** the underlying
+  exposure: ten NVDA calls at $4.00 are $4,000 of premium against roughly
+  $180,000 of stock. For shares it is simply `qty x price`. The `$5,000` cap
+  below is this number.
 - **Assignment** — being forced to buy or sell the underlying stock because a
   contract you *sold* was exercised. Only affects sellers, which is another
   reason this bot only buys.
@@ -65,6 +70,121 @@ margin-aware, assignment-aware risk logic we cannot prove correct in four days.
 Long premium also matches what the model is actually good at: forming a
 directional view from evidence it can name. It is bad at managing a position
 minute to minute, so it does not.
+
+## The risk shape is an invariant, not a policy
+
+"This bot only buys premium" is the kind of claim that is usually a convention —
+something written in a prompt and mostly respected. Here it is a property of the
+code, and the difference matters if you are deciding whether to trust it.
+
+**Selling is capped at what is already held.** `bot/risk.py::check_order()` is
+the only path to an order, and its sell branch reads:
+
+```python
+if p.side == "sell":
+    if p.qty > held_qty:
+        return False, f"cannot sell {p.qty}, only {held_qty} held"
+```
+
+So `sell` can only ever mean *close something we own*. Opening a short option —
+the posture with unbounded loss — is not forbidden by instruction, it is
+unreachable: there is no sequence of model outputs that produces one, because a
+sell of something not held is rejected before it becomes an order.
+`tests/test_risk.py` pins this from three directions (exceeding held quantity,
+the exact boundary, and a symbol not held at all).
+
+**Assignment cannot happen either**, and for two independent reasons. Assignment
+only affects sellers, and we never sell. Even if that were not true,
+`expiry_close_dte` force-closes any contract on its expiry day regardless of
+profit or loss, so nothing is ever held into exercise. Two unrelated mechanisms
+would both have to fail.
+
+Between them, the worst case for any single position is the premium paid,
+bounded by the $5,000 notional cap, with at most four open at once. That is what
+makes the guardrails able to be simple absolute numbers rather than
+margin-aware, assignment-aware risk logic — the sort we could not prove correct
+in four days.
+
+### The Greeks are indicative, and the prompt says so
+
+`bot/greeks.py` solves each contract's implied volatility from *its own* market
+price and derives delta/gamma/theta/vega from that — independently, per
+contract. They will therefore not be internally consistent: put and call deltas
+at one strike need not sum to −1, and some quotes are plainly stale.
+
+This is stated in the prompt rather than hidden, along with an instruction not
+to spend effort auditing or reconciling the numbers: skip anything that looks
+broken and decide from what is plausible. A contract whose price was too thin to
+solve arrives with no Greeks at all and is to be judged on price, strike and DTE
+alone. Presenting derived figures as if they were an exchange feed would invite
+exactly the wrong kind of confidence.
+
+## When the bot buys or sells stock
+
+Nothing in the code decides between shares and contracts. There is no
+instrument-selection function, no heuristic, no threshold. The model chooses,
+and the only thing steering it is `strategy_notes` — which is exactly why that
+choice is the single key the `mixed` variant changes.
+
+**On the official account, stock is a bit part.** The notes end with one line:
+*"Stock is allowed only as a small directional complement, never the main
+idea."* The thesis above it is entirely about buying short-dated premium, so the
+model has no criteria for reaching for shares and, in practice, rarely should.
+
+**On `mixed`, instrument choice is the decision being tested.** The variant
+replaces those notes with explicit criteria and forbids a default:
+
+- **Options** when the view has a horizon — a catalyst, a trend expected to
+  resolve within days, or implied volatility that looks cheap for the move
+  expected. The capped loss is what lets the position be sized for its risk.
+- **Stock** when the view is directional but open-ended, when implied volatility
+  is expensive so premium is a poor way to buy the same exposure, or when the
+  expected move is a slow grind that time decay would eat. Shares have no expiry
+  and no theta.
+- *"Neither is the default and neither is a fallback. State the instrument and
+  the reason it beats the other one for this specific idea."*
+
+That is the whole experiment: two accounts, same market, same cadence, one
+difference — whether instrument choice is a deliberate decision or an
+afterthought — and the P&L answers it instead of us.
+
+### What the code does differently for shares
+
+Almost nothing, which is the point. `check_order()` has exactly two
+instrument-aware branches:
+
+1. the contracts-per-order cap and the DTE window, which only apply to options;
+2. the notional calculation — `qty x price x 100` for a contract, `qty x price`
+   for shares.
+
+Everything else is identical: the five-name whitelist, the $5,000 cap, four
+concurrent positions, the 15:15 ET entry cutoff, the 2% daily-loss halt. A stock
+proposal is checked, rejected or executed by the same funnel, and is journalled
+the same way.
+
+**Shorting is impossible here too.** The sell-capped-at-held-quantity rule above
+is not option-specific, so the bot can only ever sell shares it already owns.
+There is no path to a short equity position any more than to a naked short call.
+
+### How a stock position ends — and one thing to watch
+
+`bot/exits.py` computes `days_to_expiration` as `None` for anything that is not
+an option, so the expiry rule simply does not apply. Stop-loss and take-profit
+do, on the position's own price, exactly as for a contract.
+
+**That is worth thinking about, because the thresholds were chosen for
+premium.** A 40% stop and a 60% take-profit are ordinary moves for a short-dated
+option, which routinely halves or doubles in a session. For shares of SPY they
+are enormous — a 40% drawdown on an index ETF is a market crisis, not a stop.
+So on a stock position the code-driven exits are effectively dormant, and the
+position is managed by the model proposing an exit, or by the daily-loss halt,
+or not at all. If `mixed` starts holding real stock positions, that asymmetry is
+the first thing to revisit.
+
+The end-of-day backstop treats them differently too: `flatten.py --expiring-only`
+skips anything that is not an expiring option (`bot/flatten.py`, "stock or
+unparseable"), so shares are held overnight by design. Only the
+`final_flatten_date` run closes everything.
 
 ## Division of labour
 
@@ -237,7 +357,7 @@ with the reasoning each carries in `config.yaml`:
 | Limit | Value | Why |
 |---|---|---|
 | Whitelist | `SPY QQQ AAPL MSFT NVDA` | the most liquid names, so a fill is always available and the spread is narrow |
-| Notional per position | $5,000 | `contracts x 100 x price` — the position's economic size, not the premium paid |
+| Notional per position | $5,000 | what the position costs to open: `contracts x 100 x contract price` for options — the premium paid, *not* the underlying exposure — and `qty x price` for shares |
 | Concurrent positions | 4 | keeps total exposure comprehensible at a glance |
 | Contracts per order | 10 | "a backstop against a fat-fingered or hallucinated large size, independent of the dollar cap" |
 | Expiration window | 1–45 DTE | "guards against 0-DTE gamma risk on one side, multi-month decay drag on the other" |
