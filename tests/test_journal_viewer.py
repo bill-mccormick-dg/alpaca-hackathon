@@ -123,6 +123,16 @@ class HttpSmokeTest(unittest.TestCase):
     def _get(self, path):
         return urllib.request.urlopen(f"http://127.0.0.1:{self.port}{path}", timeout=5)
 
+    def test_the_page_bounds_its_own_growth_and_follows_the_live_end(self):
+        """A day is ~1200 events across three accounts; an unbounded feed
+        makes the tab crawl by the close. And a reader at the live end must
+        be carried along, while a reader scrolled up must not be yanked."""
+        html = self._get("/").read().decode()
+        self.assertIn("MAX_ROWS", html)
+        self.assertIn("function trim()", html)
+        self.assertIn("function pinned()", html)
+        self.assertIn("older events trimmed from view", html)
+
     def test_page_serves_and_is_self_contained(self):
         html = self._get("/").read().decode()
         self.assertIn("journal", html)
