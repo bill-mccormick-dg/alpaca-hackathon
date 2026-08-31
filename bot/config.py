@@ -26,6 +26,10 @@ TRACKED_KEYS = (
     "expiry_close_dte", "eod_close_dte", "final_flatten_date", "underlyings",
     "max_position_usd", "max_positions", "max_contracts_per_order",
     "daily_loss_cutoff_pct", "min_days_to_expiration", "max_days_to_expiration",
+    # In the hash on purpose, unlike review_model below: the prior changes
+    # the prompt, so flipping it must show up as a config change when a P&L
+    # swing is being attributed.
+    "predictions_enabled",
 )
 
 

@@ -97,6 +97,16 @@ ACCOUNT_CONFIG_PATH: dict[str, str] = {
 # strategy_notes (prose - stays override.py/PR-only, HA's MQTT text entity
 # doesn't fit a paragraph). min/max/step mirror OVERRIDABLE_KEYS' own
 # validators for UI honesty; the bridge still re-validates server-side.
+# Boolean knobs get a `switch` (the kill switch established the domain):
+# payload_on/off carry the full config/set JSON directly - a switch has no
+# command_template value to interpolate, its two payloads ARE the values.
+# State rides config/effective like the selects and numbers do.
+BOOL_KNOBS = {
+    # Name must slugify to the key (tests/test_mqtt.py::EntityIdDerivationTest)
+    # - "Kalshi prior" would derive a different entity_id than the topic says.
+    "predictions_enabled": {"name": "Predictions enabled", "icon": "mdi:crystal-ball"},
+}
+
 NUMBER_KNOBS = {
     "temperature": {"min": 0, "max": 2, "step": 0.1, "name": "Temperature", "icon": "mdi:thermometer"},
     "max_tokens": {"min": 50, "max": 8000, "step": 50, "name": "Max tokens", "icon": "mdi:text-long"},
@@ -299,6 +309,20 @@ def discovery_payloads(prefix: str, config: dict | None = None) -> list[tuple[st
             "state_topic": effective_topic, "value_template": "{{ value_json.review_model }}",
             "options": options,
         }))
+
+        for key, attrs in BOOL_KNOBS.items():
+            uid = f"alpaca_{account}_{key}"
+            out.append((f"homeassistant/switch/{uid}/config", {
+                "unique_id": uid, "object_id": mqtt.entity_object_id(account, key),
+                "name": attrs["name"], "icon": attrs["icon"], "device": device,
+                "command_topic": f"{prefix}/config/set",
+                "payload_on": json.dumps({"account": account, "key": key, "value": True}),
+                "payload_off": json.dumps({"account": account, "key": key, "value": False}),
+                "state_topic": effective_topic,
+                "value_template": f"{{{{ 'ON' if value_json.{key} else 'OFF' }}}}",
+                "state_on": "ON", "state_off": "OFF",
+                "optimistic": False,
+            }))
 
         for key, attrs in NUMBER_KNOBS.items():
             uid = f"alpaca_{account}_{key}"

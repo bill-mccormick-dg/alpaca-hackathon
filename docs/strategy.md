@@ -676,7 +676,8 @@ HA side. What it creates:
 |---|---|---|
 | Kill switch | `switch` | flattens and halts **that one account** |
 | Model | `select` | swaps the model, from a fixed list of costed options |
-| Seven knobs | `number` | temperature, max tokens, research contracts, strike band, stop-loss, take-profit, EOD close DTE |
+| Numeric knobs | `number` | temperature, max tokens, research contracts, strike band, stop-loss, take-profit, EOD close DTE |
+| Kalshi prior | `switch` | `predictions_enabled` — whether the crowd prior is fetched and shown to the model |
 | Review model | `select` | which model critiques the day in `eod_review.py` |
 
 A `switch` rather than a button, because a button is stateless and could never
@@ -703,6 +704,7 @@ Every one is safe to move mid-session, and none of them can breach a risk limit
 | `take_profit_pct` | 1–1000 | 60 | close at this much gain |
 | `eod_close_dte` | 0–45 | 1 | the end-of-day sweep closes contracts with this many days left |
 | `review_model` | the costed model list | *computed* | which model writes the end-of-day critique |
+| `predictions_enabled` | on / off | on | whether the Kalshi prior is fetched and shown to the model |
 
 **Model behaviour — `temperature`, `max_tokens`.** Raise temperature if the
 agent is proposing the same idea every cycle and you want more variety; lower it
@@ -727,6 +729,16 @@ consulted, as percentages of the entry premium: 40 means "close if it has lost
 if you keep getting stopped out of trades that then run. `eod_close_dte` is the
 overnight-hold policy — see [Holding period and end of day](#holding-period-and-end-of-day)
 before touching it, because raising it interacts badly with short-dated entries.
+
+**The second opinion, `predictions_enabled`.** A switch, because the failure
+it exists for is binary: on 2026-08-31 the prior spent a morning measured
+against the wrong day's close (see "The reference close has to be the right
+day"), and the only ways to pull it were a deploy the market-hours freeze
+refuses or nothing. Off, the cycle runs without the prediction-markets block
+entirely; the journal's `predictions` line disappears rather than reporting a
+suppressed prior, and flipping it shows up in `config_hash` — turning the
+model's inputs on and off is exactly the kind of change P&L attribution has
+to see.
 
 **The reviewer, `review_model`.** Unset, it is *computed*: the first entry of
 `review_model_preference` that is not this account's own `model`, recomputed at
@@ -758,9 +770,10 @@ and a deploy — which during market hours the freeze refuses outright. The knob
 tune how the agent thinks and how positions are managed; **nothing reachable at
 runtime can widen how much it is allowed to lose.**
 
-Every knob is wired to `config/set` through a `command_template`, so a
-dashboard change takes exactly the same validation path as the CLI. There is no
-second way in.
+Every knob is wired to `config/set` — the selects and numbers through a
+`command_template`, the prior's switch through its two fixed payloads — so a
+dashboard change takes exactly the same validation path as the CLI. There is
+no second way in.
 
 **The halt is per-account, on purpose.** The switch publishes to
 `alpaca-hackathon/<account>/command/halt` with a payload of exactly `HALT`,

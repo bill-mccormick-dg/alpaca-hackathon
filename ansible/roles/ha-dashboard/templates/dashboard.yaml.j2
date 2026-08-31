@@ -154,6 +154,8 @@ views:
                 entities:
                   - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_model
                     name: Model
+                  - entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_predictions_enabled
+                    name: Kalshi prior (predictions)
                   - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_temperature
                     name: Temperature
                   - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_max_tokens
