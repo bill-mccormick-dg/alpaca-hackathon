@@ -218,8 +218,8 @@ def _publish_feed() -> None:
     record that triggered this call is already on disk when journal.log()
     invokes on_event. Lazy import because journal imports this module at
     load time; importing it back at module level would be a cycle."""
-    from bot import journal as _journal  # noqa: PLC0415 - see docstring
-    from bot import report as _report  # noqa: PLC0415
+    from bot import journal as _journal
+    from bot import report as _report
 
     try:
         events = _journal.read_events()
@@ -239,7 +239,9 @@ def _publish_token_counts() -> None:
     each-cycle-is-its-own-process reasoning as the feed and trade report.
     The all-time scan is a whole-file read of a tens-of-KB file once per
     decision; not worth an offset cache."""
-    from bot import journal as _journal  # noqa: PLC0415 - journal imports this module at load time
+    from bot import (
+        journal as _journal,
+    )
 
     try:
         today = _token_sums(_journal.read_events(events=("decision",)))

@@ -227,10 +227,7 @@ def call_ladder(strikes_survival, expiry="260902"):
     is exactly the number the test names."""
     strikes = [k for k, _ in strikes_survival]
     ps = [p for _, p in strikes_survival[:-1]]
-    prices = [0.50]  # tail value at the highest strike
-    for (k1, _), (k2, _), p in zip(reversed(strikes_survival[:-1]), reversed(strikes_survival[1:]), reversed(ps)):
-        pass
-    # forward construction: C[i] = C[i+1] + p_i * (K[i+1]-K[i])
+    # C[i] = C[i+1] + p_i * (K[i+1]-K[i]), built back to front.
     cs = [0.0] * len(strikes)
     cs[-1] = 0.50
     for i in range(len(strikes) - 2, -1, -1):
@@ -245,7 +242,7 @@ def call_ladder(strikes_survival, expiry="260902"):
 class ChainSummaryTest(unittest.TestCase):
     """P(S>K) = -dC/dK (#140). Idea credit: greatfriend#8857 (Discord)."""
 
-    LADDER = [(760, 0.95), (762, 0.85), (764, 0.65), (766, 0.45), (768, 0.25), (770, 0.10), (772, None)]
+    LADDER = ((760, 0.95), (762, 0.85), (764, 0.65), (766, 0.45), (768, 0.25), (770, 0.10), (772, None))
 
     def test_reads_the_probabilities_the_prices_imply(self):
         out = predictions.chain_summary(call_ladder(self.LADDER), reference=765.0)

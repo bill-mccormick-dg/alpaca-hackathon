@@ -76,7 +76,7 @@ def early_exit_block(proposal, position, entered_ts: str | None, config: dict,
         return None
     return (
         f"model exit blocked: opened {held_min:.0f} min ago (min_hold_minutes={min_hold:.0f}) "
-        f"and drawdown {'%.1f%%' % drawdown if drawdown is not None else 'unknown'} "
+        f"and drawdown {f'{drawdown:.1f}%' if drawdown is not None else 'unknown'} "
         f"<= early_exit_drawdown_pct={threshold:.0f} - the stop/take-profit own marks; "
         f"sell again after the hold or let the leash work"
     )
