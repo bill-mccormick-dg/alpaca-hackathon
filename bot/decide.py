@@ -47,7 +47,12 @@ choose an expiration that gives your thesis room to play out, or do not open the
 
 Below is the account state and, per whitelisted underlying, its current price and the \
 {contracts_per_underlying} option contracts nearest the money within the tradeable \
-expiration window. Each contract lists strike, days to expiration, and bid/ask/last. Alpaca's \
+expiration window. Each contract lists strike, days to expiration, and bid/ask/last, plus \
+spread_pct where both sides of the quote exist: the bid/ask spread as a percentage of the mid. \
+spread_pct is what a buy-then-sell round trip at market costs you before the underlying moves \
+at all (entry and exit each pay half the spread relative to mid) - your thesis must clear at \
+least that much just to break even. Prefer the tighter contract when two express the same view. \
+Alpaca's \
 feed carries no Greeks or implied volatility, so where a contract's price was stable enough \
 to solve for it, implied volatility and the standard Greeks (delta, gamma, theta per day, \
 vega per 1 vol point) were derived from it via Black-Scholes and are included too. A contract \
@@ -106,6 +111,11 @@ def _summarize_contract(symbol: str, raw: dict, spot: float, today: date) -> dic
         "ask": quote.get("ap"),
         "last": (raw.get("latestTrade") or {}).get("p"),
     }
+
+    bid, ask = quote.get("bp"), quote.get("ap")
+    if bid and ask and bid > 0 and ask > 0:
+        mid = (bid + ask) / 2
+        entry["spread_pct"] = round((ask - bid) / mid * 100, 1)
 
     price = _contract_market_price(raw)
     if price is not None:
