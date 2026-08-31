@@ -66,6 +66,54 @@ Long premium also matches what the model is actually good at: forming a
 directional view from evidence it can name. It is bad at managing a position
 minute to minute, so it does not.
 
+## The risk shape is an invariant, not a policy
+
+"This bot only buys premium" is the kind of claim that is usually a convention —
+something written in a prompt and mostly respected. Here it is a property of the
+code, and the difference matters if you are deciding whether to trust it.
+
+**Selling is capped at what is already held.** `bot/risk.py::check_order()` is
+the only path to an order, and its sell branch reads:
+
+```python
+if p.side == "sell":
+    if p.qty > held_qty:
+        return False, f"cannot sell {p.qty}, only {held_qty} held"
+```
+
+So `sell` can only ever mean *close something we own*. Opening a short option —
+the posture with unbounded loss — is not forbidden by instruction, it is
+unreachable: there is no sequence of model outputs that produces one, because a
+sell of something not held is rejected before it becomes an order.
+`tests/test_risk.py` pins this from three directions (exceeding held quantity,
+the exact boundary, and a symbol not held at all).
+
+**Assignment cannot happen either**, and for two independent reasons. Assignment
+only affects sellers, and we never sell. Even if that were not true,
+`expiry_close_dte` force-closes any contract on its expiry day regardless of
+profit or loss, so nothing is ever held into exercise. Two unrelated mechanisms
+would both have to fail.
+
+Between them, the worst case for any single position is the premium paid,
+bounded by the $5,000 notional cap, with at most four open at once. That is what
+makes the guardrails able to be simple absolute numbers rather than
+margin-aware, assignment-aware risk logic — the sort we could not prove correct
+in four days.
+
+### The Greeks are indicative, and the prompt says so
+
+`bot/greeks.py` solves each contract's implied volatility from *its own* market
+price and derives delta/gamma/theta/vega from that — independently, per
+contract. They will therefore not be internally consistent: put and call deltas
+at one strike need not sum to −1, and some quotes are plainly stale.
+
+This is stated in the prompt rather than hidden, along with an instruction not
+to spend effort auditing or reconciling the numbers: skip anything that looks
+broken and decide from what is plausible. A contract whose price was too thin to
+solve arrives with no Greeks at all and is to be judged on price, strike and DTE
+alone. Presenting derived figures as if they were an exchange feed would invite
+exactly the wrong kind of confidence.
+
 ## Division of labour
 
 | Decision | Who | Where |
