@@ -180,3 +180,40 @@ class EodPayloadTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FeedTest(unittest.TestCase):
+    """The live journal feed (#134)."""
+
+    def test_every_event_type_renders_a_line(self):
+        """Unknown events must fall through to name+fields, never vanish -
+        a new journal event should be visible in the feed before anyone
+        teaches the renderer about it."""
+        for record in (
+            _event("cycle_start", equity=100000, day_pnl=0, positions=0),
+            _event("predictions", SPY={"reference_close": 7711.76, "p_above_reference": 0.27, "suppressed": None}),
+            _event("decision", count=1, model="m", usage={"total_tokens": 6000}),
+            _event("order_rejected", side="sell", qty=10, symbol="S", detail="model exit blocked: ..."),
+            _event("never_seen_before", anything=1),
+        ):
+            line = report.render_feed_line(record)
+            self.assertIn("10:15", line)
+            self.assertTrue(len(line) > 10, record["event"])
+
+    def test_payload_is_fenced_and_state_fits_ha(self):
+        events = [dict(FILL, reason="r" * 400)] * 60
+        payload = report.feed_payload(events, "official")
+        self.assertLessEqual(len(payload["state"]), report.MAX_STATE_CHARS)
+        self.assertTrue(payload["attributes"]["markdown"].startswith("```text\n"))
+        self.assertEqual(payload["attributes"]["count"], report.FEED_LINES)
+
+    def test_a_withheld_prior_says_so(self):
+        line = report.render_feed_line(_event("predictions", QQQ={
+            "reference_close": 29433, "p_above_reference": 0.5, "suppressed": "thin: volume 45 < 250"}))
+        self.assertIn("withheld", line)
+        self.assertIn("thin", line)
+
+    def test_empty_feed_has_an_empty_body_not_a_bare_fence(self):
+        payload = report.feed_payload([], "official")
+        self.assertEqual(payload["attributes"]["markdown"], "")
+        self.assertEqual(payload["state"], "no events yet")

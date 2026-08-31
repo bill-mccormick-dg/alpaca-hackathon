@@ -16,6 +16,7 @@ payload here is {state, attributes} - a short summary for the state, the full
 markdown for a card to render.
 """
 
+import json
 from datetime import datetime
 
 # The journal events that represent something actually happening to money,
@@ -122,6 +123,68 @@ def trades_summary(trades: list[dict]) -> str:
     if dry:
         parts.append(f"{dry} dry-run")
     return _clip(", ".join(parts) or "no trades", MAX_STATE_CHARS)
+
+
+FEED_LINES = 40
+
+
+def render_feed_line(r: dict) -> str:
+    """One journal record -> one line, in the idiom of the terminal watcher.
+
+    Every event renders - this is the complete stream, unlike the trade list
+    above - and unknown events fall through to name + fields rather than
+    vanishing, so a new journal event is visible in the feed before anyone
+    teaches this function about it."""
+    t = _fmt_time(r.get("ts"))
+    e = r.get("event") or "?"
+    if e == "cycle_start":
+        dry = " [DRY RUN]" if r.get("dry_run") else ""
+        return f"{t} ▶ cycle  equity {r.get('equity')}  P&L {r.get('day_pnl')}  pos {r.get('positions')}{dry}"
+    if e == "config":
+        return f"{t}   model {r.get('model')}  review {r.get('review_model')}  hash {r.get('config_hash')}"
+    if e == "predictions":
+        bits = []
+        for sym in ("SPY", "QQQ"):
+            p = r.get(sym)
+            if isinstance(p, dict):
+                verdict = f"withheld ({p.get('suppressed')})" if p.get("suppressed") else "shown"
+                bits.append(f"{sym} ref {p.get('reference_close')} P(above) {p.get('p_above_reference')} -> {verdict}")
+        return f"{t} ◈ prior  " + ("; ".join(bits) or "none")
+    if e == "tool_call":
+        return f"{t}   · {r.get('tool')} -> {r.get('result_chars')} chars"
+    if e == "decision":
+        return f"{t} ✱ model  {r.get('count')} proposal(s)  {r.get('model')}  {(r.get('usage') or {}).get('total_tokens')} tok"
+    if e in ("order_submitted", "dry_run"):
+        mark = "✓ FILLED" if e == "order_submitted" else "⋯ dry"
+        exit_tag = " (exit)" if r.get("exit") else ""
+        return f"{t} {mark}{exit_tag} {r.get('side')} {r.get('qty')} {r.get('symbol')} @ {r.get('price')} — {_clip(r.get('reason'), 160)}"
+    if e in ("order_rejected", "order_error"):
+        return f"{t} ✗ {e.split('_')[1].upper()} {r.get('side')} {r.get('qty')} {r.get('symbol')} — {r.get('detail')}"
+    if e == "cycle_end":
+        return f"{t} ◀ end, {r.get('actions')} action(s)"
+    if e in ("manual_halt", "daily_loss_halt"):
+        return f"{t} ■ HALT ({e})"
+    if e == "manual_resume":
+        return f"{t} ▶ resume"
+    if e in ("override_set", "override_cleared"):
+        return f"{t} ⚙ {e.split('_')[1]} {r.get('key')} = {_clip(r.get('value'), 60)} ({r.get('set_by')})"
+    if e == "error":
+        return f"{t} ! error in {r.get('where')}: {_clip(r.get('detail'), 140)}"
+    rest = {k: v for k, v in r.items() if k not in ("ts", "event")}
+    return f"{t} {e} {_clip(json.dumps(rest, default=str), 120)}"
+
+
+def feed_payload(events, account: str = "") -> dict:
+    """The attribute-sensor payload for the live journal feed (issue #134):
+    the last FEED_LINES records rendered one per line, fenced so Home
+    Assistant's markdown card keeps it monospace and never interprets a
+    reason's underscores as emphasis. Same state/attributes shape as
+    trades_payload - HA caps state at 255 chars, the body rides attributes."""
+    records = list(events)[-FEED_LINES:]
+    lines = [render_feed_line(r) for r in records]
+    body = "```text\n" + "\n".join(lines) + "\n```" if lines else ""
+    state = _clip(lines[-1] if lines else "no events yet", MAX_STATE_CHARS)
+    return {"state": state, "attributes": {"markdown": body, "account": account, "count": len(records)}}
 
 
 def trades_payload(events, account: str = "", limit: int = DEFAULT_TRADE_LIMIT) -> dict:

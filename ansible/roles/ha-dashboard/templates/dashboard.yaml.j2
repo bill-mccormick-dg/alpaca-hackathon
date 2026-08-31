@@ -173,3 +173,10 @@ views:
                   - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_review_model
                     name: Review model
 {% endfor %}
+
+          # --- live journal feed (#134) ----------------------------------
+{% for acct in ha_accounts %}
+          - type: markdown
+            title: {{ acct.label }} — live journal
+            content: "{% raw %}{{ state_attr('sensor.{% endraw %}{{ ha_entity_prefix }}_{{ acct.id }}_journal_feed{% raw %}', 'markdown') or '_No events yet._' }}{% endraw %}"
+{% endfor %}
