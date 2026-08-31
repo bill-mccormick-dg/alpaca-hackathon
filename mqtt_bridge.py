@@ -119,6 +119,10 @@ NUMBER_KNOBS = {
     "stop_loss_pct": {"min": 1, "max": 100, "step": 1, "name": "Stop loss pct", "icon": "mdi:trending-down"},
     "take_profit_pct": {"min": 1, "max": 1000, "step": 1, "name": "Take profit pct", "icon": "mdi:trending-up"},
     "eod_close_dte": {"min": 0, "max": 45, "step": 1, "name": "Eod close dte", "icon": "mdi:calendar-clock"},
+    "min_hold_minutes": {"min": 0, "max": 390, "step": 5, "name": "Min hold minutes", "icon": "mdi:timer-lock"},
+    "early_exit_drawdown_pct": {
+        "min": 1, "max": 100, "step": 1, "name": "Early exit drawdown pct", "icon": "mdi:elevator-down",
+    },
 }
 
 
