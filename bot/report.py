@@ -26,6 +26,8 @@ TRADE_EVENTS = ("order_submitted", "order_rejected", "order_error", "dry_run")
 MAX_STATE_CHARS = 255
 
 DEFAULT_TRADE_LIMIT = 12
+REASON_CHARS = 400
+VERDICT_PREFIX = "why: "
 
 
 def _fmt_time(ts: str) -> str:
@@ -59,7 +61,12 @@ def recent_trades(events, limit: int = DEFAULT_TRADE_LIMIT) -> list[dict]:
                 "qty": record.get("qty"),
                 "symbol": record.get("symbol") or "",
                 "price": record.get("price"),
-                "reason": record.get("reason") or record.get("detail") or "",
+                # The model's reason and the funnel's verdict are different
+                # facts; a rejection needs both. `reason or detail` used to
+                # collapse them, so an email said "rejected" and then quoted
+                # the model's case for the trade - never why it was refused.
+                "reason": record.get("reason") or "",
+                "detail": record.get("detail") or "",
                 "exit": bool(record.get("exit")),
                 "order_id": record.get("order_id") or "",
             }
@@ -78,8 +85,17 @@ def _trade_line(t: dict) -> str:
     price = f" @ ${float(t['price']):.2f}" if t.get("price") is not None else ""
     tag = " (exit)" if t.get("exit") else ""
     head = f"**{t['time']}** · {verb}{tag} {t['side']} {qty} `{t['symbol']}`{price}".replace("  ", " ")
-    reason = _clip(t.get("reason"), 160)
-    return f"{head}\n  {reason}" if reason else head
+    lines = [head]
+    # Why the funnel refused / what broke - first, because it is the fact a
+    # reader of "rejected" is looking for.
+    if t["event"] in ("order_rejected", "order_error") and t.get("detail"):
+        lines.append(f"  {VERDICT_PREFIX}{_clip(t['detail'], REASON_CHARS)}")
+    # 400, not 160: the model's reasons run 150-250 chars, and at 160 nearly
+    # every one ended in "…" one clause before the point. The CSV attachment
+    # carries the full text either way; this is the readable version.
+    if t.get("reason"):
+        lines.append(f"  {_clip(t['reason'], REASON_CHARS)}")
+    return "\n".join(lines)
 
 
 def render_trades_markdown(trades: list[dict], account: str = "") -> str:

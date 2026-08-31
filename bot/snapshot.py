@@ -92,6 +92,33 @@ async def fetch_account_number(client: AlpacaMCPClient) -> str | None:
     return _data(await client.call_tool("get_account_info")).get("account_number")
 
 
+async def quote_option_mid(client: AlpacaMCPClient, symbol: str) -> float | None:
+    """Bid/ask mid for ONE option contract, from a live quote - the pricing
+    path for a proposal the snapshot cannot price.
+
+    The snapshot's chain is one API page (500 contracts), and for SPY inside
+    an 8% strike band that is three expiries, whatever the configured DTE
+    window says. A model with research tools can look at a fourth expiry,
+    propose it with a perfectly good limit price, and have the funnel reject
+    it as "price must be positive" - which is what happened twice on
+    2026-08-31 to a 4-DTE SPY put. This closes that gap without loosening
+    anything: a real quote still has to exist, so an invented symbol is
+    rejected exactly as before, and the price used for sizing is the
+    market's, not the model's.
+
+    None on a missing quote, a one-sided quote, or any tool failure; the
+    caller treats None as unpriceable."""
+    try:
+        result = await client.call_tool("get_option_latest_quote", {"symbols": symbol, "feed": "indicative"})
+        quote = (_data(result).get("quotes") or {}).get(symbol) or {}
+    except Exception:  # noqa: BLE001 - unpriceable is the safe answer
+        return None
+    bid, ask = _optional_float(quote.get("bp")), _optional_float(quote.get("ap"))
+    if bid and ask and bid > 0 and ask > 0:
+        return (bid + ask) / 2
+    return None
+
+
 async def get_underlying_price(client: AlpacaMCPClient, symbol: str) -> float:
     """Mid of the latest bid/ask for a stock symbol — used both as the
     option chain's strike-price anchor and as the fill-price estimate for

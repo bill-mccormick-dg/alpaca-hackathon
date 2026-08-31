@@ -31,7 +31,7 @@ from bot.orders import INCOMPLETE
 from bot.report import trades_payload
 from bot.retry import RetryBudget, call_with_retry, summarize
 from bot.risk import EASTERN, RiskManager
-from bot.snapshot import _data, build_snapshot, price_for_proposal
+from bot.snapshot import _data, build_snapshot, price_for_proposal, quote_option_mid
 from bot.trades import pair_round_trips
 
 # Hackathon rule (docs/alpaca-official-guidelines.md): the judging account
@@ -326,13 +326,20 @@ async def run(args: argparse.Namespace) -> int:
 
         for p in proposals:
             price = price_for_proposal(snap, p)
+            price_source = "snapshot"
+            if price is None and p.instrument == "option":
+                # Researched contracts live outside the snapshot's page - see
+                # bot/snapshot.py::quote_option_mid. One quote, then the
+                # funnel judges it on the market's price like any other.
+                price = await quote_option_mid(client, p.symbol)
+                price_source = "quote" if price else "none"
             r = await execute.place_proposal(
                 client, risk, acct, price or 0.0, p, dry_run=args.dry_run, now=now
             )
             label = f"{p.side} {p.qty} {p.symbol}"
             fields = {
                 "side": p.side, "qty": p.qty, "symbol": p.symbol, "instrument": p.instrument,
-                "price": price, "reason": p.reason,
+                "price": price, "price_source": price_source, "reason": p.reason,
             }
             if r.status == execute.ZERO_QTY:
                 continue

@@ -376,6 +376,39 @@ class PriceForProposalTest(unittest.TestCase):
         self.assertIsNone(snapshot.price_for_proposal(self.SNAP, p))
 
 
+class QuoteOptionMidTest(unittest.IsolatedAsyncioTestCase):
+    """The pricing path for a contract the snapshot's page did not include -
+    the 4-DTE SPY put the test account researched and proposed on
+    2026-08-31, which the funnel rejected as "price must be positive"."""
+
+    def _client(self, quotes):
+        return FakeMCPClient({"get_option_latest_quote": {"data": {"quotes": quotes}}})
+
+    async def test_mid_of_a_two_sided_quote(self):
+        client = self._client({"SPY260904P00766000": {"bp": 3.82, "ap": 3.89}})
+        self.assertAlmostEqual(await snapshot.quote_option_mid(client, "SPY260904P00766000"), 3.855)
+        name, args = client.calls[0]
+        self.assertEqual(name, "get_option_latest_quote")
+        self.assertEqual(args["symbols"], "SPY260904P00766000")
+        self.assertEqual(args["feed"], "indicative")
+
+    async def test_one_sided_quote_is_unpriceable(self):
+        client = self._client({"SPY260904P00766000": {"bp": 0, "ap": 3.89}})
+        self.assertIsNone(await snapshot.quote_option_mid(client, "SPY260904P00766000"))
+
+    async def test_symbol_the_broker_does_not_know_is_unpriceable(self):
+        """An invented symbol must still be rejected downstream, so it must
+        not get a price here."""
+        client = self._client({})
+        self.assertIsNone(await snapshot.quote_option_mid(client, "SPY260904P00999000"))
+
+    async def test_tool_failure_is_unpriceable_not_a_crash(self):
+        def boom(_args):
+            raise RuntimeError("HTTP 400")
+        client = FakeMCPClient({"get_option_latest_quote": boom})
+        self.assertIsNone(await snapshot.quote_option_mid(client, "SPY260904P00766000"))
+
+
 class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
     def _client(self, positions=STOCK_POSITION_RESPONSE):
         return FakeMCPClient(
