@@ -432,6 +432,48 @@ above); the *code* permits 1–45. The narrower band is a preference the model i
 told to favour, the wider one is the limit it cannot cross — so a sensible
 contract slightly outside the tactic is allowed, and a wild one is not.
 
+### Why the whitelist is five names
+
+**Alpaca does not impose it.** The broker will trade any optionable symbol it
+supports; `SPY QQQ AAPL MSFT NVDA` is our choice, living in `config.yaml` and
+enforced in `bot/risk.py`. Nothing about the platform caps the list.
+
+Worth separating from a number it is easy to confuse with:
+`research_contracts_per_underlying: 12` is **12 option contracts per name**, not
+an allowance of twelve symbols. The two are different axes, and together they
+set the size of the menu: 5 underlyings × 12 nearest-the-money contracts = **60
+contracts in every prompt**, each with strike, DTE, bid/ask/last and derived
+Greeks.
+
+Three reasons the list stays short:
+
+**Liquidity, which is the stated one.** These carry the tightest option spreads
+available. That matters more than it sounds: every position pays the spread
+twice, entering and exiting, and against a 40% stop and 60% take-profit the
+spread is a real fraction of the move being traded for. On a thinner name it can
+consume the edge outright.
+
+**Breadth is capped elsewhere anyway.** `max_positions` is 4. Adding names
+widens the menu without widening what can be held, so the binding constraint is
+position count, not candidate count — and with four trading days there is no
+time for a wider net to pay off.
+
+**The prompt is not free.** Those 60 contracts already dominate it. Doubling the
+names doubles what the model reads before answering inside an 800-token budget,
+and lengthens every cycle (one more snapshot fetch per name) against a
+ten-minute cadence.
+
+**Changing it** is a one-line config edit — the whitelist is data, not code. Two
+caveats: `config.yaml` is trading code under the [deploy
+freeze](operations.md#deploy-safety-during-the-scoring-week), so it cannot land
+Mon–Fri 08:20–15:15 CT; and prefer adding *names* over raising
+`research_contracts_per_underlying`, since 12 contracts already span the ±8%
+strike band and more per name mostly surfaces strikes the tactics would not pick.
+
+One mechanical detail, in case you ever debug a rejection: an option proposal is
+checked against its **underlying**, not its OCC symbol. A contract on a
+whitelisted name passes regardless of how its symbol is spelled.
+
 ## Holding period and end of day
 
 Judging is on total equity, not daily P&L, and the DTE window allows
