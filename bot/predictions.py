@@ -18,6 +18,7 @@ import json
 import math
 import time
 from datetime import datetime, timezone
+from itertools import pairwise
 from pathlib import Path
 
 import httpx
@@ -403,7 +404,7 @@ def chain_summary(contracts: dict, reference: float | None) -> dict | None:
     # deep-ITM side saturates toward P=1 anyway, and the reference sits in
     # the liquid zone near spot.
     ks, raw = [], []
-    for (k1, c1, sp1), (k2, c2, sp2) in zip(mids, mids[1:]):
+    for (k1, c1, sp1), (k2, c2, sp2) in pairwise(mids):
         gap = k2 - k1
         if max(sp1, sp2) >= gap:
             continue
@@ -425,14 +426,14 @@ def chain_summary(contracts: dict, reference: float | None) -> dict | None:
             return points[0][1]
         if x >= points[-1][0]:
             return points[-1][1]
-        for (x1, p1), (x2, p2) in zip(points, points[1:]):
+        for (x1, p1), (x2, p2) in pairwise(points):
             if x1 <= x <= x2:
                 return p1 + (p2 - p1) * (x - x1) / (x2 - x1)
         return points[-1][1]
 
     # Median: where the survival curve crosses 0.5 (linear interp).
     median = None
-    for (x1, p1), (x2, p2) in zip(points, points[1:]):
+    for (x1, p1), (x2, p2) in pairwise(points):
         if p1 >= 0.5 >= p2:
             median = x1 if p1 == p2 else x1 + (x2 - x1) * (p1 - 0.5) / (p1 - p2)
             break

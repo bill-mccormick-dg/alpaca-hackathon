@@ -16,8 +16,7 @@ import journal_viewer
 
 def write_lines(path: Path, *records):
     with open(path, "a") as f:
-        for r in records:
-            f.write(json.dumps(r) + "\n")
+        f.writelines(json.dumps(r) + "\n" for r in records)
 
 
 class AccountNamingTest(unittest.TestCase):

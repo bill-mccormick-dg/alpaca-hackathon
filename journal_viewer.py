@@ -173,7 +173,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def do_GET(self) -> None:  # noqa: N802 - BaseHTTPRequestHandler's contract
+    def do_GET(self) -> None:
         url = urlparse(self.path)
         if url.path == "/":
             body = PAGE.encode()

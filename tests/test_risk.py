@@ -3,8 +3,8 @@ import unittest
 from datetime import date, datetime
 from pathlib import Path
 
-from bot.models import AccountState, Position, Proposal
 from bot import risk
+from bot.models import AccountState, Position, Proposal
 from bot.risk import EASTERN, RiskManager
 
 UNDERLYINGS = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA"]
