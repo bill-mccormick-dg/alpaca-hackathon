@@ -5,6 +5,7 @@ at 255 characters, so anything a teammate actually reads has to travel as a
 JSON attribute. Get that wrong and the entity silently goes `unavailable`."""
 
 import unittest
+from zoneinfo import ZoneInfo
 
 from bot import report
 
@@ -66,6 +67,13 @@ class RecentTradesTest(unittest.TestCase):
 
         self.assertEqual(len(trades), 1)
 
+    def test_times_render_on_the_requested_clock(self):
+        """Journal timestamps are Eastern; the email renders them on the
+        host's clock so its lines agree with the cron logs and the viewer."""
+        t = report.recent_trades([FILL], tz=ZoneInfo("America/Chicago"))[0]
+
+        self.assertEqual(t["time"], "09:15")
+
 
 class RenderTest(unittest.TestCase):
     def test_renders_the_reason_the_model_gave(self):
@@ -92,6 +100,16 @@ class RenderTest(unittest.TestCase):
 
         self.assertIn("…", md)
         self.assertLess(len(md), report.REASON_CHARS + 120)
+
+    def test_reason_chars_zero_disables_clipping(self):
+        """The 400-char cap is for the HA card; the email passes 0 and must
+        get the whole reason - a second "…" fix that still clipped would just
+        move the complaint."""
+        reason = "z" * 1000
+        md = report.render_trades_markdown(report.recent_trades([dict(FILL, reason=reason)]), reason_chars=0)
+
+        self.assertIn(reason, md)
+        self.assertNotIn("…", md)
 
     def test_a_typical_reason_is_not_clipped(self):
         """160 chars cut nearly every real reason one clause before its

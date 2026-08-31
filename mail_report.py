@@ -73,24 +73,40 @@ def recipients(settings: dict) -> list[str]:
     return [addr.strip() for addr in raw.replace(";", ",").split(",") if addr.strip()]
 
 
-def _rows(events, columns, keep) -> str:
+def _ts_local(value, tz):
+    """A journal timestamp rewritten onto `tz`, offset kept - lossless (the
+    ISO offset travels with it), just readable against the body and the cron
+    logs without mental arithmetic. Anything unparseable passes through."""
+    try:
+        dt = datetime.fromisoformat(str(value))
+    except ValueError:
+        return value
+    if dt.tzinfo is None:
+        return value
+    return dt.astimezone(tz).isoformat(timespec="seconds")
+
+
+def _rows(events, columns, keep, tz=None) -> str:
     buf = io.StringIO()
     writer = csv.DictWriter(buf, fieldnames=columns, extrasaction="ignore")
     writer.writeheader()
     for record in events:
         if keep(record):
-            writer.writerow({c: record.get(c, "") for c in columns})
+            row = {c: record.get(c, "") for c in columns}
+            if tz and row.get("ts"):
+                row["ts"] = _ts_local(row["ts"], tz)
+            writer.writerow(row)
     return buf.getvalue()
 
 
-def trades_csv(events) -> str:
+def trades_csv(events, tz=None) -> str:
     """Every order-shaped event, with the reason the model gave."""
-    return _rows(events, TRADE_COLUMNS, lambda r: r.get("event") in report.TRADE_EVENTS)
+    return _rows(events, TRADE_COLUMNS, lambda r: r.get("event") in report.TRADE_EVENTS, tz)
 
 
-def cycles_csv(events) -> str:
+def cycles_csv(events, tz=None) -> str:
     """One row per cycle - the intra-day equity curve, for a pivot table."""
-    return _rows(events, CYCLE_COLUMNS, lambda r: r.get("event") == "cycle_start")
+    return _rows(events, CYCLE_COLUMNS, lambda r: r.get("event") == "cycle_start", tz)
 
 
 def equity_csv(path=None) -> str:
@@ -117,17 +133,19 @@ def equity_csv(path=None) -> str:
     return buf.getvalue()
 
 
-def summarize(events, account: str, halt: str = "none") -> dict:
+def summarize(events, account: str, halt: str = "none", tz=None) -> dict:
     """The numbers that go in the subject line and the top of the body.
 
     `halt` is the CURRENT state, derived from the halt files by the caller -
     not from journal events. A manual_halt event stays in today's journal
     after the halt is cleared, so an event-derived flag would mark the
     account halted for the rest of the day and teach everyone to ignore the
-    subject line. Same reasoning as RiskManager.halt_state() (#74)."""
+    subject line. Same reasoning as RiskManager.halt_state() (#74).
+
+    `tz` renders trade times on that clock; journal timestamps are Eastern."""
     cycles = [r for r in events if r.get("event") == "cycle_start"]
     latest = cycles[-1] if cycles else {}
-    trades = report.recent_trades(events, limit=0)
+    trades = report.recent_trades(events, limit=0, tz=tz)
     errors = [r for r in events if r.get("event") == "error"]
     retries = [r for r in events if r.get("event") == "decide_retry"]
     equity = latest.get("equity")
@@ -187,7 +205,10 @@ def body_text(s: dict, now: datetime) -> str:
         lines.append("")
         lines.append(f"  *** THIS ACCOUNT IS HALTED ({s['halt']}) — it is not trading. ***")
     lines += ["", "Trades so far today", "-------------------", ""]
-    lines.append(report.render_trades_markdown(s["trades"][-12:], s["account"]))
+    # All of today's trades, reasons unclipped (reason_chars=0): the 12-entry
+    # and 400-char caps exist for Home Assistant's sensor limits, and in an
+    # email they cut entries mid-sentence under a heading that says "today".
+    lines.append(report.render_trades_markdown(s["trades"], s["account"], reason_chars=0))
     lines += [
         "",
         "",
@@ -236,7 +257,11 @@ def run(args: argparse.Namespace) -> int:
         )
         return 0
 
-    now = datetime.now(EASTERN)
+    # The host's local clock (America/Chicago on CT 108), not Eastern: the
+    # subject, the "As of" line and the trade times should agree with the
+    # cron logs and the team's own clocks, not cite EDT. Market logic below
+    # (halt_state) still runs on Eastern via its own conversion.
+    now = datetime.now().astimezone()
     events = journal.read_events()
     # Current halt state comes from the halt FILES via the same helper the
     # dashboard uses, never from journal events - see summarize().
@@ -245,11 +270,11 @@ def run(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001 - a report must still send if config is unreadable
         print(f"halt state unavailable ({type(exc).__name__}: {exc})", file=sys.stderr)
         halt = "unknown"
-    summary = summarize(events, args.account, halt)
-    day = now.date().isoformat()
+    summary = summarize(events, args.account, halt, tz=now.tzinfo)
+    day = now.astimezone(EASTERN).date().isoformat()
     attachments = {
-        f"trades-{day}-{args.account}.csv": trades_csv(events),
-        f"cycles-{day}-{args.account}.csv": cycles_csv(events),
+        f"trades-{day}-{args.account}.csv": trades_csv(events, tz=now.tzinfo),
+        f"cycles-{day}-{args.account}.csv": cycles_csv(events, tz=now.tzinfo),
         f"equity-{args.account}.csv": equity_csv(),
     }
     msg = build_message(summary, attachments, settings, now)
