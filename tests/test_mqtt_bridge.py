@@ -154,7 +154,11 @@ class DiscoveryPayloadsTest(unittest.TestCase):
         expected = set(OVERRIDABLE_KEYS) - {"strategy_notes"}
         for account in mqtt_bridge.KNOWN_ACCOUNTS:
             for key in expected:
-                domain = "select" if key == "model" else "number"
+                # Derived from NUMBER_KNOBS rather than naming the selects,
+                # so adding a third select needs no change here. This used to
+                # read `"select" if key == "model" else "number"`, which broke
+                # the moment review_model arrived.
+                domain = "number" if key in mqtt_bridge.NUMBER_KNOBS else "select"
                 topic = f"homeassistant/{domain}/alpaca_{account}_{key}/config"
                 self.assertIn(topic, self.payloads, f"missing {topic}")
                 # A non-empty payload, specifically. This assertion used to

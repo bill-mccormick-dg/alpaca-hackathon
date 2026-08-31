@@ -168,4 +168,6 @@ views:
                     name: Take profit %
                   - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_eod_close_dte
                     name: EOD close DTE
+                  - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_review_model
+                    name: Review model
 {% endfor %}

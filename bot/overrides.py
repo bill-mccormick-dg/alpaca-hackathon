@@ -82,6 +82,11 @@ def _nonempty_str(value):
 # are fine), validated before anything is written.
 OVERRIDABLE_KEYS = {
     "model": _nonempty_str,
+    # Which model critiques the day. Unset, bot/config.py::resolve_review_model
+    # picks the first review_model_preference entry that is not `model`; setting
+    # this pins one instead. Same validator as `model` - both are model ids, and
+    # both are constrained to a fixed list at the dashboard rather than here.
+    "review_model": _nonempty_str,
     "temperature": _float_in(0.0, 2.0),
     "max_tokens": _int_in(50, 8000),
     "strategy_notes": _nonempty_str,

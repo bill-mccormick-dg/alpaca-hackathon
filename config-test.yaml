@@ -102,6 +102,19 @@ model: Qwen/Qwen3.8-Flash-Next  # challenger: 4x cheaper than Kimi, newest agent
 # Qwen3.8 / Kimi-K2.6 are thinking models: without this they spend the whole
 # max_tokens budget on hidden reasoning and return empty content (confirmed
 # live 2026-08-29). GLM-5.3-Flash ignores this flag entirely - not usable here.
+# Which model critiques the day in eod_review.py, in preference order. The
+# first entry that is not the account's own `model` is used, recomputed at
+# review time - so switching the trading model from the dashboard cannot
+# silently make the reviewer the same model that traded. A model grading its
+# own reasoning is the weakest form of review; this costs one call a day.
+#
+# Set `review_model` (config or a runtime override) to pin one explicitly and
+# skip the list entirely.
+review_model_preference:
+  - moonshotai/Kimi-K2.6
+  - moonshotai/Kimi-K2-Instruct
+  - Qwen/Qwen3.8-Flash-Next
+
 model_params:
   chat_template_kwargs:
     enable_thinking: false

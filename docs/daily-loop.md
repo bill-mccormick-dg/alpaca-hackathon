@@ -17,7 +17,7 @@ What happens on a trading day, and what we do at the close. All times Eastern.
 | any cycle | Daily loss >= 2% of start-of-day equity -> flatten everything, halt for the day |
 | 15:15 - 15:45 | Sells only |
 | 15:50 | `flatten.py --expiring-only`: close contracts expiring within 1 day; hold the rest overnight under the stops |
-| 16:05 | `eod_review.py` per account -> `logs/eod/<date>-<account>.md`, `logs/equity.jsonl`, and the model's advisory read |
+| 16:05 | `eod_review.py` per account -> `logs/eod/<date>-<account>.md`, `logs/equity.jsonl`, and an advisory read from a model that did **not** trade the day |
 
 Everything in that table is **cron on CT 108**, installed by the
 `alpaca-hackathon` Ansible role - nothing waits on a person being awake. Each
@@ -63,7 +63,8 @@ everything.
    - **rejections by rule** - a rule refusing the same idea all day is a
      prompt or config problem, not bad luck;
    - errors, truncated outputs, latency;
-   - the model's one recommended change (advisory).
+   - the one recommended change (advisory) — written by a *different* model
+     from the one that traded, so it is a review rather than self-assessment.
 2. Compare the three. `test` is the challenger - different model, research
    tools and the learning loop; `mixed` differs from official by exactly one
    key, stock and options as peers rather than options-first. If a variant's
