@@ -53,13 +53,27 @@ DECK = ROOT / "submission/video/slides.html"
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 PAGE_H = 720
+# Never fit to exactly the page height. The harness measures a screen layout and
+# the export is a print layout, and the two differ by sub-pixel amounts - font
+# hinting, fractional line heights, image rounding. Slide 13 measured exactly
+# 720px, passed the check, and still pushed its final clause onto the next page
+# in the PDF: "because a stalled bot's stale numbers look exactly like a quiet
+# market" was simply not in the artifact. One line of slack costs nothing and
+# removes a whole class of "measured fine, exported wrong".
+FIT_MARGIN = 20
+USABLE_H = PAGE_H - FIT_MARGIN
 START, END = "<!-- fit:auto -->", "<!-- /fit:auto -->"
 # Below this the type is too small to read from the back of a room; the script
 # reports it and stops rather than quietly shipping an unreadable slide, because
 # a slide that needs this much shrink needs an editorial cut instead.
 MIN_SCALE = 0.72
 # Matches `section img { max-height }` in the deck's own print rules.
-IMG_MAX = 300
+IMG_MAX = 400
+# Matches the max-height scripts/render_diagrams.py injects onto each <svg>.
+# Diagrams are `flex:0 0 auto` so they are not squeezed by their neighbours -
+# which also means scaling the type alone cannot shrink a diagram slide, and
+# the fitter simply fails to converge on one. Scale the diagram with it.
+SVG_MAX = 560
 
 
 def strip_block(text: str) -> str:
@@ -79,6 +93,7 @@ def build_block(scales: dict[int, float]) -> str:
         rules = "".join(
             f"    section:nth-of-type({n}) {{ font-size:{s:.3f}em; }}\n"
             f"    section:nth-of-type({n}) img {{ max-height:{IMG_MAX * s:.0f}px; }}\n"
+            f"    section:nth-of-type({n}) svg {{ max-height:{SVG_MAX * s:.0f}px; }}\n"
             for n, s in sorted(scales.items())
         )
     return (
@@ -96,6 +111,13 @@ def measure(text: str) -> list[int]:
     # block to screen measures the layout with the scales silently inert - which
     # looks exactly like "the fit had no effect" and never converges.
     harness = text.replace("@media print {", "@media screen {")
+    # Neutralise min-height while measuring. The print rules set
+    # min-height:720px so a short slide still fills its page, which means
+    # scrollHeight returns max(content, 720) and a slide's real content height
+    # is invisible below the page box. Without this, every slide measures
+    # exactly 720 no matter how it is scaled, and fitting to anything under the
+    # page height is impossible.
+    harness = harness.replace("</head>", "<style>section{min-height:0!important}</style></head>", 1)
     harness += """
 <script>
 window.addEventListener('load', () => setTimeout(() => {
@@ -142,16 +164,17 @@ def main() -> int:
 
     if args.check:
         heights = measure(original)
-        over = [(i + 1, h) for i, h in enumerate(heights) if h > PAGE_H]
+        over = [(i + 1, h) for i, h in enumerate(heights) if h > USABLE_H]
         for i, h in enumerate(heights):
-            flag = f"+{h - PAGE_H} OVER" if h > PAGE_H else "fits"
+            flag = f"+{h - USABLE_H} OVER" if h > USABLE_H else "fits"
             print(f"  {i + 1:2}  {h:5}px  {flag:>10}   {names[i] if i < len(names) else ''}")
         if over:
-            print(f"\n{len(over)} slide(s) overflow the {PAGE_H}px page box; "
+            print(f"\n{len(over)} slide(s) overflow the {USABLE_H}px usable box; "
                   f"the PDF will lose or overlap content.\nrun: python scripts/fit_slides.py",
                   file=sys.stderr)
             return 1
-        print(f"\n  all {len(heights)} slides fit the {PAGE_H}px page box")
+        print(f"\n  all {len(heights)} slides fit the {USABLE_H}px usable box "
+              f"({PAGE_H}px page less a {FIT_MARGIN}px margin)")
         return 0
 
     base = strip_block(original)
@@ -160,8 +183,10 @@ def main() -> int:
         text = base.replace("</head>", build_block(scales) + "\n</head>", 1) \
             if "</head>" in base else build_block(scales) + base
         heights = measure(text)
-        over = {i + 1: h for i, h in enumerate(heights) if h > PAGE_H}
-        print(f"  pass {round_}: {len(over)} of {len(heights)} slides over {PAGE_H}px")
+        over = {i + 1: h for i, h in enumerate(heights) if h > USABLE_H}
+        detail = ", ".join(f"#{n} {h}px@{scales.get(n, 1.0):.2f}" for n, h in over.items())
+        print(f"  pass {round_}: {len(over)} of {len(heights)} slides over {USABLE_H}px"
+              + (f"  [{detail}]" if over else ""))
         if not over:
             break
         for n, h in over.items():
@@ -169,7 +194,7 @@ def main() -> int:
             # Only the type scales; the fixed px padding does not. Solve on the
             # content height alone, then damp slightly so we approach from below.
             pad = 86
-            want = (PAGE_H - pad) / max(h - pad, 1)
+            want = (USABLE_H - pad) / max(h - pad, 1)
             scales[n] = round(max(cur * want * 0.985, MIN_SCALE), 3)
     else:
         print("did not converge after 6 passes", file=sys.stderr)
