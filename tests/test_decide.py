@@ -134,6 +134,33 @@ class BuildPromptTest(unittest.TestCase):
         self.assertIn("15:15", prompt)
         self.assertIn("15:45", prompt)
 
+    def test_prompt_states_the_rules_that_end_a_position(self):
+        """The model was told the expiration WINDOW but not the rules that close
+        a position, so it could propose a short-dated contract in good faith
+        that the end-of-day backstop would sell hours later - which reads as
+        model error in the journal when it is policy the model never saw."""
+        prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
+
+        self.assertIn("How long a position can actually live", prompt)
+        self.assertIn("end-of-day backstop", prompt)
+
+    def test_holding_period_rules_come_from_config_not_hardcoded(self):
+        prompt = decide.build_prompt(
+            _snapshot(), _config(expiry_close_dte=2, eod_close_dte=6), TODAY
+        )
+
+        self.assertIn("once it has 2 day(s) to expiration", prompt)
+        self.assertIn("6 day(s) or fewer left", prompt)
+        self.assertIn("buy at 6 DTE or nearer", prompt)
+
+    def test_holding_period_defaults_match_the_code_that_enforces_them(self):
+        """A config without these keys must still describe what exits.py and
+        flatten.py will actually do, or the prompt quietly lies."""
+        prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
+
+        self.assertIn("once it has 0 day(s) to expiration", prompt)
+        self.assertIn("1 day(s) or fewer left", prompt)
+
     def test_embeds_snapshot_as_json(self):
         snap = _snapshot(
             AAPL={

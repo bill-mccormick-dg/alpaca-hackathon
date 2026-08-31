@@ -39,6 +39,12 @@ per position (existing + new, combined), max {max_positions} concurrent position
 ({underlyings}), options must have between {min_dte} and {max_dte} days to expiration. New \
 entries (buys) are rejected after {last_entry} ET; sells remain legal until {trade_end} ET.
 
+How long a position can actually live, which is not the same as the expiration window above: \
+code closes any option once it has {expiry_close_dte} day(s) to expiration, and an end-of-day \
+backstop closes anything with {eod_close_dte} day(s) or fewer left. So a contract you buy at \
+{eod_close_dte} DTE or nearer will be sold the same afternoon regardless of how it is doing - \
+choose an expiration that gives your thesis room to play out, or do not open the position.
+
 Below is the account state and, per whitelisted underlying, its current price and the \
 {contracts_per_underlying} option contracts nearest the money within the tradeable \
 expiration window. Each contract lists strike, days to expiration, and bid/ask/last. Alpaca's \
@@ -168,6 +174,12 @@ def build_prompt(
         max_dte=int(config["max_days_to_expiration"]),
         last_entry=str(config["last_entry"]),
         trade_end=str(config["trade_end"]),
+        # The model used to be told the expiration window but not the rules that
+        # END a position, so it could propose a short-dated contract in good
+        # faith that the 15:50 backstop would close hours later - which reads as
+        # model error in the journal when it is actually policy it never saw.
+        expiry_close_dte=int(config.get("expiry_close_dte", 0)),
+        eod_close_dte=int(config.get("eod_close_dte", 1)),
         contracts_per_underlying=int(config.get("research_contracts_per_underlying", 12)),
         strategy_notes=str(config.get("strategy_notes") or "(none)").strip(),
         snapshot=json.dumps(payload, separators=(",", ":")),
