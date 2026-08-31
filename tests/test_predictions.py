@@ -36,6 +36,54 @@ class NearestEventTest(unittest.TestCase):
         self.assertEqual(predictions.nearest_event([market("E", 1, 2, 0.5, 0.5, close="2026-01-01T00:00:00Z")], NOW), [])
 
 
+def settled(close, value, ticker="S"):
+    return {"ticker": ticker, "status": "settled", "close_time": close, "expiration_value": value}
+
+
+class LatestSettlementTest(unittest.TestCase):
+    """The reference close must be chosen by date, never by position.
+
+    The shape in the first test is the one observed live on 2026-08-31: Kalshi
+    returned Thursday's settled event ahead of Friday's, so taking the first row
+    with an expiration_value picked a close that was a day stale and 0.25% too
+    high. Every probability derived from it inherited the error.
+    """
+
+    def test_picks_the_newest_close_not_the_first_row(self):
+        rows = [settled("2026-08-27T20:00:00Z", "7730.99"),
+                settled("2026-08-26T20:00:00Z", "7675.70"),
+                settled("2026-08-28T20:00:00Z", "7711.76")]
+        self.assertEqual(predictions.latest_settlement(rows, NOW), 7711.76)
+
+    def test_ignores_rows_with_no_expiration_value(self):
+        rows = [settled("2026-08-28T20:00:00Z", None),
+                settled("2026-08-27T20:00:00Z", "7730.99")]
+        self.assertEqual(predictions.latest_settlement(rows, NOW), 7730.99)
+
+    def test_ignores_a_malformed_close_time(self):
+        rows = [settled("not-a-date", "9999.99"), settled("2026-08-28T20:00:00Z", "7711.76")]
+        self.assertEqual(predictions.latest_settlement(rows, NOW), 7711.76)
+
+    def test_ignores_a_close_time_still_ahead(self):
+        """Whatever the status field says, a market that has not closed yet
+        cannot be the previous close."""
+        rows = [settled("2026-09-04T20:00:00Z", "8000.00"), settled("2026-08-28T20:00:00Z", "7711.76")]
+        self.assertEqual(predictions.latest_settlement(rows, NOW), 7711.76)
+
+    def test_withholds_a_stale_reference(self):
+        """A wrong yardstick is worse than none: the probabilities still render
+        and still look authoritative."""
+        self.assertIsNone(predictions.latest_settlement([settled("2026-08-01T20:00:00Z", "7500")], NOW))
+
+    def test_a_long_weekend_still_counts(self):
+        """Thursday's close before a Friday holiday is four days back and is
+        the legitimate reference, so the staleness guard must not eat it."""
+        self.assertEqual(predictions.latest_settlement([settled("2026-08-27T20:00:00Z", "7730.99")], NOW), 7730.99)
+
+    def test_nothing_settled(self):
+        self.assertIsNone(predictions.latest_settlement([], NOW))
+
+
 class SummarizeTest(unittest.TestCase):
     def test_distribution_summary_with_reference(self):
         s = predictions.summarize_range_event(TODAY, reference=7440.0)
