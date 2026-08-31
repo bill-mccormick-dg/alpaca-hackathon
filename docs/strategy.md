@@ -27,11 +27,27 @@ glossary for the terms these docs use.
 - **DTE** — days to expiration. A 5-DTE contract expires in five days.
 - **ATM / OTM** — at-the-money (strike ≈ current price) / out-of-the-money
   (strike beyond it). OTM contracts cost less and need a bigger move.
-- **Delta** — roughly, how much the option moves per $1 of stock move, from 0 to
-  1. It doubles as a rough "chance this finishes in the money", so |delta| ≈ 0.4
-  is a contract that needs a real move but not a miracle.
-- **Theta** — the daily cost of time passing. Long premium pays theta every day;
-  that is the rent for defined risk.
+- **The Greeks** — the collective name for four sensitivities of an option's
+  price, each written as a Greek letter, and each answering "if *one* thing
+  changes, how much does this contract move?" `bot/greeks.py` derives all four
+  per contract. They are the next four entries.
+- **Delta** — how much the option moves per $1 move in the stock. Runs 0 to +1
+  for a call and −1 to 0 for a put, which is why the tactics say `|delta|`. It
+  doubles as a rough "chance this finishes in the money", so |delta| ≈ 0.4 is a
+  contract that needs a real move but not a miracle.
+- **Gamma** — how fast delta itself changes as the stock moves. High gamma means
+  your directional exposure shifts under you rather than staying put. It is
+  largest for near-the-money contracts close to expiry, which is precisely the
+  zone this bot trades — and it is why an overnight gap can do more damage than
+  the same move during the session, when a cycle could react to it.
+- **Theta** — the daily cost of time passing (the snapshot carries it *per day*).
+  Long premium pays theta every day; that is the rent for defined risk, and it
+  accelerates as expiry approaches.
+- **Vega** — how much the option moves per **one point** of change in implied
+  volatility (the snapshot's vega is per 1 vol point, not per whole unit).
+  Buying premium is being long vega: if IV falls after you buy, the contract
+  loses value even with the stock exactly where you predicted. That is what the
+  tactic means by IV looking "cheap or rich".
 - **Implied volatility (IV)** — how much movement the option's price implies the
   market expects. High IV means options are expensive.
 - **Mark** — the broker's current mid-price for a position, used to value it
