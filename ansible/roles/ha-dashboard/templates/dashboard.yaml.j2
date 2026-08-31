@@ -152,14 +152,10 @@ views:
               - type: entities
                 title: {{ acct.label }} — controls
                 entities:
-                  - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_model
-                    name: Model
                   - entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_predictions_enabled
                     name: Kalshi prior (predictions)
                   - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_temperature
                     name: Temperature
-                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_max_tokens
-                    name: Max tokens
                   - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_research_contracts_per_underlying
                     name: Research contracts/underlying
                   - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_option_strike_band_pct
@@ -170,8 +166,33 @@ views:
                     name: Take profit %
                   - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_eod_close_dte
                     name: EOD close DTE
+                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_min_hold_minutes
+                    name: Min hold (minutes)
+                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_early_exit_drawdown_pct
+                    name: Early exit drawdown %
+{% endfor %}
+
+          # --- AI knobs (#136): what the agent thinks with, in one place ---
+          # The model selectors, the token budget, and what the models are
+          # actually costing. The two token sensors publish once bot/mqtt.py
+          # ships them (#136 stage 2); until then those rows show
+          # "entity not found", which is honest.
+          - type: horizontal-stack
+            cards:
+{% for acct in ha_accounts %}
+              - type: entities
+                title: {{ acct.label }} — AI
+                entities:
+                  - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_model
+                    name: Model
                   - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_review_model
                     name: Review model
+                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_max_tokens
+                    name: Max tokens
+                  - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_tokens_today
+                    name: Tokens today
+                  - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_tokens_total
+                    name: Tokens all time
 {% endfor %}
 
           # --- live journal feed (#134) ----------------------------------
