@@ -108,6 +108,29 @@ class DigestTest(unittest.TestCase):
         self.assertIn("2 round trips, net **+30.00**", md)
         self.assertIn("Tighten the take-profit.", md)
 
+    def test_render_prior_scores_when_present(self):
+        d = review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])
+        d["prior_scores"] = {
+            "baseline": 0.25,
+            "today": {"kalshi": 0.18, "chain": 0.15},
+            "running": {"kalshi": {"mean": 0.21, "days": 4}, "chain": {"mean": 0.19, "days": 4}},
+            "forecasts": [],
+        }
+        md = review.render_markdown(d)
+        self.assertIn("## Prior scoring (Brier, lower is better; 0.25 = coin flip)", md)
+        self.assertIn("- kalshi: today 0.18, running 0.21 over 4 day(s)", md)
+        self.assertIn("- chain: today 0.15, running 0.19 over 4 day(s)", md)
+
+    def test_render_prior_scores_skip_reason(self):
+        d = review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])
+        d["prior_scores"] = {"skipped": "no final daily bar for 2026-09-01 yet - run after the close"}
+        md = review.render_markdown(d)
+        self.assertIn("no final daily bar", md)
+
+    def test_no_prior_scores_no_section(self):
+        d = review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])
+        self.assertNotIn("Prior scoring", review.render_markdown(d))
+
 
 if __name__ == "__main__":
     unittest.main()

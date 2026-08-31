@@ -206,6 +206,16 @@ def render_markdown(d: dict) -> str:
                  f"latency avg {a['latency_avg_sec']}s max {a['latency_max_sec']}s; truncated outputs {a['truncated_outputs']}"
                  + (f"; est. cost ${d['cost_usd']}" if d.get("cost_usd") is not None else ""))
 
+    if d.get("prior_scores"):
+        ps = d["prior_scores"]
+        lines += ["", "## Prior scoring (Brier, lower is better; 0.25 = coin flip)"]
+        if ps.get("skipped") or ps.get("error"):
+            lines.append(f"- {ps.get('skipped') or ps.get('error')}")
+        else:
+            for source, today in (ps.get("today") or {}).items():
+                run = (ps.get("running") or {}).get(source) or {}
+                lines.append(f"- {source}: today {today}, running {run.get('mean')} over {run.get('days')} day(s)")
+
     if d.get("config_changes"):
         lines += ["", "## Config seen today"]
         for c in d["config_changes"]:
