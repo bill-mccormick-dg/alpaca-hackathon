@@ -158,7 +158,12 @@ class DiscoveryPayloadsTest(unittest.TestCase):
                 # so adding a third select needs no change here. This used to
                 # read `"select" if key == "model" else "number"`, which broke
                 # the moment review_model arrived.
-                domain = "number" if key in mqtt_bridge.NUMBER_KNOBS else "select"
+                if key in mqtt_bridge.NUMBER_KNOBS:
+                    domain = "number"
+                elif key in mqtt_bridge.BOOL_KNOBS:
+                    domain = "switch"
+                else:
+                    domain = "select"
                 topic = f"homeassistant/{domain}/alpaca_{account}_{key}/config"
                 self.assertIn(topic, self.payloads, f"missing {topic}")
                 # A non-empty payload, specifically. This assertion used to

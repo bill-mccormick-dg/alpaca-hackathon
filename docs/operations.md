@@ -111,6 +111,7 @@ can never leak into the judged account.
 | `stop_loss_pct`, `take_profit_pct` | when `bot/exits.py` closes a position |
 | `eod_close_dte` | how near expiry the end-of-day backstop closes |
 | `review_model` | which model critiques the day in `eod_review.py` — computed from `review_model_preference` unless pinned |
+| `predictions_enabled` | whether the Kalshi prior is fetched and shown to the model — a switch in HA |
 
 ### Two ways to set one, one way in
 

@@ -17,6 +17,19 @@ class ValidateTest(unittest.TestCase):
         self.assertEqual(overrides.validate("max_tokens", "600"), 600)
         self.assertEqual(overrides.validate("model", " Qwen/Qwen3-8B "), "Qwen/Qwen3-8B")
 
+    def test_bool_knob_accepts_the_obvious_spellings(self):
+        for raw in (True, "true", "on", "1", "yes", "TRUE", " On "):
+            self.assertIs(overrides.validate("predictions_enabled", raw), True, raw)
+        for raw in (False, "false", "off", "0", "no", "False"):
+            self.assertIs(overrides.validate("predictions_enabled", raw), False, raw)
+
+    def test_bool_knob_rejects_garbage_instead_of_truthiness(self):
+        """bool("no") is True in Python - the validator must not fall into
+        that; an unparseable value is an error, never silently True."""
+        for raw in ("maybe", "", "2", None):
+            with self.assertRaises(ValueError):
+                overrides.validate("predictions_enabled", raw)
+
     def test_rejects_unknown_key_with_allowlist_in_message(self):
         with self.assertRaises(ValueError) as ctx:
             overrides.validate("max_position_usd", 99999)

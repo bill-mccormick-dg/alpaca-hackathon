@@ -71,6 +71,20 @@ def _int_in(lo: int, hi: int):
     return parse
 
 
+def _bool(value):
+    """CLI and MQTT deliver strings; HA switches deliver JSON true/false.
+    Accept the obvious spellings of each, reject everything else - bool("no")
+    is True in Python, which is exactly the trap this exists to avoid."""
+    if isinstance(value, bool):
+        return value
+    v = str(value).strip().lower()
+    if v in ("true", "on", "1", "yes"):
+        return True
+    if v in ("false", "off", "0", "no"):
+        return False
+    raise ValueError(f"must be true/false (or on/off), got {value!r}")
+
+
 def _nonempty_str(value):
     v = str(value).strip()
     if not v:
@@ -95,6 +109,11 @@ OVERRIDABLE_KEYS = {
     "stop_loss_pct": _float_in(1, 100),
     "take_profit_pct": _float_in(1, 1000),
     "eod_close_dte": _int_in(0, 45),
+    # Whether the Kalshi prior is fetched and shown to the model. A prompt
+    # input, not a risk limit, so it is a fair runtime knob - and on
+    # 2026-08-31 (a stale reference close mid-session) there was no way to
+    # pull a misleading prior without a deploy the freeze refuses.
+    "predictions_enabled": _bool,
 }
 
 
