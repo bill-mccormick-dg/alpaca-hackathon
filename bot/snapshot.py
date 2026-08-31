@@ -235,9 +235,30 @@ async def build_snapshot(client: AlpacaMCPClient, config: dict, now: datetime | 
     predictions = {}
     if config.get("predictions_enabled"):
         # Kalshi prior (#44): read-only, cached, never fatal.
-        from bot.predictions import fetch_predictions
+        from bot.predictions import DEFAULT_SERIES, chain_summary, fetch_predictions
 
         predictions = await fetch_predictions(config)
+        # The chain's own odds (#140), from the ladder just fetched above -
+        # computed even when Kalshi came back empty, which is the point:
+        # SPY options have no thin-volume failure mode, so the model keeps
+        # one crowd estimate on the days the event market is withheld.
+        for sym in config.get("prediction_series") or DEFAULT_SERIES:
+            contracts = (options.get(sym) or {}).get("contracts") or {}
+            if not contracts:
+                continue
+            # The ETF's OWN previous close, never Kalshi's: that reference is
+            # the S&P 500 INDEX level (~7712), and these strikes are SPY the
+            # ETF (~766). Percent moves line up across the two; levels never.
+            reference = None
+            try:
+                result = _data(await client.call_tool("get_stock_snapshot", {"symbols": sym, "feed": "iex"}))
+                bar = ((result.get("snapshots") or result).get(sym) or {}).get("prevDailyBar") or {}
+                reference = float(bar["c"]) if bar.get("c") else None
+            except Exception:  # noqa: BLE001 - a prior is never worth a cycle
+                reference = None
+            chain = chain_summary(contracts, reference)
+            if chain:
+                predictions.setdefault(sym, {})["chain"] = chain
 
     return {
         "market_open": clock_data.get("is_open", False),

@@ -123,7 +123,10 @@ class PromptBlockTest(unittest.TestCase):
         self.assertIn("SPY via KXINX", block)
         self.assertIn("prior close 7,440", block)
         self.assertIn("P(above prior close)", block)
-        self.assertIn("a PRIOR to weigh, not a signal to copy", block)
+        self.assertIn("PRIORS to weigh, not signals to copy", block)
+        # The pair is the point: the header must tell the model what
+        # disagreement between the two crowds means.
+        self.assertIn("DISAGREEMENT", block)
 
 
 class UsabilityGateTest(unittest.TestCase):
@@ -216,3 +219,117 @@ class CycleJournalsThePriorTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def call_ladder(strikes_survival, expiry="260902"):
+    """Contracts whose adjacent call-mid differences imply the given
+    survival probabilities: C is built backwards so -dC/dK at each midpoint
+    is exactly the number the test names."""
+    strikes = [k for k, _ in strikes_survival]
+    ps = [p for _, p in strikes_survival[:-1]]
+    prices = [0.50]  # tail value at the highest strike
+    for (k1, _), (k2, _), p in zip(reversed(strikes_survival[:-1]), reversed(strikes_survival[1:]), reversed(ps)):
+        pass
+    # forward construction: C[i] = C[i+1] + p_i * (K[i+1]-K[i])
+    cs = [0.0] * len(strikes)
+    cs[-1] = 0.50
+    for i in range(len(strikes) - 2, -1, -1):
+        cs[i] = cs[i + 1] + ps[i] * (strikes[i + 1] - strikes[i])
+    out = {}
+    for k, c in zip(strikes, cs):
+        occ = f"SPY{expiry}C{int(k * 1000):08d}"
+        out[occ] = {"latestQuote": {"bp": round(c - 0.02, 4), "ap": round(c + 0.02, 4)}}
+    return out
+
+
+class ChainSummaryTest(unittest.TestCase):
+    """P(S>K) = -dC/dK (#140). Idea credit: greatfriend#8857 (Discord)."""
+
+    LADDER = [(760, 0.95), (762, 0.85), (764, 0.65), (766, 0.45), (768, 0.25), (770, 0.10), (772, None)]
+
+    def test_reads_the_probabilities_the_prices_imply(self):
+        out = predictions.chain_summary(call_ladder(self.LADDER), reference=765.0)
+        self.assertIsNone(out["suppressed"])
+        self.assertEqual(out["expiry"], "2026-09-02")
+        # Survival lives at strike-pair midpoints: the (764,766) pair's
+        # increment is the ladder's 0.65, carried at 765 exactly.
+        self.assertAlmostEqual(out["p_above_reference"], 0.65, places=2)
+        self.assertGreater(out["p_above_reference"], out["p_up_over_1pct"])
+        # Crosses 0.5 between 765 (0.65) and 767 (0.45) -> 766.5.
+        self.assertAlmostEqual(out["implied_median"], 766.5, places=1)
+
+    def test_puts_and_one_sided_quotes_are_ignored(self):
+        contracts = call_ladder(self.LADDER)
+        contracts["SPY260902P00765000"] = {"latestQuote": {"bp": 2.0, "ap": 2.1}}
+        contracts["SPY260902C00774000"] = {"latestQuote": {"bp": 0, "ap": 0.05}}
+        out = predictions.chain_summary(contracts, reference=765.0)
+        self.assertEqual(out["strikes"], len(self.LADDER))
+
+    def test_nearest_expiry_wins(self):
+        near = call_ladder(self.LADDER, expiry="260902")
+        far = call_ladder([(700, 0.9), (720, 0.7), (740, 0.5), (760, 0.3), (780, 0.1), (800, None)], expiry="260911")
+        out = predictions.chain_summary({**far, **near}, reference=765.0)
+        self.assertEqual(out["expiry"], "2026-09-02")
+
+    def test_too_few_strikes_is_suppressed(self):
+        out = predictions.chain_summary(call_ladder(self.LADDER[:4]), reference=765.0)
+        self.assertIn("thin", out["suppressed"])
+
+    def test_a_noisy_curve_is_suppressed_not_shown(self):
+        """Crossed/wide quotes make C rise with strike; clamping more than a
+        third of the increments means the curve is noise wearing a
+        distribution - the chain's flatness-equivalent gate."""
+        noisy = {}
+        for i, k in enumerate(range(760, 774, 2)):
+            c = 3.0 + (0.5 if i % 2 else 0.0)  # sawtooth: half the diffs negative
+            noisy[f"SPY260902C{int(k * 1000):08d}"] = {"latestQuote": {"bp": c - 0.02, "ap": c + 0.02}}
+        out = predictions.chain_summary(noisy, reference=765.0)
+        self.assertIn("noisy", out["suppressed"])
+
+    def test_no_calls_at_all_is_none(self):
+        self.assertIsNone(predictions.chain_summary({}, reference=765.0))
+
+    def test_without_reference_still_gives_median(self):
+        out = predictions.chain_summary(call_ladder(self.LADDER), reference=None)
+        self.assertIsNone(out["suppressed"])
+        self.assertNotIn("p_above_reference", out)
+        self.assertIsNotNone(out["implied_median"])
+
+
+class ChainInPromptTest(unittest.TestCase):
+    def _kalshi(self, suppressed=None):
+        s = predictions.summarize_range_event(TODAY, reference=7440.0)
+        s["series"] = "KXINX"
+        s["suppressed"] = suppressed
+        return s
+
+    def _chain(self):
+        return predictions.chain_summary(
+            call_ladder(ChainSummaryTest.LADDER), reference=765.0)
+
+    def test_both_crowds_render_side_by_side(self):
+        entry = self._kalshi(); entry["chain"] = self._chain()
+        block = predictions.prompt_block({"SPY": entry})
+        self.assertIn("SPY via KXINX", block)
+        self.assertIn("SPY via option chain", block)
+
+    def test_chain_survives_a_suppressed_kalshi(self):
+        """The #111 payoff: on the days the event market is withheld the
+        model still gets one crowd estimate."""
+        entry = self._kalshi(suppressed="thin: volume 45 < 250")
+        entry["chain"] = self._chain()
+        block = predictions.prompt_block({"SPY": entry})
+        self.assertNotIn("SPY via KXINX", block)
+        self.assertIn("SPY via option chain", block)
+
+    def test_chain_only_entry_renders(self):
+        block = predictions.prompt_block({"SPY": {"chain": self._chain()}})
+        self.assertIn("SPY via option chain", block)
+
+    def test_suppressed_chain_stays_out_of_the_prompt_but_in_the_journal(self):
+        chain = predictions.chain_summary(call_ladder(ChainSummaryTest.LADDER[:4]), reference=765.0)
+        entry = self._kalshi(); entry["chain"] = chain
+        block = predictions.prompt_block({"SPY": entry})
+        self.assertNotIn("SPY via option chain", block)
+        fields = predictions.journal_fields({"SPY": entry})
+        self.assertIn("thin", fields["SPY"]["chain"]["suppressed"])

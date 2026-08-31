@@ -25,6 +25,14 @@ glossary for the terms these docs use.
   entry: the premium paid, and not a cent more. That single fact is what lets
   every guardrail here be a simple absolute number.
 - **DTE** — days to expiration. A 5-DTE contract expires in five days.
+- **Option chain** — the full menu of contracts listed on one stock: every
+  strike, at every expiration, calls and puts, each with its own live bid/ask.
+  For SPY that is hundreds of contracts per expiry. "The chain" is the market's
+  whole opinion about a stock laid out on a grid, and almost everything this
+  bot does starts by fetching a slice of it — the strikes within ±8% of the
+  current price, in the tradeable expiration window — and showing the model
+  the 12 nearest the money. Read one row as: "the market will sell you the
+  right to buy SPY at 765 until Wednesday for about $2.40."
 - **ATM / OTM** — at-the-money (strike ≈ current price) / out-of-the-money
   (strike beyond it). OTM contracts cost less and need a bigger move.
 - **The Greeks** — the collective name for four sensitivities of an option's
@@ -427,6 +435,41 @@ The general lesson is the one this codebase keeps relearning: a gate can only
 catch the failure it measures. Volume and flatness both ask *is this
 distribution worth believing*. Neither asks *is it being compared to the right
 day*.
+
+### The chain's own odds
+
+Kalshi is not the only crowd in the room. Every call price is a probability
+in disguise: **P(S > K) = −dC/dK**, read straight off adjacent strikes. The
+bot already fetches the ladder every cycle, so it computes the chain's own
+implied distribution — survival probabilities from call-mid differences,
+smoothed to the closest non-increasing curve, measured against the ETF's own
+prior close — and shows it beside the Kalshi line in the same shape:
+
+```
+- SPY via KXINX (index close ...); P(above prior close) 0.27, ...; volume 976
+- SPY via option chain (calls exp 2026-09-01); prior close 769.28,
+  implied median 766.31 (-0.39%); P(above prior close) 0.253, ...
+```
+
+Two independent crowds measuring nearly the same thing. The prompt tells the
+model what the pair means: **disagreement between them is information;
+agreement is just the base rate.**
+
+The chain prior has its own gates, mirroring Kalshi's in spirit: increments
+are used only where both quotes' spreads are tighter than the strike gap
+they span (deep-ITM calls carry $1–3 spreads against $1 gaps — their noise
+is larger than the derivative step), and a curve the isotonic smoothing had
+to move by more than 0.05 probability on average is withheld as noise
+wearing a distribution. Its quiet advantage is that SPY options have no
+thin-volume failure mode: on the first live run, QQQ's Kalshi market was
+withheld at 46 contracts while the chain still produced a usable prior —
+which is precisely the flatness gate's blind spot (#111) being covered from
+the other side.
+
+Idea credit: fellow contestant **greatfriend#8857** (Discord), whose framing
+— "every option price is a probability in disguise" — named the half of
+their design that fits this bot's thesis. (The other half, trading spreads,
+deliberately does not.)
 
 ### The flatness gate's blind spot
 
