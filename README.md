@@ -213,7 +213,7 @@ Everything runs from the repo root with the venv's Python
 Every entrypoint takes `--account <name>` (default **test**) and `--config <file>`
 (default `config.yaml`).
 
-**Named accounts** (A/B, issue #34): `official` reads `credentials.env` on CT 108
+**Named accounts** (the two-account A/B): `official` reads `credentials.env` on CT 108
 and *only* there; any other name reads `credentials-<name>.env` on CT 108, else its
 `accounts.<name>` block in a local `secrets.yaml`, else the legacy `.env.<name>` /
 `.env`. `secrets.yaml` must not contain an `official` entry — the loader rejects the
@@ -259,7 +259,7 @@ Overrides **expire at 16:00 ET the same day** unless `--until` is given, so
 intraday tweaks come from here and durable changes come from a PR — tomorrow
 always starts from git. Every cycle journals a `config` event with the
 effective values, a config hash, and the active overrides, so nothing changes
-silently. The MQTT/Home Assistant bridge (#14) calls the same functions.
+silently. The MQTT/Home Assistant bridge calls the same functions.
 
 **Journal**: `logs/journal.jsonl`, one JSON record per event with an Eastern-time
 `ts` — `cycle_start`, `decision` (raw model output), `order_submitted` /
