@@ -13,6 +13,7 @@ import unittest
 from datetime import datetime
 from pathlib import Path
 from unittest import mock
+from zoneinfo import ZoneInfo
 
 import mail_report
 from bot import credentials
@@ -190,6 +191,32 @@ class MessageTest(unittest.TestCase):
 
     def test_marked_auto_generated_so_it_does_not_trip_vacation_responders(self):
         self.assertEqual(self._message()["Auto-Submitted"], "auto-generated")
+
+    def test_body_carries_the_full_reason_never_an_ellipsis(self):
+        """The 400-char clip is a Home Assistant constraint; in the email it
+        cut journal entries mid-sentence (the CSVs had the full text, but
+        nobody opens a CSV to finish a sentence)."""
+        reason = "because " * 100  # ~800 chars, past every historical cap
+        body = self._message([dict(FILL, reason=reason.strip())]).get_body(
+            preferencelist=("plain",)).get_content()
+
+        self.assertIn(reason.strip(), body)
+        self.assertNotIn("…", body)
+
+    def test_body_lists_every_trade_today_not_the_last_twelve(self):
+        events = [dict(FILL, symbol=f"SYM{i}") for i in range(15)]
+        body = self._message(events).get_body(preferencelist=("plain",)).get_content()
+
+        for i in range(15):
+            self.assertIn(f"SYM{i}", body)
+
+    def test_trade_times_render_on_the_callers_clock(self):
+        """Journal timestamps are Eastern; the report passes the host's tz
+        (Central on CT 108) so the email agrees with the cron logs instead
+        of citing EDT."""
+        s = mail_report.summarize([FILL], "official", tz=ZoneInfo("America/Chicago"))
+
+        self.assertEqual(s["trades"][0]["time"], "09:15")  # 10:15-04:00
 
 
 class SettingsResolutionTest(unittest.TestCase):
