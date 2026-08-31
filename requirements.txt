@@ -1,4 +1,18 @@
 alpaca-mcp-server==2.3.0
+# fastmcp is alpaca-mcp-server's own dependency (it pins only >=3.1.0), and
+# fastmcp 4.0.0 landed on PyPI 2026-08-31 18:20 UTC having moved
+# fastmcp.tools.tool. A fresh install of alpaca-mcp-server 2.3.0 then dies at
+# import with "ModuleNotFoundError: No module named 'fastmcp.tools.tool'" -
+# reproduced in a clean venv the same afternoon, and reported by other
+# hackathon entrants whose runners re-resolve dependencies every cycle.
+#
+# We were saved by accident: the mcp==1.29.1 pin below is incompatible with
+# fastmcp 4, so pip backtracks to 3.4.7 on its own. That is protection by
+# coincidence - drop or bump the mcp pin and the bot silently loses its
+# broker connection. This line makes it deliberate. 3.4.7 is what CT 108 has
+# traded on all week (36 clean cycles on 2026-08-31), not the older 3.1.0
+# being passed around as the fix.
+fastmcp==3.4.7
 mcp==1.29.1
 python-dotenv==1.2.3
 httpx==0.28.1
