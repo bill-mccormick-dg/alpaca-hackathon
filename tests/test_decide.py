@@ -57,6 +57,27 @@ class SummarizeOptionsTest(unittest.TestCase):
         self.assertEqual(contract["strike"], 200.0)
         self.assertEqual(contract["dte"], (date(2026, 2, 4) - TODAY).days)
 
+    def test_spread_pct_is_the_quote_spread_over_the_mid(self):
+        snap = _snapshot(
+            AAPL={
+                "underlying_price": 200.0,
+                "contracts": {"AAPL260204C00200000": _contract(bid=4.80, ask=5.20)},
+            }
+        )
+        result = decide._summarize_options(snap, _config(), TODAY)
+        contract = result["AAPL"]["contracts"][0]
+        self.assertEqual(contract["spread_pct"], 8.0)  # 0.40 / 5.00
+
+    def test_spread_pct_omitted_when_quote_is_one_sided(self):
+        snap = _snapshot(
+            AAPL={
+                "underlying_price": 200.0,
+                "contracts": {"AAPL260204C00200000": _contract(ask=5.20, last=5.0)},
+            }
+        )
+        result = decide._summarize_options(snap, _config(), TODAY)
+        self.assertNotIn("spread_pct", result["AAPL"]["contracts"][0])
+
     def test_includes_greeks_when_price_is_usable(self):
         snap = _snapshot(
             AAPL={
@@ -133,6 +154,11 @@ class BuildPromptTest(unittest.TestCase):
         self.assertIn("AAPL, SPY", prompt)
         self.assertIn("15:15", prompt)
         self.assertIn("15:45", prompt)
+
+    def test_prompt_explains_spread_pct_as_round_trip_cost(self):
+        prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
+        self.assertIn("spread_pct", prompt)
+        self.assertIn("round trip", prompt)
 
     def test_prompt_states_the_rules_that_end_a_position(self):
         """The model was told the expiration WINDOW but not the rules that close
