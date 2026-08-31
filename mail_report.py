@@ -30,7 +30,7 @@ import json
 import os
 import smtplib
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 
 from bot import credentials, journal, report
@@ -131,6 +131,45 @@ def equity_csv(path=None) -> str:
     writer.writeheader()
     writer.writerows(records)
     return buf.getvalue()
+
+
+def _is_activity(record: dict) -> bool:
+    """A journal event that represents something happening to money.
+
+    Trade-shaped events always count. A `flatten` event counts only when it
+    actually touched a position: flatten's closes never journal as orders
+    (bot/flatten.py writes no journal events), so without this the hour the
+    bot closed everything would read as "no trades" - while the 14:50
+    backstop logs an empty flatten every day, which is exactly the quiet
+    hour suppression exists for."""
+    event = record.get("event")
+    if event in report.TRADE_EVENTS:
+        return True
+    return event == "flatten" and bool(record.get("closed") or record.get("attempted"))
+
+
+def suppress_reason(events, now: datetime, halt: str, force: bool = False, window_minutes: int = 60) -> str | None:
+    """Why the hourly email should NOT go out, or None to send (issue #153).
+
+    Suppression is the exception, so anything unusual falls toward sending:
+    a halt (any value but "none" - including "unknown" when config is
+    unreadable) must always reach the team, --force always wins, and an
+    unparseable timestamp is skipped rather than trusted. Journal timestamps
+    are always offset-aware (bot/journal.py stamps Eastern ISO), so the
+    comparison is aware-vs-aware regardless of the clock `now` is on."""
+    if force or halt != "none":
+        return None
+    cutoff = now - timedelta(minutes=window_minutes)
+    for record in events:
+        if not _is_activity(record):
+            continue
+        try:
+            ts = datetime.fromisoformat(str(record.get("ts")))
+        except (TypeError, ValueError):
+            continue
+        if ts.tzinfo is not None and ts >= cutoff:
+            return None
+    return f"no trading activity in the last {window_minutes}m"
 
 
 def summarize(events, account: str, halt: str = "none", tz=None) -> dict:
@@ -270,6 +309,12 @@ def run(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001 - a report must still send if config is unreadable
         print(f"halt state unavailable ({type(exc).__name__}: {exc})", file=sys.stderr)
         halt = "unknown"
+    reason = suppress_reason(events, now, halt, force=args.force, window_minutes=args.window_minutes)
+    if reason:
+        tag = "[suppressed] " if args.dry_run else ""
+        print(f"{tag}{reason} for account {args.account!r} — skipping email (--force sends anyway)")
+        return 0
+
     summary = summarize(events, args.account, halt, tz=now.tzinfo)
     day = now.astimezone(EASTERN).date().isoformat()
     attachments = {
@@ -299,6 +344,10 @@ def main() -> int:
     ap.add_argument("--account", default="test", help="named account: official, test, or a variant")
     ap.add_argument("--config", default=None, help="config file (default config.yaml) - read for the halt-file paths")
     ap.add_argument("--dry-run", action="store_true", help="print the message instead of sending it")
+    ap.add_argument("--force", action="store_true",
+                    help="send even with no recent activity - the cron's 15:00 wrap-up entry uses this")
+    ap.add_argument("--window-minutes", type=int, default=60,
+                    help="how far back to look for trading activity before suppressing (default 60)")
     return run(ap.parse_args())
 
 

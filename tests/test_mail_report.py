@@ -5,6 +5,7 @@ socket and it is a three-line wrapper. What is worth testing is that the
 message is well-formed, the CSVs contain what a teammate would pivot on, and
 that a missing configuration is a quiet no-op rather than a crash in cron."""
 
+import argparse
 import csv
 import io
 import os
@@ -276,6 +277,123 @@ class SettingsResolutionTest(unittest.TestCase):
     def test_missing_file_is_not_an_error(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertEqual(mail_report.load_report_env("official"), {})
+
+
+class SuppressReasonTest(unittest.TestCase):
+    """Idle-hour suppression (issue #153): the decision is a pure function of
+    (events, now, halt, force, window), so it is tested with plain datetimes -
+    no mocking the clock out of the module."""
+
+    NOW = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+
+    def _trade(self, ts):
+        return {"ts": ts, "event": "order_submitted", "symbol": "SPY"}
+
+    def test_sends_when_a_trade_landed_inside_the_window(self):
+        events = [self._trade("2026-09-01T10:15:00-04:00")]
+
+        self.assertIsNone(mail_report.suppress_reason(events, self.NOW, "none"))
+
+    def test_suppresses_when_the_only_trade_is_older_than_the_window(self):
+        events = [self._trade("2026-09-01T09:30:00-04:00")]
+
+        reason = mail_report.suppress_reason(events, self.NOW, "none")
+
+        self.assertIn("no trading activity", reason)
+
+    def test_cycles_and_other_chatter_are_not_activity(self):
+        events = [{"ts": "2026-09-01T10:50:00-04:00", "event": "cycle_start"},
+                  {"ts": "2026-09-01T10:55:00-04:00", "event": "decision"}]
+
+        self.assertIsNotNone(mail_report.suppress_reason(events, self.NOW, "none"))
+
+    def test_a_halt_always_sends_even_with_no_activity(self):
+        for halt in ("daily_loss", "manual", "unknown"):
+            self.assertIsNone(mail_report.suppress_reason([], self.NOW, halt), halt)
+
+    def test_force_always_sends(self):
+        self.assertIsNone(mail_report.suppress_reason([], self.NOW, "none", force=True))
+
+    def test_a_flatten_that_closed_positions_counts_as_activity(self):
+        """flatten's closes never journal as orders (bot/flatten.py writes no
+        journal events) - without this the hour the bot closed everything
+        would read as a quiet hour and the report would be suppressed."""
+        events = [{"ts": "2026-09-01T10:50:00-04:00", "event": "flatten", "closed": ["SPY260904C00770000"]}]
+
+        self.assertIsNone(mail_report.suppress_reason(events, self.NOW, "none"))
+
+    def test_the_daily_empty_flatten_backstop_is_not_activity(self):
+        events = [{"ts": "2026-09-01T10:50:00-04:00", "event": "flatten",
+                   "attempted": [], "closed": [], "failed": []}]
+
+        self.assertIsNotNone(mail_report.suppress_reason(events, self.NOW, "none"))
+
+    def test_malformed_or_missing_timestamps_are_skipped_not_trusted(self):
+        events = [self._trade("not-a-date"), {"event": "order_submitted"}]
+
+        self.assertIsNotNone(mail_report.suppress_reason(events, self.NOW, "none"))
+
+    def test_a_wider_window_reaches_an_older_trade(self):
+        events = [self._trade("2026-09-01T09:30:00-04:00")]
+
+        self.assertIsNone(mail_report.suppress_reason(events, self.NOW, "none", window_minutes=120))
+
+
+class SuppressionRunTest(unittest.TestCase):
+    """One thin integration test per outcome: run() respects suppress_reason.
+    The clock is real - a quiet hour is simulated with an empty journal, an
+    active one with an event stamped moments ago."""
+
+    def _args(self, **over):
+        base = {"account": "test", "config": None, "dry_run": False, "force": False, "window_minutes": 60}
+        base.update(over)
+        return argparse.Namespace(**base)
+
+    def _run(self, events, halt="none", args=None):
+        rm = mock.Mock()
+        rm.halt_state.return_value = halt
+        with mock.patch.object(mail_report, "send") as send, \
+                mock.patch.object(mail_report, "RiskManager", return_value=rm), \
+                mock.patch.object(mail_report, "load_config"), \
+                mock.patch.object(mail_report.journal, "read_events", return_value=events), \
+                mock.patch.object(mail_report.journal, "use_account"), \
+                mock.patch.object(mail_report, "load_report_env",
+                                  return_value={"REPORT_EMAIL_TO": "team@example.com"}), \
+                mock.patch.object(mail_report, "equity_csv", return_value=""):
+            ret = mail_report.run(args or self._args())
+        return ret, send
+
+    def test_a_quiet_hour_sends_nothing(self):
+        ret, send = self._run([])
+
+        self.assertEqual(ret, 0)
+        send.assert_not_called()
+
+    def test_a_recent_trade_sends(self):
+        events = [{"ts": datetime.now(EASTERN).isoformat(timespec="seconds"),
+                   "event": "order_submitted", "side": "buy", "qty": 1, "symbol": "SPY", "price": 1.0}]
+
+        ret, send = self._run(events)
+
+        self.assertEqual(ret, 0)
+        send.assert_called_once()
+
+    def test_a_halt_sends_despite_the_quiet_hour(self):
+        _, send = self._run([], halt="daily_loss")
+
+        send.assert_called_once()
+
+    def test_force_sends_despite_the_quiet_hour(self):
+        _, send = self._run([], args=self._args(force=True))
+
+        send.assert_called_once()
+
+    def test_dry_run_marks_the_suppression(self):
+        with mock.patch("sys.stdout", new_callable=io.StringIO) as out:
+            _, send = self._run([], args=self._args(dry_run=True))
+
+        self.assertIn("[suppressed]", out.getvalue())
+        send.assert_not_called()
 
 
 if __name__ == "__main__":

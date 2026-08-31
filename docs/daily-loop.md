@@ -27,7 +27,8 @@ account gets its own entry and its own log, so the three stay separable:
 */10 8-14 * * 1-5   run_cycle.py    --account <name>   # cycles
 50 14 * * 1-5       flatten.py      --expiring-only    # the backstop
 5 15 * * 1-5        eod_review.py   --account <name>   # the digest
-0 9-15 * * 1-5      mail_report.py  --account <name>   # the hourly team email
+0 9-14 * * 1-5      mail_report.py  --account <name>   # hourly email (quiet hours suppressed)
+0 15 * * 1-5        mail_report.py  --account <name> --force  # the wrap-up always sends
 ```
 
 (Cron runs in **Central** time - the container's timezone - so 15:05 CT is the
