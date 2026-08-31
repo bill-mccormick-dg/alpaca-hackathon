@@ -46,6 +46,17 @@ glossary for the terms these docs use.
 - **Assignment** — being forced to buy or sell the underlying stock because a
   contract you *sold* was exercised. Only affects sellers, which is another
   reason this bot only buys.
+- **Prior** — a starting belief you hold *before* weighing today's evidence, and
+  then revise. Borrowed from Bayesian inference, where a prior is combined with
+  new evidence to produce a posterior. Calling the Kalshi distribution a prior
+  rather than a signal is the whole point: it is one input the model weighs
+  against the option chain and the day's price action, not an instruction to
+  follow. Nothing in the code acts on it.
+- **"Prior" vs "prior close"** — unrelated, unfortunately. *Prior close* is
+  simply the **previous session's closing price**, the reference level the
+  Kalshi numbers are measured against. The two senses sit in the same sentence
+  more than once ("prior close 7,731 … a PRIOR to weigh"), so it is worth
+  reading slowly.
 
 </details>
 
