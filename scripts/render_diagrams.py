@@ -81,7 +81,7 @@ def render(src: str, name: str) -> str:
   mermaid.initialize({{ startOnLoad: false, theme: 'dark',
     themeVariables: {{ background: '#0f1720', primaryColor: '#182230',
       primaryTextColor: '#e6edf3', primaryBorderColor: '#4fb39c',
-      lineColor: '#9fb0c0', fontSize: '15px' }} }});
+      lineColor: '#9fb0c0', fontSize: '24px' }} }});
   mermaid.render('d', {json.dumps(src)}).then(r => {{
     document.getElementById('out').innerHTML = r.svg;
     document.title = 'RENDERED';
@@ -105,7 +105,21 @@ def render(src: str, name: str) -> str:
     out = svg.group(0)
     # Let the slide size it; mermaid hardcodes a pixel width otherwise.
     out = re.sub(r'\s(width|height)="[^"]*"', "", out, count=2)
-    out = out.replace("<svg ", '<svg style="max-width:100%;max-height:52vh;height:auto" ', 1)
+    # Mermaid emits its OWN style="max-width: 3343px" on the <svg>. Prepending a
+    # second style attribute leaves two on one element, and the parser keeps the
+    # first and silently drops the rest - so drop mermaid's rather than racing
+    # it. Then:
+    #   flex:0 0 auto  - the slide is a flex column, and without it the SVG is a
+    #                    shrinkable flex item. The infra diagram was being
+    #                    crushed to 1076x19px on a text-heavy slide: full width,
+    #                    nineteen pixels tall, aspect ratio ignored. It looked
+    #                    like a hairline, not a diagram.
+    # No max-height here, deliberately: the deck's stylesheet sets it
+    # (`section svg`), so scripts/fit_slides.py can override it when a diagram
+    # slide does not fit. An inline max-height beats any stylesheet rule, which
+    # left the fitter unable to shrink a diagram slide at all.
+    out = re.sub(r'\sstyle="[^"]*"', "", out, count=1)
+    out = out.replace("<svg ", '<svg style="width:100%;height:auto;flex:0 0 auto" ', 1)
     return out
 
 

@@ -37,15 +37,21 @@ Fifteen slides, one idea each. Real screenshots over diagrams wherever a screens
 11. **The daily loop** — eod_review → override (expires at close) or config PR → CI →
     self-hosted runner deploys before the open. 82 PRs, 506 tests, every merge deployed.
 12. **The experiment farm — real A/B, not a backtest** — four days is not a backtest and the
-    free feed has no historical options data, so a docker-compose farm runs one container per
-    variant, each with its own config and its own paper account, against the *same live
-    market*. A winner is promoted into the official config by pull request.
+    free feed has no historical options data, so the A/B runs *live*: three paper accounts
+    cron'd on the trading host itself, same ten-minute cadence, same market, different configs.
+    `test` swaps the model and enables research tools and learning; `mixed` differs from the
+    official config by exactly one key, giving stock and options equal footing. A winner is
+    promoted into the official config by pull request. Separately, `docker compose` brings the
+    bot, the variant farm and the docs site up self-contained on a laptop — that is how the
+    project is developed, and it would serve just as well to run it. (The farm is *not* a
+    compose-only thing; saying so undersells that it is running against three live accounts.)
 13. **Home Assistant, over MQTT — fully decoupled** — `journal.log()` → fire-and-forget MQTT
     publish → HA auto-discovery. Three audiences off one feed: an operator dashboard with the
     kill switch; a second, read-only dashboard for the team over Tailscale (no switch, button
     or service call — HA has no per-entity permissions, so the separation must be the
-    dashboard itself); and phone push for problems only. Fills deliberately do not push — a
-    channel that fires on routine activity gets muted and takes the halt alert with it. What
+    dashboard itself); and phone push for problems only. A filled order sends no phone alert,
+    deliberately — a channel that buzzes on routine trades gets muted and takes the halt alert
+    with it. What
     does: halts, account-identity refusals, and a stall detector that notices no cycle has run
     for 25 minutes in market hours, the failure a dashboard cannot show because stale values
     look exactly like a quiet market. An hourly email carries trades + CSVs for anyone not
