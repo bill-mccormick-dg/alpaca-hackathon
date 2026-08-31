@@ -5,6 +5,7 @@ socket and it is a three-line wrapper. What is worth testing is that the
 message is well-formed, the CSVs contain what a teammate would pivot on, and
 that a missing configuration is a quiet no-op rather than a crash in cron."""
 
+import argparse
 import csv
 import io
 import os
@@ -231,6 +232,187 @@ class SettingsResolutionTest(unittest.TestCase):
     def test_missing_file_is_not_an_error(self):
         with mock.patch.dict(os.environ, {}, clear=True):
             self.assertEqual(mail_report.load_report_env("official"), {})
+
+
+class TradesInWindowTest(unittest.TestCase):
+    def test_returns_trades_within_cutoff(self):
+        now = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+        recent_trade = {
+            "ts": "2026-09-01T10:15:00-04:00",
+            "event": "order_submitted",
+            "symbol": "SPY",
+        }
+        res = mail_report.trades_in_window([recent_trade], now, window_minutes=60)
+        self.assertEqual(len(res), 1)
+
+    def test_excludes_trades_outside_cutoff(self):
+        now = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+        old_trade = {
+            "ts": "2026-09-01T09:30:00-04:00",
+            "event": "order_submitted",
+            "symbol": "SPY",
+        }
+        res = mail_report.trades_in_window([old_trade], now, window_minutes=60)
+        self.assertEqual(len(res), 0)
+
+    def test_excludes_non_trade_events(self):
+        now = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+        cycle = {
+            "ts": "2026-09-01T10:50:00-04:00",
+            "event": "cycle_start",
+        }
+        res = mail_report.trades_in_window([cycle], now, window_minutes=60)
+        self.assertEqual(len(res), 0)
+
+    def test_handles_naive_and_malformed_timestamps(self):
+        now = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+        naive = {"ts": "2026-09-01T10:30:00", "event": "order_submitted"}
+        malformed = {"ts": "invalid-ts", "event": "order_submitted"}
+        missing = {"event": "order_submitted"}
+        res = mail_report.trades_in_window([naive, malformed, missing], now, window_minutes=60)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0], naive)
+
+
+class SuppressionTest(unittest.TestCase):
+    def setUp(self):
+        self.args = argparse.Namespace(
+            account="test",
+            config=None,
+            dry_run=False,
+            force=False,
+            window_minutes=60,
+        )
+
+    @mock.patch("mail_report.send")
+    @mock.patch("mail_report.RiskManager")
+    @mock.patch("mail_report.journal.read_events")
+    @mock.patch("mail_report.load_report_env")
+    @mock.patch("mail_report.credentials.validate_account")
+    def test_suppresses_when_no_recent_trades_and_not_halted(
+        self, mock_val, mock_env, mock_events, mock_rm, mock_send
+    ):
+        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
+        mock_events.return_value = [
+            {"ts": "2026-09-01T08:00:00-04:00", "event": "order_submitted"}
+        ]
+        mock_rm.return_value.halt_state.return_value = "none"
+
+        with mock.patch("mail_report.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+            mock_dt.fromisoformat = datetime.fromisoformat
+            ret = mail_report.run(self.args)
+
+        self.assertEqual(ret, 0)
+        mock_send.assert_not_called()
+
+    @mock.patch("mail_report.send")
+    @mock.patch("mail_report.RiskManager")
+    @mock.patch("mail_report.journal.read_events")
+    @mock.patch("mail_report.load_report_env")
+    @mock.patch("mail_report.credentials.validate_account")
+    def test_sends_when_recent_trades_exist(
+        self, mock_val, mock_env, mock_events, mock_rm, mock_send
+    ):
+        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
+        mock_events.return_value = [
+            {"ts": "2026-09-01T10:30:00-04:00", "event": "order_submitted", "side": "buy", "qty": 1, "symbol": "SPY", "price": 100}
+        ]
+        mock_rm.return_value.halt_state.return_value = "none"
+
+        with mock.patch("mail_report.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+            mock_dt.fromisoformat = datetime.fromisoformat
+            ret = mail_report.run(self.args)
+
+        self.assertEqual(ret, 0)
+        mock_send.assert_called_once()
+
+    @mock.patch("mail_report.send")
+    @mock.patch("mail_report.RiskManager")
+    @mock.patch("mail_report.journal.read_events")
+    @mock.patch("mail_report.load_report_env")
+    @mock.patch("mail_report.credentials.validate_account")
+    def test_sends_when_halted_even_without_recent_trades(
+        self, mock_val, mock_env, mock_events, mock_rm, mock_send
+    ):
+        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
+        mock_events.return_value = []
+        mock_rm.return_value.halt_state.return_value = "daily_loss"
+
+        with mock.patch("mail_report.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+            mock_dt.fromisoformat = datetime.fromisoformat
+            ret = mail_report.run(self.args)
+
+        self.assertEqual(ret, 0)
+        mock_send.assert_called_once()
+
+    @mock.patch("mail_report.send")
+    @mock.patch("mail_report.RiskManager")
+    @mock.patch("mail_report.journal.read_events")
+    @mock.patch("mail_report.load_report_env")
+    @mock.patch("mail_report.credentials.validate_account")
+    def test_force_bypasses_suppression(
+        self, mock_val, mock_env, mock_events, mock_rm, mock_send
+    ):
+        self.args.force = True
+        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
+        mock_events.return_value = []
+        mock_rm.return_value.halt_state.return_value = "none"
+
+        with mock.patch("mail_report.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+            mock_dt.fromisoformat = datetime.fromisoformat
+            ret = mail_report.run(self.args)
+
+        self.assertEqual(ret, 0)
+        mock_send.assert_called_once()
+
+    @mock.patch("mail_report.send")
+    @mock.patch("mail_report.RiskManager")
+    @mock.patch("mail_report.journal.read_events")
+    @mock.patch("mail_report.load_report_env")
+    @mock.patch("mail_report.credentials.validate_account")
+    def test_dry_run_suppresses_and_prints_message(
+        self, mock_val, mock_env, mock_events, mock_rm, mock_send
+    ):
+        self.args.dry_run = True
+        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
+        mock_events.return_value = []
+        mock_rm.return_value.halt_state.return_value = "none"
+
+        with mock.patch("mail_report.datetime") as mock_dt, mock.patch("sys.stdout", new_callable=io.StringIO) as mock_out:
+            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+            mock_dt.fromisoformat = datetime.fromisoformat
+            ret = mail_report.run(self.args)
+
+        self.assertEqual(ret, 0)
+        self.assertIn("[suppressed]", mock_out.getvalue())
+        mock_send.assert_not_called()
+
+    @mock.patch("mail_report.send")
+    @mock.patch("mail_report.RiskManager")
+    @mock.patch("mail_report.journal.read_events")
+    @mock.patch("mail_report.load_report_env")
+    @mock.patch("mail_report.credentials.validate_account")
+    def test_custom_window_minutes_includes_older_trade(
+        self, mock_val, mock_env, mock_events, mock_rm, mock_send
+    ):
+        self.args.window_minutes = 120
+        mock_env.return_value = {"REPORT_EMAIL_TO": "team@example.com"}
+        mock_events.return_value = [
+            {"ts": "2026-09-01T09:30:00-04:00", "event": "order_submitted", "side": "buy", "qty": 1, "symbol": "SPY", "price": 100}
+        ]
+        mock_rm.return_value.halt_state.return_value = "none"
+
+        with mock.patch("mail_report.datetime") as mock_dt:
+            mock_dt.now.return_value = datetime(2026, 9, 1, 11, 0, tzinfo=EASTERN)
+            mock_dt.fromisoformat = datetime.fromisoformat
+            ret = mail_report.run(self.args)
+
+        self.assertEqual(ret, 0)
+        mock_send.assert_called_once()
 
 
 if __name__ == "__main__":

@@ -30,7 +30,7 @@ import json
 import os
 import smtplib
 import sys
-from datetime import datetime
+from datetime import datetime, timedelta
 from email.message import EmailMessage
 
 from bot import credentials, journal, report
@@ -86,6 +86,29 @@ def _rows(events, columns, keep) -> str:
 def trades_csv(events) -> str:
     """Every order-shaped event, with the reason the model gave."""
     return _rows(events, TRADE_COLUMNS, lambda r: r.get("event") in report.TRADE_EVENTS)
+
+
+def trades_in_window(events, now: datetime, window_minutes: int = 60) -> list[dict]:
+    """Trade-shaped events that occurred within the last `window_minutes`."""
+    cutoff = now - timedelta(minutes=window_minutes)
+    window_trades = []
+    for record in events:
+        if record.get("event") not in report.TRADE_EVENTS:
+            continue
+        ts_raw = record.get("ts")
+        if not ts_raw:
+            continue
+        try:
+            ts = datetime.fromisoformat(str(ts_raw))
+            if ts.tzinfo is None and now.tzinfo is not None:
+                ts = ts.replace(tzinfo=now.tzinfo)
+            elif ts.tzinfo is not None and now.tzinfo is None:
+                ts = ts.astimezone(EASTERN).replace(tzinfo=None)
+            if ts >= cutoff:
+                window_trades.append(record)
+        except (ValueError, TypeError):
+            continue
+    return window_trades
 
 
 def cycles_csv(events) -> str:
@@ -245,6 +268,20 @@ def run(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001 - a report must still send if config is unreadable
         print(f"halt state unavailable ({type(exc).__name__}: {exc})", file=sys.stderr)
         halt = "unknown"
+    window_minutes = getattr(args, "window_minutes", 60)
+    force = getattr(args, "force", False)
+    recent = trades_in_window(events, now, window_minutes=window_minutes)
+
+    if not force and halt == "none" and not recent:
+        if args.dry_run:
+            print(
+                f"[suppressed] no trades in the last {window_minutes}m for account {args.account!r} "
+                "(use --force to send)"
+            )
+        else:
+            print(f"no trades in the last {window_minutes}m for account {args.account!r} — skipping email")
+        return 0
+
     summary = summarize(events, args.account, halt)
     day = now.date().isoformat()
     attachments = {
@@ -274,6 +311,13 @@ def main() -> int:
     ap.add_argument("--account", default="test", help="named account: official, test, or a variant")
     ap.add_argument("--config", default=None, help="config file (default config.yaml) - read for the halt-file paths")
     ap.add_argument("--dry-run", action="store_true", help="print the message instead of sending it")
+    ap.add_argument("--force", action="store_true", help="send even if there were no trades in the recorded window")
+    ap.add_argument(
+        "--window-minutes",
+        type=int,
+        default=60,
+        help="activity window in minutes to check for trade activity (default 60)",
+    )
     return run(ap.parse_args())
 
 
