@@ -37,6 +37,9 @@ EVENT_TOPICS = {
     # Transient model failures that recovered (#85) - worth seeing the rate
     # without reading the journal.
     "decide_retry",
+    # The last three holdouts (#134): with these, event/<name> carries every
+    # journal event there is, and the live feed below is complete.
+    "predictions", "cycle_end", "manual_resume",
 }
 # Prefix of every entity_id this project publishes. NOT cosmetic: Home
 # Assistant's MQTT discovery derives entity_id from slugify(device name) +
@@ -70,6 +73,10 @@ STATE_SENSORS = {  # state topic suffix -> HA discovery attributes
 ATTRIBUTE_SENSORS = {
     "recent_trades": {"name": "Recent trades", "icon": "mdi:format-list-bulleted"},
     "eod_summary": {"name": "Eod summary", "icon": "mdi:calendar-check"},
+    # The live journal feed (#134): every event, rendered one line each,
+    # republished on every journal write - the realtime view the trade list
+    # (per-cycle, trade-shaped events only) deliberately is not.
+    "journal_feed": {"name": "Journal feed", "icon": "mdi:script-text-play"},
 }
 
 
@@ -198,14 +205,35 @@ def publish_report(suffix: str, payload: dict) -> bool:
     return publish(topic("state", suffix), payload, retain=True)
 
 
+def _publish_feed() -> None:
+    """Re-render today's tail into the journal_feed sensor (#134).
+
+    Re-read from the journal rather than accumulated: each cycle is its own
+    process (the same reasoning as run_cycle.py's trade report), and the
+    record that triggered this call is already on disk when journal.log()
+    invokes on_event. Lazy import because journal imports this module at
+    load time; importing it back at module level would be a cycle."""
+    from bot import journal as _journal  # noqa: PLC0415 - see docstring
+    from bot import report as _report  # noqa: PLC0415
+
+    try:
+        events = _journal.read_events()
+    except OSError:
+        return
+    publish(topic("state", "journal_feed"), _report.feed_payload(events, _settings["account"]), retain=True)
+
+
 def on_event(record: dict) -> None:
     """Called by journal.log() with the record it just wrote."""
     if not enabled():
         return
     event = record.get("event")
+    _discovery_once()
+    # The feed carries EVERYTHING, ahead of the per-event allow-list below -
+    # an event nobody listed is still visible where humans watch.
+    _publish_feed()
     if event not in EVENT_TOPICS:
         return
-    _discovery_once()
     publish(topic("event", event), record)
 
     if event == "cycle_start":

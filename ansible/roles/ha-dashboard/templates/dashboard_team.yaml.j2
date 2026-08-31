@@ -62,6 +62,16 @@ views:
           # --- intra-day trade log ---------------------------------------
           # The markdown rides in a JSON attribute because HA caps a
           # sensor's state at 255 characters - see bot/report.py.
+          # --- live journal feed (#134) ----------------------------------
+          # Every journal event, one line each, republished within a second
+          # of the write - the realtime view; the trade list below is the
+          # per-cycle summary.
+{% for acct in ha_accounts %}
+          - type: markdown
+            title: {{ acct.label }} — live journal
+            content: "{% raw %}{{ state_attr('sensor.{% endraw %}{{ ha_entity_prefix }}_{{ acct.id }}_journal_feed{% raw %}', 'markdown') or '_No events yet._' }}{% endraw %}"
+{% endfor %}
+
 {% for acct in ha_accounts %}
           - type: markdown
             title: {{ acct.label }} — trades today
