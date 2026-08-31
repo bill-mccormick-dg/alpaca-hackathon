@@ -25,6 +25,12 @@ FILL = _event(
     order_id="abc123",
 )
 REJECT = _event("order_rejected", side="buy", qty=99, symbol="SPY", price=1.0, reason="qty exceeds cap")
+# The real shape: the model's case for the trade AND the funnel's verdict.
+REJECT_PRICED = _event(
+    "order_rejected", side="buy", qty=10, symbol="SPY260904P00766000", price=None,
+    detail="price must be positive",
+    reason="SPY is down ~0.4% today with weak Chicago PMI data, making the 4DTE 766 Put a suitable bearish play.",
+)
 DRY = _event("dry_run", side="buy", qty=1, symbol="QQQ", price=2.5, reason="rehearsal")
 
 
@@ -82,9 +88,32 @@ class RenderTest(unittest.TestCase):
         self.assertIn("official", md)
 
     def test_long_reasons_are_clipped(self):
-        md = report.render_trades_markdown(report.recent_trades([dict(FILL, reason="x" * 500)]))
+        md = report.render_trades_markdown(report.recent_trades([dict(FILL, reason="x" * 1000)]))
 
-        self.assertLess(len(md), 400)
+        self.assertIn("…", md)
+        self.assertLess(len(md), report.REASON_CHARS + 120)
+
+    def test_a_typical_reason_is_not_clipped(self):
+        """160 chars cut nearly every real reason one clause before its
+        point; a 250-char reason must survive whole."""
+        reason = "y" * 250
+        md = report.render_trades_markdown(report.recent_trades([dict(FILL, reason=reason)]))
+
+        self.assertIn(reason, md)
+
+    def test_a_rejection_shows_why_the_funnel_refused_and_the_models_case(self):
+        md = report.render_trades_markdown(report.recent_trades([REJECT_PRICED]))
+
+        self.assertIn("rejected", md)
+        self.assertIn("why: price must be positive", md)
+        self.assertIn("Chicago PMI", md)
+        # Verdict before argument.
+        self.assertLess(md.index("price must be positive"), md.index("Chicago PMI"))
+
+    def test_a_fill_has_no_verdict_line(self):
+        md = report.render_trades_markdown(report.recent_trades([FILL]))
+
+        self.assertNotIn("why:", md)
 
     def test_newlines_in_a_reason_do_not_break_the_line_format(self):
         md = report.render_trades_markdown(report.recent_trades([dict(FILL, reason="a\nb\nc")]))
