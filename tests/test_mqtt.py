@@ -114,11 +114,23 @@ class MqttTest(unittest.TestCase):
         for event in ("identity_refused", "identity_unverified", "decide_retry"):
             self.assertIn(f"alpaca-hackathon/official/event/{event}", topics)
 
-    def test_unlisted_events_are_not_published(self):
+    def test_every_journal_event_reaches_the_feed_even_unlisted_ones(self):
+        """EVENT_TOPICS gates the per-event topics; the journal_feed sensor
+        deliberately carries EVERYTHING (#134), so an event nobody listed is
+        still visible where humans watch - and an unlisted event still gets
+        no event/<name> topic of its own."""
         with mock.patch.dict(os.environ, {"MQTT_HOST": "b"}, clear=True):
             mqtt.configure({"mqtt": {"enabled": True}}, "test")
-            mqtt.on_event({"event": "cycle_end", "actions": 0})
-        self.assertEqual(self.cap.calls, [])
+            mqtt.on_event({"event": "brand_new_event", "detail": "x"})
+        topics = [t for t, _, _ in self.cap.calls]
+        self.assertIn("alpaca-hackathon/test/state/journal_feed", topics)
+        self.assertNotIn("alpaca-hackathon/test/event/brand_new_event", topics)
+
+    def test_the_last_holdout_events_are_now_listed(self):
+        """predictions, cycle_end and manual_resume were journaled but
+        dropped from MQTT; with them listed, event/<name> is complete."""
+        for event in ("predictions", "cycle_end", "manual_resume"):
+            self.assertIn(event, mqtt.EVENT_TOPICS)
 
     def test_publisher_failure_is_swallowed(self):
         with (
