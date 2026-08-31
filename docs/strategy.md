@@ -389,6 +389,22 @@ The two keys are easy to confuse and do different jobs:
 
 One is the continuous rule; the other is the end-of-day safety net behind it.
 
+**Both are now stated in the prompt.** The model used to be told the expiration
+*window* (1–45 DTE) but nothing about the rules that *end* a position, so it
+could propose a short-dated contract in good faith that the 15:50 backstop would
+sell hours later — which reads as model error in the journal when it is policy
+the model never saw. The prompt now names both values, drawn from config rather
+than written into the text, so raising either cannot silently desynchronise the
+instructions from the code (`tests/test_decide.py` pins that they track config
+and that the defaults match what `exits.py` and `flatten.py` actually do).
+
+At `eod_close_dte: 1` this is close to a no-op — the model rarely proposes 1-DTE
+contracts and the whole point of the setting is that the bot never carries a
+contract into its final overnight. It matters if the value is ever raised: at 4,
+with the tactics asking for 2–14 DTE, every entry at 2–4 DTE would be bought and
+sold the same afternoon, and on Thursday the 15:50 sweep would liquidate most of
+the book minutes before the mark that decides the score.
+
 **The score is fixed at Thursday's close.** Per Alpaca's FAQ, the Fri Sep 4
 09:30 ET snapshot *"will look at the portfolio's total equity as of EOD
 Thursday Sep 3rd"*, with exercises/assignments of Sep 3 expiries reflected.
