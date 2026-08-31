@@ -78,7 +78,7 @@ A diagram claiming every write goes through the gate would be wrong.
 | `bot/alpaca_mcp.py` | Thin async client around `alpaca-mcp-server` (stdio) | `ALPACA_PAPER_TRADE=true` hardcoded; retries transient connect errors only |
 | `bot/credentials.py` | Named accounts -> credential files | `official` never reads `secrets.yaml` or `.env` |
 | `bot/identity.py` | Broker account number vs the `--account` name | The only guard keyed on the credentials, not the CLI string; fail-closed for challengers, warn-and-proceed for `official` |
-| `bot/config.py` + `bot/overrides.py` | `config.yaml` + runtime overrides (allowlisted, expire 16:00 ET) | `config_provenance()` is what the journal records each cycle |
+| `bot/config.py` + `bot/overrides.py` | `config.yaml` + runtime overrides (allowlisted, expire 16:00 ET) | `config_provenance()` is what the journal records each cycle; `resolve_review_model()` picks a reviewer that did not trade the day, recomputed each call so a dashboard model swap cannot make an account its own reviewer |
 | `bot/snapshot.py` | Account/positions, option chains in a strike band around spot, clock | `feed=indicative` always (no OPRA) |
 | `bot/greeks.py` | Black-Scholes IV solve (bisection) + delta/gamma/theta/vega | Alpaca's free feed has none |
 | `bot/predictions.py` | Kalshi daily index-close markets -> implied median, P(above prior close), P(\|move\|>1%) | prior only, never traded |
@@ -91,7 +91,7 @@ A diagram claiming every write goes through the gate would be wrong.
 | `bot/flatten.py` + `bot/orders.py` | Flatten all / expiring-only, verified against the broker | cancel -> wait -> close -> poll until flat |
 | `bot/journal.py` | JSONL journal per account; `daily_summary()` | the single "something happened" chokepoint |
 | `bot/trades.py` | FIFO round-trip pairing from fills, x100 multiplier, exit classification, cuts | pure |
-| `bot/review.py` | End-of-day digest facts + markdown | pure |
+| `bot/review.py` | End-of-day digest facts + markdown | pure; the advisory read is asked of a model that did *not* trade the day |
 
 Entrypoints: `run_cycle.py`, `flatten.py`, `status.py`, `override.py`,
 `trade_report.py`, `eod_review.py` - all take `--account <name>` and
@@ -107,6 +107,7 @@ Entrypoints: `run_cycle.py`, `flatten.py`, `status.py`, `override.py`,
 | When a position is done (stop / take-profit / expiry) | code (`exits.py`) |
 | Daily-loss halt, kill switch, end-of-day, final day | code |
 | The only order path | code (`execute.py`) |
+| Which model critiques the day afterwards | code (`config.py::resolve_review_model`), from a preference list, excluding the model that traded |
 
 ## Infrastructure
 
