@@ -99,6 +99,28 @@ that talks to Alpaca or Featherless is wrapped so a fake can stand in (see
   (it breaks the deploy rsync). Use `PYTHONDONTWRITEBYTECODE=1` when running
   things there by hand; cron already does.
 
+## Editing the docs while they are running
+
+`docker compose up docs` runs Docusaurus's **dev server**, not a static build,
+and the content is bind-mounted — so edits appear in the browser within a second
+or two. No restart, no rebuild.
+
+| Change | Reloads live? |
+|---|---|
+| Anything under `docs/` (this site's content) | yes |
+| `docs-site/docusaurus.config.js`, `sidebars.js`, `src/` | yes — all bind-mounted |
+| `docs-site/package.json` (dependencies) | **no** — baked into the image, see below |
+
+One thing to know if you go looking for confirmation from the command line:
+`curl localhost:3000/<page>` returns about 1.7 KB of SPA shell, not the page
+text, because the dev server renders content client-side. Grepping that output
+makes a working site look broken. Load it in a browser, or render it with one:
+
+```bash
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new \
+  --virtual-time-budget=12000 --dump-dom http://localhost:3000/strategy | grep -c Gamma
+```
+
 ## If the architecture diagrams show as code blocks
 
 `docs-site` renders mermaid through `@docusaurus/theme-mermaid`, which lives in
