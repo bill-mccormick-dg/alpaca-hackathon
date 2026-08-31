@@ -333,9 +333,20 @@ async def run(args: argparse.Namespace) -> int:
                 # funnel judges it on the market's price like any other.
                 price = await quote_option_mid(client, p.symbol)
                 price_source = "quote" if price else "none"
-            r = await execute.place_proposal(
-                client, risk, acct, price or 0.0, p, dry_run=args.dry_run, now=now
-            )
+            if price is None:
+                # Say what is actually wrong. Passing 0.0 into the risk check
+                # yields "price must be positive", which reads as a broken
+                # quote when the truth is that nothing could price this symbol
+                # - the confusion that made the 2026-08-31 rejections look
+                # like market data failures.
+                r = execute.ExecutionResult(
+                    execute.REJECTED, p,
+                    f"no price for {p.symbol} (not in snapshot, no live quote)",
+                )
+            else:
+                r = await execute.place_proposal(
+                    client, risk, acct, price, p, dry_run=args.dry_run, now=now
+                )
             label = f"{p.side} {p.qty} {p.symbol}"
             fields = {
                 "side": p.side, "qty": p.qty, "symbol": p.symbol, "instrument": p.instrument,
