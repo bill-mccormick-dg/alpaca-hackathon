@@ -256,7 +256,7 @@ unparseable"), so shares are held overnight by design. Only the
 | Whether there is a reason to trade, which direction, which contract | model | `bot/decide.py` prompt → JSON proposals |
 | Whether a proposal is allowed at all | code, never negotiated | `bot/risk.py::check_order()` |
 | Sizing cap, position count, DTE window, entry cutoff | code | `bot/risk.py` |
-| Stop-loss / take-profit on premium, forced close on expiry day | code, every cycle | `bot/exits.py` (#32, deterministic exits) |
+| Stop-loss / take-profit on premium, forced close on expiry day | code, every cycle | `bot/exits.py` (the deterministic exits) |
 | Daily-loss halt, kill switch, end-of-day handling | code | `run_cycle.py`, `flatten.py` |
 | The only order path | code | `bot/execute.py::place_proposal()` |
 
@@ -483,7 +483,7 @@ Consequences:
 
 ## What "working" looks like by Thursday
 
-A tiny sample, so diagnostics rather than verdicts (`trade_report.py` — #29, round-trip attribution):
+A tiny sample, so diagnostics rather than verdicts (`trade_report.py`, round-trip attribution):
 
 - The model traded on stated reasons, and the journal shows them.
 - Rejections are rare and *sensible* (a cap, not a malformed proposal) — a
@@ -494,16 +494,16 @@ A tiny sample, so diagnostics rather than verdicts (`trade_report.py` — #29, r
 
 ## Daily loop
 
-After each close: `eod_review.py` (#30, the end-of-day digest) → read the digest → edit
+After each close: `eod_review.py` (the end-of-day digest) → read the digest → edit
 `strategy_notes` / exits / knobs → PR → CI → deploy → the next morning runs
-the new version. Promote the test-account challenger config (#34, the two-account A/B) when it
+the new version. Promote the test-account challenger config (the two-account A/B) when it
 wins convincingly.
 
 ## Runtime overrides (intraday, no deploy)
 
 `config.yaml` in git is the base. `logs/overrides.yaml` on the CT — written
 only through `bot/overrides.py` (the `override.py` CLI today, the MQTT bridge
-in #14, the Home Assistant integration) — wins for these keys: `model`, `temperature`, `max_tokens`,
+in the Home Assistant integration) — wins for these keys: `model`, `temperature`, `max_tokens`,
 `strategy_notes`, `research_contracts_per_underlying`,
 `option_strike_band_pct`, `stop_loss_pct`, `take_profit_pct`,
 `eod_close_dte`. Hard risk caps are deliberately not on the list.
@@ -518,7 +518,7 @@ Why the two layers never fight:
   `strategy_notes` hash + first line, and the active overrides with their
   expiry and origin. `status.py` shows the same.
 
-**MQTT contract** (implemented by #14, the Home Assistant integration; defined here so both sides agree):
+**MQTT contract** (implemented by the Home Assistant integration; defined here so both sides agree):
 
 - Subscribe `alpaca-hackathon/config/set`, JSON `{"key": ..., "value": ...,
   "until": "<ISO, optional>"}` → `set_override(key, value, until,
@@ -529,7 +529,7 @@ Why the two layers never fight:
   journal event. Home Assistant always sees what the bot is actually
   running, which is the whole "no fight" guarantee.
 
-**Kill switch + dashboard knobs** (mqtt_bridge.py — #14's "two-way control"
+**Kill switch + dashboard knobs** (mqtt_bridge.py — the Home Assistant integration's "two-way control"
 stretch goal): the bridge also subscribes to
 `alpaca-hackathon/<account>/command/halt` — payload must be exactly `HALT`
 (matches the HA button's `payload_press`) — and reuses `flatten.py`'s own
