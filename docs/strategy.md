@@ -520,28 +520,48 @@ Why the two layers never fight:
 
 **MQTT contract** (implemented by the Home Assistant integration; defined here so both sides agree):
 
-- Subscribe `alpaca-hackathon/config/set`, JSON `{"key": ..., "value": ...,
-  "until": "<ISO, optional>"}` → `set_override(key, value, until,
-  set_by="mqtt")`. A `null` value clears the key. Validation errors are
-  published to `alpaca-hackathon/config/error`.
+- Subscribe `alpaca-hackathon/config/set`, JSON `{"account": ..., "key": ...,
+  "value": ..., "until": "<ISO, optional>"}` → `set_override(key, value, until,
+  set_by="mqtt")`. `account` defaults to the *test* account, never `official`
+  by accident. A `null` value clears the key. Validation errors are published
+  to `alpaca-hackathon/config/error`.
 - After every cycle the bot publishes (retained)
   `alpaca-hackathon/config/effective` — the same payload as the `config`
   journal event. Home Assistant always sees what the bot is actually
   running, which is the whole "no fight" guarantee.
 
-**Kill switch + dashboard knobs** (mqtt_bridge.py — the Home Assistant integration's "two-way control"
-stretch goal): the bridge also subscribes to
-`alpaca-hackathon/<account>/command/halt` — payload must be exactly `HALT`
-(matches the HA button's `payload_press`) — and reuses `flatten.py`'s own
-`run()` to flatten **only that account's** positions and halt **only that
-account** (`bot/risk.py::RiskManager.manual_halt_file`). The break-glass
-"halt every account" (`logs/HALT`) is deliberately unreachable from HA —
-it is CLI-only (`flatten.py --halt --all-accounts`), so a stray dashboard
-tap can never stop the judged account during the scoring window. Resuming
-(deleting the halt file) likewise stays a CLI-only step, never exposed to HA.
-On startup the bridge also publishes (retained) MQTT discovery for that
-button and for `number`/`text` entities covering every overridable knob
-except `strategy_notes` (prose — stays `override.py set strategy_notes
-@file`/PR-only), one set per account, each wired to `config/set` via a
-`command_template` so `mqtt_bridge.py`'s existing validation path is
-untouched.
+### Kill switch and dashboard knobs
+
+`mqtt_bridge.py` publishes retained MQTT discovery on startup, so Home
+Assistant builds one set of controls per account with no configuration on the
+HA side. What it creates:
+
+| Control | Domain | Does |
+|---|---|---|
+| Kill switch | `switch` | flattens and halts **that one account** |
+| Model | `select` | swaps the model, from a fixed list of costed options |
+| Seven knobs | `number` | temperature, max tokens, research contracts, strike band, stop-loss, take-profit, EOD close DTE |
+
+A `switch` rather than a button, because a button is stateless and could never
+show whether the account is *currently* halted; its state comes from the
+retained halt topic. A `select` rather than free text, because `model` is the
+one knob accepted as any non-empty string, so a thumb-typo on a phone was
+writable and would have failed every cycle until it expired.
+
+`strategy_notes` is deliberately absent: it is prose, and stays
+`override.py set strategy_notes @file` or a PR.
+
+Every knob is wired to `config/set` through a `command_template`, so a
+dashboard change takes exactly the same validation path as the CLI. There is no
+second way in.
+
+**The halt is per-account, on purpose.** The switch publishes to
+`alpaca-hackathon/<account>/command/halt` with a payload of exactly `HALT`,
+and the bridge reuses `flatten.py`'s own `run()` to flatten and halt **only
+that account** (`RiskManager.manual_halt_file`).
+
+The break-glass *halt everything* (`logs/HALT`) is deliberately **unreachable
+from Home Assistant** — it is CLI-only, `flatten.py --halt --all-accounts`. So
+no dashboard tap, however stray, can stop the judged account during the scoring
+window. Resuming is CLI-only for the same reason: getting out of a halt should
+require more intent than getting into one.
