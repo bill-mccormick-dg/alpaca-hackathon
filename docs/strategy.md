@@ -551,6 +551,68 @@ writable and would have failed every cycle until it expired.
 `strategy_notes` is deliberately absent: it is prose, and stays
 `override.py set strategy_notes @file` or a PR.
 
+#### The seven knobs
+
+Every one is safe to move mid-session, and none of them can breach a risk limit
+— see "What is *not* a knob" below.
+
+| Knob | Range | Default | Changes |
+|---|---|---|---|
+| `temperature` | 0–2, step 0.1 | 0.2 | how much the model varies between cycles |
+| `max_tokens` | 50–8000, step 50 | 800 | the answer budget per decision |
+| `research_contracts_per_underlying` | 1–60 | 12 | how many contracts per name go into the prompt |
+| `option_strike_band_pct` | 0.01–0.5 | 0.08 | how far from spot the chain is fetched (±8%) |
+| `stop_loss_pct` | 1–100 | 40 | close at this much loss on entry premium |
+| `take_profit_pct` | 1–1000 | 60 | close at this much gain |
+| `eod_close_dte` | 0–45 | 1 | the end-of-day sweep closes contracts with this many days left |
+
+**Model behaviour — `temperature`, `max_tokens`.** Raise temperature if the
+agent is proposing the same idea every cycle and you want more variety; lower it
+toward 0 if it is being erratic. `max_tokens` is the budget for the *answer*,
+and 800 is sized for a JSON array of a few proposals rather than prose. Raising
+it is the fix if you see `finish_reason=length` in the journal — the model ran
+out of room mid-answer, which forfeits the cycle. Lowering it saves nothing
+worth having.
+
+**What the model sees — `research_contracts_per_underlying`,
+`option_strike_band_pct`.** These decide the size and shape of the menu.
+Widening the strike band reaches further out of the money; raising the contract
+count shows more of what was fetched. Both make the prompt longer and the cycle
+slower, and 12 contracts across ±8% already spans more than the tactics would
+pick from. Reach for these if the agent complains it cannot find a suitable
+contract, not to give it more to read.
+
+**How positions end — `stop_loss_pct`, `take_profit_pct`, `eod_close_dte`.**
+The first two are checked at the top of every cycle *before* the model is
+consulted, as percentages of the entry premium: 40 means "close if it has lost
+40% of what was paid". Tighten the stop after a bad gap; widen the take-profit
+if you keep getting stopped out of trades that then run. `eod_close_dte` is the
+overnight-hold policy — see [Holding period and end of day](#holding-period-and-end-of-day)
+before touching it, because raising it interacts badly with short-dated entries.
+
+**Overrides expire.** A change made through the dashboard or `override.py`
+lasts until **16:00 ET today** unless you pass `--until`; an evening tweak
+carries through the next session. So a knob turned in anger during a bad hour
+does not silently become the configuration. Making it durable means editing
+`config.yaml` and opening a PR.
+
+**Both paths validate identically.** The dashboard's slider bounds are the same
+numbers `bot/overrides.py` enforces, so Home Assistant cannot propose a value
+the CLI would reject — the entities are wired to `config/set`, which runs the
+same validator.
+
+#### What is *not* a knob
+
+Deliberately absent from the dashboard, and from `override.py` entirely:
+`max_position_usd`, `max_positions`, `max_contracts_per_order`, `underlyings`,
+`min_days_to_expiration` / `max_days_to_expiration`, `daily_loss_cutoff_pct`,
+`last_entry` / `trade_end`, `expiry_close_dte` and `final_flatten_date`.
+
+Those are the risk limits, and changing one takes a config edit, a pull request
+and a deploy — which during market hours the freeze refuses outright. The knobs
+tune how the agent thinks and how positions are managed; **nothing reachable at
+runtime can widen how much it is allowed to lose.**
+
 Every knob is wired to `config/set` through a `command_template`, so a
 dashboard change takes exactly the same validation path as the CLI. There is no
 second way in.
