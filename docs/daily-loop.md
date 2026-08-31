@@ -63,8 +63,13 @@ everything.
    - **rejections by rule** - a rule refusing the same idea all day is a
      prompt or config problem, not bad luck;
    - errors, truncated outputs, latency;
-   - the one recommended change (advisory) — written by a *different* model
-     from the one that traded, so it is a review rather than self-assessment.
+   - the one recommended change (advisory). It is written by a model that did
+     **not** trade the day (see
+     [the critique](strategy.md#the-critique-comes-from-a-model-that-did-not-trade)),
+     so treat it as a second opinion rather than the agent explaining itself —
+     it is most useful when it disagrees with what the day's decisions implied.
+     It is advice, not an instruction: you decide whether it becomes an override
+     or a config PR, and often the answer is neither.
 2. Compare the three. `test` is the challenger - different model, research
    tools and the learning loop; `mixed` differs from official by exactly one
    key, stock and options as peers rather than options-first. If a variant's

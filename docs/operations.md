@@ -144,6 +144,41 @@ typed. The bridge also primes that topic at startup so the controls are never
 blank. See [Home Assistant over MQTT](#home-assistant-over-mqtt) for the
 transport.
 
+### `review_model` is computed, not set
+
+The one knob whose normal state is *unset*. `eod_review.py` asks a model that
+did **not** trade the day for its advisory read, and
+`bot/config.py::resolve_review_model()` picks it: the first entry of
+`review_model_preference` that is not this account's own `model`, recomputed on
+every call. All three accounts currently review on `moonshotai/Kimi-K2.6`.
+
+Recomputing rather than storing is what makes the property survive a dashboard
+model swap — switch an account onto its reviewer and the reviewer moves, instead
+of the account silently grading its own homework.
+
+To see which model will actually run it, read the resolved value rather than the
+config file — an unset key tells you nothing:
+
+```sh
+# on the trading host
+grep '"event": "config"' logs/journal.jsonl | tail -1 | python3 -m json.tool | grep review_model
+```
+
+Every `config` journal event now carries `review_model`, and the same value is
+published retained on `<prefix>/<account>/config/effective`, which is where the
+dashboard's **Review model** selector reads its state. It is deliberately **not**
+part of `config_hash`: it cannot affect trading, so it must not invalidate the
+hash that attributes a P&L change to a config change.
+
+To pin one instead of computing it:
+
+```sh
+override.py --account official set review_model moonshotai/Kimi-K2-Instruct
+```
+
+or pick it from the dashboard selector. Both expire at 16:00 ET like any other
+override; clear it and the computed default returns.
+
 **Hard risk caps are git-only on purpose** — position size, position count, the
 DTE window, the whitelist and the daily-loss cutoff cannot be raised at runtime
 by anything, including the Home Assistant dashboard. Overrides **expire at
@@ -162,7 +197,7 @@ journaled it did not happen.
 | Event | Written when |
 |---|---|
 | `cycle_start`, `cycle_end` | each cycle opens / closes, with equity and position count |
-| `config` | the effective config for that cycle: values, a hash, and any active overrides |
+| `config` | the effective config for that cycle: values, a hash, any active overrides, and the resolved `review_model` |
 | `decision` | the model answered — raw output, model, token usage, latency, finish reason, reasoning head, tool calls |
 | `tool_call` | the model used one of its four read-only research tools |
 | `order_submitted` / `order_rejected` / `order_error` / `dry_run` | an order's outcome — rejections carry **the rule that rejected them** |
