@@ -135,10 +135,43 @@ journaled it did not happen.
 | `daily_loss_halt`, `daily_loss_flatten`, `flatten`, `manual_halt` | trading stopped, and why |
 | `override_set` / `override_cleared` | a runtime knob changed |
 | `error` | anything else, with where and the detail |
+| `predictions` | the Kalshi prior the model was handed that cycle — the numbers **and** whether they were withheld |
 | `eod_review` | the end-of-day digest ran |
 
 `logs/` is git-ignored and excluded from the deploy rsync, so state on CT 108
 survives redeploys.
+
+### Asking the journal what actually happened
+
+The file names differ by account: `journal.jsonl` is the **official** account,
+`journal-test.jsonl` and `journal-mixed.jsonl` the other two.
+
+Did the model get a second opinion on the last cycle, and if not, why not:
+
+```sh
+ssh root@<ct108> "grep '\"predictions\"' /opt/alpaca-hackathon/logs/journal.jsonl | tail -1"
+```
+
+`"suppressed": null` means the prior was in the prompt. A string
+(`"thin: volume 91.9 < 250.0"`) means it was fetched, journalled and withheld,
+and names the gate that withheld it. **No record at all** means no prior was
+available that cycle — the feed failed, or `predictions_enabled` is off.
+
+This is a different question from the one
+[`scripts/verify_predictions.py`](strategy.md#a-worked-example) answers. The
+script tells you what the prior looks like *right now*; the journal tells you
+what the model was handed *at the moment it decided*. Only the second one
+explains a trade.
+
+Two more worth knowing:
+
+```sh
+# why was an order refused - the record carries the rule that refused it
+grep '"order_rejected"' logs/journal.jsonl | tail -5
+
+# what the model actually said, most recent first
+grep '"decision"' logs/journal.jsonl | tail -1
+```
 
 ## Home Assistant over MQTT
 
