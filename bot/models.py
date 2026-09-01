@@ -47,6 +47,28 @@ class Position:
 
 
 @dataclass
+class OpenOrder:
+    """An order the broker still holds open (#171). Sizing against holdings
+    alone under-counts between submission and fill; these are the committed
+    part."""
+
+    id: str
+    symbol: str
+    side: str
+    qty: float
+    filled_qty: float = 0.0
+    order_type: str = "market"
+    limit_price: float | None = None
+    submitted_at: str | None = None
+    client_order_id: str | None = None
+    instrument: str = "option"
+
+    @property
+    def remaining(self) -> float:
+        return max(self.qty - self.filled_qty, 0.0)
+
+
+@dataclass
 class AccountState:
     equity: float
     start_of_day_equity: float
@@ -55,7 +77,24 @@ class AccountState:
     # What the broker says this account IS, as opposed to what --account called
     # it. None when it could not be read - see bot/identity.py for the policy.
     account_number: str | None = None
+    # Orders resting at the broker (OpenOrder). None means the lookup failed
+    # or was never made - the funnel then sizes on holdings alone, as it
+    # always did; an empty list means "checked, nothing resting".
+    open_orders: list | None = None
 
     @property
     def open_position_count(self) -> int:
         return len(self.positions)
+
+    def pending_buys(self, symbol: str | None = None) -> list:
+        return [o for o in self.open_orders or [] if o.side == "buy" and o.remaining > 0 and (symbol is None or o.symbol == symbol)]
+
+    def pending_sell_qty(self, symbol: str) -> float:
+        return sum(o.remaining for o in self.open_orders or [] if o.side == "sell" and o.symbol == symbol)
+
+    @property
+    def committed_position_count(self) -> int:
+        """Held positions plus symbols a resting buy would open - what
+        max_positions has to be measured against, or four resting buys for
+        four contracts pass a cap of four with nothing held and all fill."""
+        return len(set(self.positions) | {o.symbol for o in self.pending_buys()})

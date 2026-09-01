@@ -64,7 +64,8 @@ flowchart LR
 Reading it: everything outside the purple box is deterministic code. The model
 receives the snapshot and may call four read-only research tools; it returns a
 JSON array of proposals. Both the model's proposals *and* the code's own exit
-sells go through the same `place_proposal()` → `check_order()` funnel.
+sells go through the same `place_proposal()` → `check_order()` funnel, and the
+funnel counts orders still resting at the broker as committed exposure (#171).
 
 The one exception is drawn deliberately: `flatten.py` cancels orders and closes
 positions without passing `check_order()`, because it only ever *reduces*
@@ -83,6 +84,7 @@ A diagram claiming every write goes through the gate would be wrong.
 | `bot/greeks.py` | Black-Scholes IV solve (bisection) + delta/gamma/theta/vega | the fallback for contracts Alpaca's snapshot does not price; most carry Alpaca's own IV/Greeks (#160) |
 | `bot/predictions.py` | Kalshi daily index-close markets -> implied median, P(above prior close), P(\|move\|>1%) | prior only, never traded |
 | `bot/learning.py` | Facts-only block: recent round trips, open positions vs entry, today's rejections by rule | windowed, capped |
+| `bot/stale_orders.py` | Cancels the bot's own entry buys still resting from an earlier cycle, before the account is read for decisions | never a sell; each outcome journaled as `order_canceled` (#171) |
 | `bot/holdings.py` | The positions block: held symbols as the only legal sell targets, each with its journaled entry reason and the prior then vs now; resolves a neighbouring-strike sell onto the held contract | always rendered, even when flat (#170, #173) |
 | `bot/research.py` | Four read-only tools the model may call (bars, stock snapshot, option contracts, news) | maps to MCP with fixed safe args; nothing that orders |
 | `bot/decide.py` | Prompt assembly, bounded tool loop, lenient proposal parsing, `Decision` (usage, latency, reasoning, tool calls) | thinking models need `model_params` |

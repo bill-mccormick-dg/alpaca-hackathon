@@ -4,7 +4,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from bot import risk
-from bot.models import AccountState, Position, Proposal
+from bot.models import AccountState, OpenOrder, Position, Proposal
 from bot.risk import EASTERN, RiskManager
 
 UNDERLYINGS = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA"]
@@ -197,6 +197,56 @@ class FloorMustExceedBackstopTest(unittest.TestCase):
     def test_silent_when_the_floor_is_above_it(self):
         with tempfile.TemporaryDirectory() as tmp, self.assertNoLogs("bot.risk", level="WARNING"):
             RiskManager(make_config(min_days_to_expiration=2, eod_close_dte=1), logs_dir=Path(tmp))
+
+
+class OpenOrdersCountTest(RiskManagerTestBase):
+    """#171: the caps bound committed exposure, not just what has filled."""
+
+    QQQ = "QQQ260123P00709000"
+
+    def _account(self, orders, positions=None):
+        return AccountState(equity=100000, start_of_day_equity=100000, cash=100000,
+                            positions=positions or {}, open_orders=orders)
+
+    def _buy(self, symbol, qty=4):
+        return Proposal(instrument="option", symbol=symbol, side="buy", qty=qty, underlying=symbol[:3])
+
+    def test_a_second_buy_for_a_symbol_with_a_resting_buy_is_refused(self):
+        """The 2026-09-01 double: 12:00's limit sat unfilled, 12:10 saw
+        positions 0 and bought the idea again."""
+        acct = self._account([OpenOrder(id="a", symbol=self.QQQ, side="buy", qty=4, limit_price=3.56, submitted_at="2026-09-01T16:00:17Z")])
+        ok, reason = self.risk.check_order(self._buy(self.QQQ), acct, 3.7, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, f"a buy for {self.QQQ} is already resting (qty 4 @ limit 3.56, sent 16:00) - it counts as held; "
+                                 "wait for the fill, or the next cycle cancels it")
+
+    def test_a_different_symbol_is_still_fine(self):
+        acct = self._account([OpenOrder(id="a", symbol=self.QQQ, side="buy", qty=4)])
+        ok, reason = self.risk.check_order(self._buy("QQQ260123P00708000"), acct, 3.7, self.mid_session)
+        self.assertTrue(ok, reason)
+
+    def test_resting_buys_count_toward_max_positions(self):
+        """Four resting buys for four contracts and nothing held used to pass
+        a cap of four - and could then all fill."""
+        risk_mgr = RiskManager(make_config(max_positions=2), logs_dir=Path(self.tmpdir.name))
+        acct = self._account([OpenOrder(id="a", symbol="SPY260123P00764000", side="buy", qty=1),
+                              OpenOrder(id="b", symbol="AAPL260123C00220000", side="buy", qty=1)])
+        ok, reason = risk_mgr.check_order(self._buy(self.QQQ), acct, 3.7, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "already at max_positions (2, 2 of them resting buys)")
+
+    def test_a_resting_sell_reduces_what_can_be_sold_again(self):
+        held = {self.QQQ: Position(symbol=self.QQQ, instrument="option", qty=4, market_value=1480, underlying="QQQ")}
+        acct = self._account([OpenOrder(id="a", symbol=self.QQQ, side="sell", qty=4)], positions=held)
+        p = Proposal(instrument="option", symbol=self.QQQ, side="sell", qty=4, underlying="QQQ")
+        ok, reason = self.risk.check_order(p, acct, 3.7, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "cannot sell 4, only 4 held and 4 already resting to sell")
+
+    def test_unknown_open_orders_size_on_holdings_alone(self):
+        acct = self._account(None)
+        ok, reason = self.risk.check_order(self._buy(self.QQQ), acct, 3.7, self.mid_session)
+        self.assertTrue(ok, reason)
 
 
 class PositionCapTest(RiskManagerTestBase):

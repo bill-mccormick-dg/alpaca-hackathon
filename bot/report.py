@@ -170,6 +170,9 @@ def render_feed_line(r: dict) -> str:
         return f"{t} {mark}{exit_tag} {r.get('side')} {r.get('qty')} {r.get('symbol')} @ {r.get('price')} — {_clip(r.get('reason'), 160)}"
     if e in ("order_rejected", "order_error"):
         return f"{t} ✗ {e.split('_')[1].upper()} {r.get('side')} {r.get('qty')} {r.get('symbol')} — {r.get('detail')}"
+    if e == "order_canceled":
+        mark = "↩ CANCELLED" if r.get("ok") else "! cancel failed"
+        return f"{t} {mark} stale buy {r.get('qty')} {r.get('symbol')} — {_clip(r.get('detail'), 120)}"
     if e == "cycle_end":
         return f"{t} ◀ end, {r.get('actions')} action(s)"
     if e in ("manual_halt", "daily_loss_halt"):

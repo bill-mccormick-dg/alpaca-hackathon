@@ -48,7 +48,7 @@ def _rejection_key(detail: str) -> str:
     d = str(detail or "").lower()
     for key in ("not in underlyings whitelist", "exceeds max_position_usd", "max_positions", "max_contracts_per_order",
                 "days to expiration", "entries not allowed", "cannot sell", "invalid", "qty must be", "price must be",
-                "not a valid occ"):
+                "not a valid occ", "already resting", "expired"):
         if key in d:
             return key
     return d[:60] or "unknown"

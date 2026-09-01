@@ -203,11 +203,12 @@ journaled it did not happen.
 | `decision` | the model answered — raw output, model, token usage, latency, finish reason, reasoning head, tool calls, and the size of the learning and positions blocks it was shown (`learning_chars`, `positions_block_chars`) |
 | `tool_call` | the model used one of its four read-only research tools |
 | `order_submitted` / `order_rejected` / `order_error` / `dry_run` | an order's outcome — rejections carry **the rule that rejected them**; a sell that code resolved from a neighbouring strike onto the held contract carries `resolved_from` with the symbol the model wrote (#170) |
+| `order_canceled` | one of the bot's own entry buys was still resting from an earlier cycle and the new cycle cancelled it (`ok`, the broker's text when it could not) — #171 |
 | `decide_retry` | a transient model failure was retried inside the cycle |
 | `identity_refused` / `identity_unverified` | the broker's account number did not match the account asked for |
 | `daily_loss_halt`, `daily_loss_flatten`, `flatten`, `manual_halt` | trading stopped, and why |
 | `override_set` / `override_cleared` | a runtime knob changed |
-| `error` | anything else, with where and the detail |
+| `error` | anything else, with where and the detail — `where: open_orders` means the resting-order lookup failed and that cycle sized on holdings alone |
 | `predictions` | the Kalshi prior the model was handed that cycle — the numbers **and** whether they were withheld |
 | `eod_review` | the end-of-day digest ran, and `review_model` says which model wrote the critique — check it is not the account's own `model` (#177) |
 

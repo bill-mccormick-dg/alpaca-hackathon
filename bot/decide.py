@@ -34,7 +34,8 @@ Stock trades are allowed but should support your options thesis rather than repl
 
 Hard limits (enforced downstream in code; a violating proposal is rejected outright and \
 never adjusted for you, so propose within them): max ${max_position_usd:.0f} total notional \
-per position (existing + new, combined), max {max_positions} concurrent positions, max \
+per position (existing + new, combined), max {max_positions} concurrent positions (a resting buy \
+counts as one), max \
 {max_contracts_per_order} option contracts per single order, whitelist symbols only \
 ({underlyings}), options must have between {min_dte} and {max_dte} days to expiration. New \
 entries (buys) are rejected after {last_entry} ET; sells remain legal until {trade_end} ET.
