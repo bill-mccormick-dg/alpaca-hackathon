@@ -172,16 +172,18 @@ class DigestTest(unittest.TestCase):
                 citations={"checked": 2, "unsupported": [{"symbol": "QQQ260903P00708000", "quoted": "68.7%",
                                                           "nearest": {"label": "1 - QQQ Kalshi P(above)", "value": 0.874}}]}),
             rec("11:10:05", "decision", raw="[]", count=0, model="m1", usage={}, latency_sec=1.0, finish_reason="stop",
-                citations={"checked": 0, "unsupported": []}),
+                citations={"checked": 1, "unsupported": [], "misattributed": [{"symbol": "QQQ260903P00708000", "quoted": "27.3%",
+                                                                              "nearest": {"label": "SPY chain P(down>1%)", "value": 0.273}}]}),
             rec("11:20:05", "decision", raw="[]", count=0, model="m1", usage={}, latency_sec=1.0, finish_reason="stop",
                 citations={"skipped": "research tools ran"}),
         ]
         a = review.decision_audit(records)
-        self.assertEqual((a["citations_checked"], a["citations_unsupported"], a["citations_skipped_cycles"]), (2, 1, 1))
+        self.assertEqual((a["citations_checked"], a["citations_unsupported"], a["citations_misattributed"], a["citations_skipped_cycles"]), (3, 1, 1, 1))
         self.assertEqual(a["citation_examples"][0]["quoted"], "68.7%")
         md = review.render_markdown(review.build_digest(DAY, "test", records, {"trades": 0}, []))
-        self.assertIn("**prior citations**: 2 checked, 1 unsupported, 1 cycle(s) skipped", md)
+        self.assertIn("**prior citations**: 3 checked, 1 unsupported, 1 misattributed, 1 cycle(s) skipped", md)
         self.assertIn('11:00 QQQ260903P00708000 quoted "68.7%" - nearest real number: 1 - QQQ Kalshi P(above) 0.874', md)
+        self.assertIn('11:10 QQQ260903P00708000 quoted "27.3%" - actually: SPY chain P(down>1%) 0.273', md)
 
         a = review.decision_audit(RECORDS)
         self.assertIsNone(a["citations_checked"])

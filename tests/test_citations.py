@@ -1,7 +1,10 @@
 """bot/citations.py - does a reason quote numbers the prompt contained? (#172)
 
-The fixtures are the judged account's actual 2026-09-01 12:00 and 12:20
-priors and the reasons the model wrote against them.
+The priors below are the judged account's journaled 12:00 and 12:20 Eastern
+priors from 2026-09-01, used as fixtures. The quoted figures in the reasons
+are the model's real 13:00 and 13:20 phrasing - which, against the priors
+of THEIR OWN cycles, were exact; here they are deliberately paired with the
+wrong hour to exercise the unsupported path.
 """
 
 import unittest
@@ -68,7 +71,7 @@ class PriorValuesTest(unittest.TestCase):
 
 
 class AuditTest(unittest.TestCase):
-    def test_the_12_00_entry_two_fabrications(self):
+    def test_figures_that_match_nothing_are_unsupported(self):
         result = citations.audit([proposal("QQQ down 1.2% intraday; Kalshi shows a 68.7% chance of down>1% close and only 7.6% chance of finishing above prior close")], PRIOR_1200)
         self.assertEqual(result["checked"], 2)
         self.assertEqual([u["quoted"] for u in result["unsupported"]], ["68.7%", "7.6%"])
@@ -78,12 +81,33 @@ class AuditTest(unittest.TestCase):
             self.assertGreater(abs(u["nearest"]["value"] - quoted), citations.TOLERANCE, u)
         self.assertEqual(result["unsupported"][0]["nearest"], {"label": "1 - QQQ chain P(down>1%)", "value": 0.71})
 
-    def test_the_12_20_exit(self):
+    def test_a_single_unsupported_figure_names_the_nearest_real_one(self):
         result = citations.audit([Proposal("option", "QQQ260903P00708000", "sell", 4, underlying="QQQ",
                                            reason="crowd via Kalshi shows extreme bearishness (81.9% down>1%)")], PRIOR_1220)
         self.assertEqual(result["checked"], 1)
         self.assertEqual(result["unsupported"][0]["quoted"], "81.9%")
         self.assertEqual(result["unsupported"][0]["nearest"], {"label": "1 - QQQ chain P(above)", "value": 0.874})
+
+    def test_another_underlyings_figure_quoted_as_this_ones_is_misattributed(self):
+        """The real 13:20 case: QQQ's chain prior was withheld that cycle and
+        the model quoted SPY's chain P(down>1%) 0.273 as "the options market"
+        for QQQ. A real number, wrong name - reported, not counted as invented."""
+        prior = {"QQQ": {"series": "KXNASDAQ100", "p_above_reference": 0.068, "p_up_over_1pct": 0.044, "p_down_over_1pct": 0.819,
+                         "suppressed": None, "chain": {"p_above_reference": None, "suppressed": "noisy"}},
+                 "SPY": {"series": "KXINX", "p_above_reference": 0.108, "p_up_over_1pct": 0.05, "p_down_over_1pct": 0.121, "suppressed": None,
+                         "chain": {"p_above_reference": 0.173, "p_up_over_1pct": 0.007, "p_down_over_1pct": 0.273, "suppressed": None}}}
+        p = Proposal("option", "QQQ260903P00708000", "sell", 4, underlying="QQQ",
+                     reason="crowd via Kalshi shows extreme bearishness (81.9% down>1%) but options market disagrees with only 27.3% P(down>1%)")
+        result = citations.audit([p], prior)
+        self.assertEqual((result["checked"], result["unsupported"]), (2, []))
+        self.assertEqual([(u["quoted"], u["nearest"]["label"]) for u in result["misattributed"]], [("27.3%", "SPY chain P(down>1%)")])
+        self.assertIn("1 misattributed - QQQ260903P00708000 quoted 27.3% which is SPY chain P(down>1%)", citations.describe(result))
+
+    def test_a_figure_matching_the_own_underlying_is_not_misattributed_even_if_another_matches_too(self):
+        prior = {"QQQ": {"series": "x", "p_above_reference": 0.10, "suppressed": None},
+                 "SPY": {"series": "y", "p_above_reference": 0.10, "suppressed": None}}
+        result = citations.audit([proposal("Kalshi P(above) is 10% for QQQ")], prior)
+        self.assertEqual((result["unsupported"], result["misattributed"]), ([], []))
 
     def test_an_honest_citation_is_supported_within_rounding(self):
         result = citations.audit([proposal("Kalshi P(down>1%) at 59.5% and the chain's 44% both say down")], PRIOR_1220)
@@ -102,12 +126,12 @@ class AuditTest(unittest.TestCase):
         self.assertEqual(result, {"skipped": "research tools ran - a quoted figure may come from a tool result"})
 
     def test_a_hold_has_nothing_to_check(self):
-        self.assertEqual(citations.audit([], PRIOR_1220), {"checked": 0, "unsupported": []})
+        self.assertEqual(citations.audit([], PRIOR_1220), {"checked": 0, "unsupported": [], "misattributed": []})
 
     def test_describe(self):
         result = citations.audit([proposal("Kalshi shows 68.7% chance of down>1% close")], PRIOR_1220)
         self.assertEqual(citations.describe(result),
-                         "prior citations: 1 checked, 1 unsupported - QQQ260903P00708000 quoted 68.7% (nearest QQQ Kalshi P(down>1%) 0.595)")
+                         "prior citations: 1 checked, 1 unsupported, 0 misattributed - QQQ260903P00708000 quoted 68.7% (nearest QQQ Kalshi P(down>1%) 0.595)")
         self.assertEqual(citations.describe(None), "prior citations: nothing to audit")
 
 

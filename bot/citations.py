@@ -1,23 +1,27 @@
 """Does the model's stated reason quote numbers it was actually given? (#172)
 
-On 2026-09-01 the judged account's model cited "68.7% chance of down>1%
-close" (the prompt said 33.8%), "only 7.6% chance of finishing above prior
-close" (12.6%) and "extreme bearishness (81.9% down>1%)" (59.5%; the chain
-said 43.7%). Three citations, three wrong, all skewed toward the trade
-being proposed. The prior was fetched, rendered and journaled correctly -
-this is not a data-path bug - and research tools were off, so the prompt
-was the only source. Those reason strings are load-bearing downstream:
-the EOD digest, the reviewer model's critique, the hourly email, the
-public feed and the writeup all quote them as fact.
+Built on a suspicion that turned out to be the operator's error, and kept
+because the check is cheap and the risk is real. On 2026-09-01 the judged
+account's model wrote "68.7% chance of down>1% close", "only 7.6% chance
+of finishing above prior close" and "extreme bearishness (81.9% down>1%)".
+Read against the prompt an hour earlier those looked invented; read
+against the prior journaled in the SAME cycle (13:00 and 13:20 Eastern -
+the email and the viewer show Central time, which is how the hour slipped)
+all three are exact. The first run of this audit over that day found 22
+quoted figures, 22 supported. What it did surface was subtler: at 13:20
+the QQQ chain prior was withheld and the model quoted SPY's chain figure
+as "the options market" for QQQ - a real number, attributed to the wrong
+underlying.
 
-The check is cheap because both sides are already structured: the prior
-is in memory in run_cycle as predictions.journal_fields(...) and the
-reasons are on the proposals. A percentage-shaped token in a reason, in a
-clause that is talking about the prior, is looked up against every number
-the prior block carried (and its complement, for "P(below)" phrasing);
-anything that matches nothing within half a point is unsupported. The
-result rides on the `decision` journal event - measurable, not anecdotal -
-and the digest and reviewer read it from there.
+So the audit reports two things. `unsupported`: a figure in a prior-shaped
+clause that matches nothing the prior block carried (either crowd, either
+underlying, or a complement for "P(below)" phrasing) within half a point.
+`misattributed`: a figure that matches only another underlying's prior
+when the proposal's own underlying had a prior on show. Both ride on the
+`decision` journal event - measurable, not anecdotal - and the digest and
+the reviewer read them from there. The reason strings are load-bearing
+downstream (digest, reviewer, email, feed, writeup), which is why this is
+worth a few lines per cycle even on a day the model quoted honestly.
 
 Deliberately reporting only. The funnel keeps bounding what can be traded;
 prose is not an order parameter, and check_order does not grade rhetoric.
@@ -82,24 +86,35 @@ def extract_claims(reason: str) -> list[tuple[str, float]]:
     return claims
 
 
+def _underlying_of(label: str) -> str:
+    return label.removeprefix("1 - ").split(" ")[0]
+
+
 def audit(proposals: list[Proposal], prior: dict | None, tool_calls=None, tol: float = TOLERANCE) -> dict | None:
     """None when no prior was shown (nothing to audit against). Skipped when
     research tools ran, since a quoted figure may then come from a tool
-    result the audit cannot see. Otherwise {"checked", "unsupported": [...]}."""
+    result the audit cannot see. Otherwise {"checked", "unsupported": [...],
+    "misattributed": [...]} - see the module docstring for the two kinds."""
     values = prior_values(prior)
     if not values:
         return None
     if tool_calls:
         return {"skipped": "research tools ran - a quoted figure may come from a tool result"}
-    checked, unsupported = 0, []
+    checked, unsupported, misattributed = 0, [], []
     for p in proposals:
+        own = p.underlying or ""
+        own_values = [lv for lv in values if _underlying_of(lv[0]) == own]
         for quoted, value in extract_claims(p.reason):
             checked += 1
             label, nearest = min(values, key=lambda lv: abs(lv[1] - value))
+            entry = {"symbol": p.symbol, "quoted": quoted, "nearest": {"label": label, "value": round(nearest, 3)}}
             if abs(nearest - value) > tol:
-                unsupported.append({"symbol": p.symbol, "quoted": quoted,
-                                    "nearest": {"label": label, "value": round(nearest, 3)}})
-    return {"checked": checked, "unsupported": unsupported}
+                unsupported.append(entry)
+            elif own_values and _underlying_of(label) != own and not any(abs(v - value) <= tol for _, v in own_values):
+                # Supported by another name's prior only, while this name had
+                # one on show: the 13:20 case - SPY's chain quoted for QQQ.
+                misattributed.append(entry)
+    return {"checked": checked, "unsupported": unsupported, "misattributed": misattributed}
 
 
 def describe(result: dict | None) -> str:
@@ -108,9 +123,10 @@ def describe(result: dict | None) -> str:
         return "prior citations: nothing to audit"
     if result.get("skipped"):
         return f"prior citations: skipped ({result['skipped']})"
-    n = len(result.get("unsupported") or [])
-    head = f"prior citations: {result.get('checked', 0)} checked, {n} unsupported"
-    if not n:
+    n, m = len(result.get("unsupported") or []), len(result.get("misattributed") or [])
+    head = f"prior citations: {result.get('checked', 0)} checked, {n} unsupported, {m} misattributed"
+    if not n and not m:
         return head
     bits = [f"{u['symbol']} quoted {u['quoted']} (nearest {u['nearest']['label']} {u['nearest']['value']})" for u in result["unsupported"]]
+    bits += [f"{u['symbol']} quoted {u['quoted']} which is {u['nearest']['label']}" for u in result.get("misattributed") or []]
     return head + " - " + "; ".join(bits)

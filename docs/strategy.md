@@ -338,24 +338,32 @@ inspires still passes the same `check_order()` funnel as every other proposal.
 Read-only, no API key, never traded, cached for five minutes, and silently
 omitted on any failure.
 
-**And the model's citations of it are audited (#172).** On 2026-09-01 the
-judged account's model quoted the prior three times in its stated reasons —
-"68.7% chance of down>1%", "7.6% chance of finishing above prior close", "81.9%
-down>1%" — and none of the three appeared anywhere in its inputs: the prompt
-said 33.8%, 12.6% and 59.5%, and every error was skewed toward the trade being
-proposed. The prior was fetched, rendered and journaled correctly; research
-tools were off; the prompt was the only source. Those reason strings are
-load-bearing downstream — the digest, the reviewer's critique, the hourly email,
-the public feed and the writeup all quote them — so `bot/citations.py` now
-checks every percentage the model writes in a prior-shaped clause against every
-number the prior block carried (and its complement, for "P(below)" phrasing).
-The result rides on the `decision` journal event as `citations`, the digest
-prints a count and each unsupported quote beside the nearest real value, the
-reviewer prompt says to judge on the journalled prior rather than the quote,
-and the feed marks the cycle. Deliberately reporting only: `check_order()`
-bounds what can be traded and does not grade rhetoric. The prompt's last
-sentence above — quote or name, never restate — is the cheap fix; the audit is
-how we will know whether it worked.
+**And the model's citations of it are audited (#172).** Built on a suspicion
+that turned out to be the operator's error, and kept because the check is
+cheap and the risk is real. On 2026-09-01 the judged account's model wrote
+"68.7% chance of down>1% close", "only 7.6% chance of finishing above prior
+close" and "extreme bearishness (81.9% down>1%)". Read against the prompt an
+hour earlier those looked invented and skewed toward the trade; read against
+the prior journaled in the *same* cycle — 13:00 and 13:20 Eastern, where the
+email and the viewer had shown 12:00 and 12:20 Central — all three are exact.
+The first run of the audit over that day found 22 quoted figures, 22 supported.
+What it did surface was subtler: at 13:20 the QQQ chain prior had been withheld
+as noisy, and the model quoted SPY's chain figure (27.3%) as "the options
+market" for QQQ — a real number under the wrong name.
+
+So `bot/citations.py` checks every percentage the model writes in a
+prior-shaped clause against every number the prior block carried (both crowds,
+both underlyings, and complements for "P(below)" phrasing), and reports two
+kinds of miss: *unsupported*, a figure that matches nothing within half a point,
+and *misattributed*, a figure that matches only another underlying's prior
+while this one had a prior on show. Both ride on the `decision` journal event
+as `citations`; the digest prints the counts and each miss beside the real
+value; the reviewer prompt says to judge on the journalled prior rather than
+the quote; the feed marks the cycle. Deliberately reporting only:
+`check_order()` bounds what can be traded and does not grade rhetoric. The
+prompt's last sentence above — quote or name, never restate — is the cheap
+half; the audit is how we know whether the model's prose can be trusted on a
+given day, which after day 2 it could.
 
 ### When it is withheld
 
@@ -669,7 +677,8 @@ Consequences:
 A tiny sample, so diagnostics rather than verdicts (`trade_report.py`, round-trip attribution):
 
 - The model traded on stated reasons, and the journal shows them — and, since
-  #172, says how often those reasons quoted numbers the prompt never contained.
+  #172, says how often those reasons quoted numbers the prompt never contained
+  (day 2: none of 22).
 - Rejections are rare and *sensible* (a cap, not a malformed proposal) — a
   guardrail rejecting the same idea all day is a prompt bug, not a win.
 - Exits were mostly stops/take-profits doing their job, not expiry rescues.
@@ -871,10 +880,10 @@ in its favour, because it re-derived the view from scratch (#173).
 
 ```
 POSITIONS YOU HOLD (the ONLY symbols a sell may name - copy them exactly):
-- QQQ260903P00708000 x4 @ 3.715, +0.4% vs entry; opened 12:10 ET
+- QQQ260903P00708000 x4 @ 3.715, +0.4% vs entry; opened 13:10 ET
     stated at entry: "QQQ down 1.2% intraday with both Kalshi and option chain showing heavy downside odds; ..."
-    prior at entry: Kalshi P(above) 0.090, P(up>1%) 0.050, P(down>1%) 0.461 | chain P(above) 0.126, ...
-    prior now:      Kalshi P(above) 0.087, P(up>1%) 0.044, P(down>1%) 0.595 | chain P(above) 0.126, ...
+    prior at entry: Kalshi P(above) 0.068, P(up>1%) 0.044, P(down>1%) 0.779 | chain P(above) 0.075, P(up>1%) 0.013, P(down>1%) 0.575
+    prior now:      Kalshi P(above) 0.068, P(up>1%) 0.044, P(down>1%) 0.819 | chain withheld (noisy: isotonic fit moved probabilities 0.051 on average)
 RESTING ORDERS (sent, unfilled - they already count against your caps; ...):
 - buy 4 QQQ260903P00709000 @ limit 3.56, submitted 12:00 ET
 ```
@@ -887,7 +896,9 @@ what makes replaying the reason safe**: per #172 the model fabricates
 statistics inside its reasons, so a reason alone would let it "verify" the
 position against its own confabulation. Paired with the journaled prior, "has
 my thesis weakened?" becomes a comparison against numbers we control — and in
-the QQQ example above the honest answer was that it had strengthened. A
+the QQQ example above the honest answer was that it had strengthened
+(P(down>1%) 0.779 → 0.819 in the ten minutes between entry and the proposed
+exit). A
 position with no journaled opener says *no recorded thesis* rather than
 inventing one. A flat account gets one line — *none — any sell would be a naked
 short* — so the long-only rule is stated in terms of the list rather than left
