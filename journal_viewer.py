@@ -294,6 +294,7 @@ function line(r){
     if (r.reason) body += `\n<span class="reason">${esc(r.reason)}</span>`; }
   else if (e === 'order_error') body = `! ORDER ERROR ${esc(r.symbol)} — ${esc(r.detail)}`;
   else if (e === 'dry_run') body = `⋯ DRY    ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} @ ${esc(r.price)}`;
+  else if (e === 'order_canceled') body = `${r.ok ? '↩ CANCELLED' : '! cancel failed'} stale buy ${esc(r.qty)} ${esc(r.symbol)}${r.limit_price?' @ '+esc(r.limit_price):''} — ${esc(r.detail||'')}`;
   else if (e === 'cycle_end') body = `<span class="dim">◀ end, ${r.actions} action(s)</span>`;
   else if (e === 'error') body = `! ERROR in ${esc(r.where)}: ${esc(String(r.detail).slice(0,600))}`;
   else if (e === 'eod_review') body = `◆ EOD ${esc(r.day)}`;

@@ -17,7 +17,16 @@ import asyncio
 import sys
 from datetime import date, datetime, timedelta, timezone
 
-from bot import execute, holdings, journal, learning, mqtt, overrides, predictions
+from bot import (
+    execute,
+    holdings,
+    journal,
+    learning,
+    mqtt,
+    overrides,
+    predictions,
+    stale_orders,
+)
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import config_provenance, load_config
 from bot.credentials import load_credentials, validate_account
@@ -26,7 +35,7 @@ from bot.exits import check_exits
 from bot.featherless import DEFAULT_MODEL, FeatherlessClient
 from bot.flatten import flatten_all
 from bot.identity import check_account_identity
-from bot.models import AccountState, Position
+from bot.models import AccountState, OpenOrder, Position
 from bot.orders import INCOMPLETE
 from bot.report import trades_payload
 from bot.retry import RetryBudget, call_with_retry, summarize
@@ -118,12 +127,14 @@ def account_from_snapshot(snap: dict) -> AccountState:
         )
         for p in acct["positions"]
     }
+    raw_orders = acct.get("open_orders")
     return AccountState(
         equity=acct["equity"],
         start_of_day_equity=acct["start_of_day_equity"],
         cash=acct["cash"],
         positions=positions,
         account_number=acct.get("account_number"),
+        open_orders=[OpenOrder(**o) for o in raw_orders] if raw_orders is not None else None,
     )
 
 
@@ -238,6 +249,25 @@ async def run(args: argparse.Namespace) -> int:
         # What this cycle actually ran with (git config + active overrides),
         # so a P&L change can be attributed to the config change behind it.
         journal.log("config", account=args.account, **config_provenance(config))
+
+        # Entry buys still resting from an EARLIER cycle are cancelled before
+        # anything else looks at the account (#171): a thesis the model has
+        # not re-examined must not fill hours later, and must not be counted
+        # as either held or absent. Sells are never touched. The snapshot and
+        # the account are edited to match, so the model and the funnel see
+        # the post-cancel state, not the one the broker reported a moment ago.
+        open_orders = (snap.get("account") or {}).get("open_orders")
+        if open_orders is None:
+            journal.log("error", where="open_orders", detail="open-order lookup failed; funnel is sizing on holdings alone")
+            print("WARNING: could not read open orders - resting buys are invisible this cycle", file=sys.stderr)
+        elif not args.dry_run:
+            for cancel in await stale_orders.cancel_stale_entries(client, open_orders):
+                journal.log("order_canceled", reason="unfilled entry from a previous cycle", **cancel)
+                print(f"{'CANCELLED' if cancel['ok'] else 'cancel FAILED for'} stale buy {cancel['qty']} {cancel['symbol']}"
+                      f"{' @ ' + str(cancel['limit_price']) if cancel.get('limit_price') else ''} (sent {cancel['submitted_at']}): {cancel['detail']}")
+                if cancel["ok"]:
+                    open_orders[:] = [o for o in open_orders if o["id"] != cancel["id"]]
+            acct.open_orders = [OpenOrder(**o) for o in open_orders]
 
         if risk.daily_loss_breached(acct):
             # Flatten everything, then halt for the rest of the day.

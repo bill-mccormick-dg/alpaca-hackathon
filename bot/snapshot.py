@@ -267,12 +267,43 @@ def price_for_proposal(snapshot: dict, p: Proposal) -> float | None:
     return research.get("underlying_price")
 
 
-def _serialize_account(account: AccountState) -> dict:
+async def build_open_orders(client: AlpacaMCPClient) -> list[dict] | None:
+    """Orders resting at the broker, normalised (#171). None when the lookup
+    fails - the cycle must not die for it, but "unknown" and "none" are
+    different facts and the prompt says which."""
+    try:
+        data = _data(await client.call_tool("get_orders", {"status": "open", "nested": True}))
+    except Exception:  # noqa: BLE001 - never worth a cycle
+        return None
+    raw = data.get("result", data) if isinstance(data, dict) else data
+    if not isinstance(raw, list):
+        return None
+    out = []
+    for o in raw:
+        if not isinstance(o, dict) or not o.get("symbol") or not o.get("id"):
+            continue
+        out.append({
+            "id": str(o["id"]),
+            "client_order_id": o.get("client_order_id"),
+            "symbol": str(o["symbol"]),
+            "side": str(o.get("side") or "").lower(),
+            "qty": _optional_float(o.get("qty")) or 0.0,
+            "filled_qty": _optional_float(o.get("filled_qty")) or 0.0,
+            "order_type": str(o.get("type") or o.get("order_type") or "market"),
+            "limit_price": _optional_float(o.get("limit_price")),
+            "submitted_at": o.get("submitted_at") or o.get("created_at"),
+            "instrument": "option" if o.get("asset_class") == "us_option" else "stock",
+        })
+    return out
+
+
+def _serialize_account(account: AccountState, open_orders: list[dict] | None = None) -> dict:
     return {
         "equity": account.equity,
         "start_of_day_equity": account.start_of_day_equity,
         "cash": account.cash,
         "account_number": account.account_number,
+        "open_orders": open_orders,
         "positions": [
             {
                 "symbol": p.symbol,
@@ -296,6 +327,7 @@ async def build_snapshot(client: AlpacaMCPClient, config: dict, now: datetime | 
     now = now or datetime.now(EASTERN)
     clock_data = _data(await client.call_tool("get_clock"))
     account = await build_account_state(client)
+    open_orders = await build_open_orders(client)
     options = await build_option_research(client, config, today=now.date())
 
     predictions = {}
@@ -330,7 +362,7 @@ async def build_snapshot(client: AlpacaMCPClient, config: dict, now: datetime | 
         "market_open": clock_data.get("is_open", False),
         "next_open": clock_data.get("next_open"),
         "next_close": clock_data.get("next_close"),
-        "account": _serialize_account(account),
+        "account": _serialize_account(account, open_orders),
         "options": options,
         "predictions": predictions,
     }

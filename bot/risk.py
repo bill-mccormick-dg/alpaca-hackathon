@@ -231,8 +231,11 @@ class RiskManager:
             # rules, which come through this same funnel. Until #166 the window
             # ran before this branch, so a held contract on its last day could
             # not be sold here at all ("0 days to expiration outside [1, 45]").
-            if p.qty > held_qty:
+            resting_sell = account.pending_sell_qty(p.symbol)
+            if p.qty > held_qty - resting_sell:
                 detail = f"cannot sell {p.qty}, only {held_qty} held"
+                if resting_sell:
+                    detail += f" and {resting_sell:.0f} already resting to sell"
                 if not held and p.instrument == "option":
                     # Name what IS held on that underlying (#170): the next
                     # cycle's learning block replays today's rejections, so
@@ -257,6 +260,18 @@ class RiskManager:
         if not self.entries_allowed(now):
             return False, "entries not allowed (outside window or past last_entry)"
 
+        # Resting orders are committed exposure (#171). A buy for the same
+        # symbol already working means this idea is on - a second one is the
+        # 2026-09-01 double-position, not a new decision.
+        resting = account.pending_buys(p.symbol)
+        if resting:
+            o = resting[0]
+            at = f" @ limit {o.limit_price}" if o.limit_price is not None else " at market"
+            return False, (
+                f"a buy for {p.symbol} is already resting (qty {o.remaining:.0f}{at}, sent {str(o.submitted_at or '?')[11:16]}) "
+                f"- it counts as held; wait for the fill, or the next cycle cancels it"
+            )
+
         held_value = held.market_value if held else 0.0
         order_value = self._order_notional(p, price)
         if held_value + order_value > self.max_position_usd:
@@ -265,8 +280,10 @@ class RiskManager:
                 f"exceeds max_position_usd {self.max_position_usd}"
             )
 
-        if held_qty == 0 and account.open_position_count >= self.max_positions:
-            return False, f"already at max_positions ({self.max_positions})"
+        if held_qty == 0 and account.committed_position_count >= self.max_positions:
+            resting_n = account.committed_position_count - account.open_position_count
+            incl = f", {resting_n} of them resting buys" if resting_n else ""
+            return False, f"already at max_positions ({self.max_positions}{incl})"
 
         return True, "ok"
 

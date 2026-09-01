@@ -24,6 +24,25 @@ ACCOUNT_RESPONSE = {
 
 EMPTY_POSITIONS_RESPONSE = {"data": {"result": []}}
 
+NO_OPEN_ORDERS_RESPONSE = {"data": {"result": []}}
+
+OPEN_ORDERS_RESPONSE = {
+    "data": {
+        "result": [
+            {
+                "id": "6b4e2f3a-0000-4000-8000-000000000001",
+                "client_order_id": "hb-20260901-120017-QQQ260903P00709000-buy",
+                "symbol": "QQQ260903P00709000", "asset_class": "us_option", "side": "buy",
+                "qty": "4", "filled_qty": "0", "type": "limit", "limit_price": "3.56",
+                "submitted_at": "2026-09-01T16:00:17.123456Z", "status": "new",
+            },
+            {"id": "x", "symbol": "AAPL", "asset_class": "us_equity", "side": "sell", "qty": "10", "filled_qty": "4",
+             "type": "market", "limit_price": None, "created_at": "2026-09-01T16:05:00Z"},
+            {"no": "symbol here"},
+        ]
+    }
+}
+
 STOCK_POSITION_RESPONSE = {
     "data": {
         "result": [
@@ -523,6 +542,30 @@ class QuoteOptionMidTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await snapshot.quote_option_mid(client, "SPY260904P00766000"))
 
 
+class BuildOpenOrdersTest(unittest.IsolatedAsyncioTestCase):
+    async def test_normalises_the_brokers_strings(self):
+        out = await snapshot.build_open_orders(FakeMCPClient({"get_orders": OPEN_ORDERS_RESPONSE}))
+        self.assertEqual(out[0], {
+            "id": "6b4e2f3a-0000-4000-8000-000000000001",
+            "client_order_id": "hb-20260901-120017-QQQ260903P00709000-buy",
+            "symbol": "QQQ260903P00709000", "side": "buy", "qty": 4.0, "filled_qty": 0.0,
+            "order_type": "limit", "limit_price": 3.56, "submitted_at": "2026-09-01T16:00:17.123456Z",
+            "instrument": "option",
+        })
+        # a market order has no limit; created_at stands in for submitted_at;
+        # an entry with no symbol is dropped rather than crashing the cycle
+        self.assertEqual((out[1]["limit_price"], out[1]["filled_qty"], out[1]["instrument"], out[1]["submitted_at"]),
+                         (None, 4.0, "stock", "2026-09-01T16:05:00Z"))
+        self.assertEqual(len(out), 2)
+
+    async def test_a_failed_lookup_is_none_not_an_empty_list(self):
+        def boom(arguments):
+            raise RuntimeError("MCP down")
+
+        self.assertIsNone(await snapshot.build_open_orders(FakeMCPClient({"get_orders": boom})))
+        self.assertIsNone(await snapshot.build_open_orders(FakeMCPClient({"get_orders": {"data": "Error calling tool"}})))
+
+
 class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
     def _client(self, positions=STOCK_POSITION_RESPONSE):
         return FakeMCPClient(
@@ -532,6 +575,7 @@ class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
                 "get_all_positions": positions,
                 "get_stock_latest_quote": STOCK_QUOTE_RESPONSE,
                 "get_option_chain": OPTION_CHAIN_RESPONSE,
+                "get_orders": NO_OPEN_ORDERS_RESPONSE,
             }
         )
 
@@ -555,6 +599,27 @@ class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
             self._client(positions=EMPTY_POSITIONS_RESPONSE), _research_config(), now=now
         )
         json.dumps(snap)  # must not raise
+
+    async def test_open_orders_ride_on_the_account(self):
+        """#171: 'checked, none' is [] and 'could not check' is None - the
+        prompt and the funnel treat them differently."""
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)
+        client = self._client()
+        client.responses["get_orders"] = OPEN_ORDERS_RESPONSE
+        snap = await snapshot.build_snapshot(client, _research_config(), now=now)
+        self.assertEqual([o["symbol"] for o in snap["account"]["open_orders"]], ["QQQ260903P00709000", "AAPL"])
+        self.assertEqual(("get_orders", {"status": "open", "nested": True}), next(c for c in client.calls if c[0] == "get_orders"))
+
+        snap = await snapshot.build_snapshot(self._client(), _research_config(), now=now)
+        self.assertEqual(snap["account"]["open_orders"], [])
+
+        def fail(arguments):
+            raise RuntimeError("MCP down")
+
+        client = self._client()
+        client.responses["get_orders"] = fail
+        snap = await snapshot.build_snapshot(client, _research_config(), now=now)
+        self.assertIsNone(snap["account"]["open_orders"])
 
     async def test_empty_account_has_empty_positions_list_not_a_crash(self):
         now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)

@@ -522,6 +522,8 @@ with the reasoning each carries in `config.yaml`:
 | Entries | 09:45–15:15 ET | skips the opening auction's noise; stops opening new risk near the close |
 | Sells | until 15:45 ET | exits stay legal after entries stop |
 | Daily loss | 2% of start-of-day equity | breaching it flattens and halts for the day |
+| Resting orders | counted | a buy still working at the broker counts as held: a second buy for the same symbol is refused, and its symbol counts toward the position cap — the caps bound *committed* exposure, not just what has filled (#171) |
+| Stale entries | cancelled | any of the bot's own buys still open at the top of a cycle was sent by an earlier cycle; it is cancelled (journaled as `order_canceled`) before the model or the funnel look at the account. Sells are never cancelled this way |
 
 **These are the hard caps, not the tactics.** The prompt asks for 2–14 DTE (see
 above); the *code* permits 2–45. The narrower band is a preference the model is
