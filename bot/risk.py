@@ -5,6 +5,7 @@ check_order() never negotiates a proposal into compliance — a proposal that
 violates a limit is rejected outright, with a reason, never clamped.
 """
 
+import logging
 from datetime import date, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -14,6 +15,7 @@ from bot.models import VALID_INSTRUMENTS, VALID_SIDES, AccountState, Proposal
 from bot.occ import parse_occ_symbol
 
 EASTERN = ZoneInfo("America/New_York")
+logger = logging.getLogger(__name__)
 
 LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
 
@@ -101,6 +103,19 @@ class RiskManager:
         self.daily_loss_cutoff_pct = config["daily_loss_cutoff_pct"]
         self.min_days_to_expiration = config["min_days_to_expiration"]
         self.max_days_to_expiration = config["max_days_to_expiration"]
+        # Drift guard (#166): the floor gates entries, eod_close_dte is what
+        # the 14:50 backstop sells. If the floor is not above it, the funnel
+        # admits contracts the backstop is guaranteed to close the same
+        # afternoon - a warning rather than a hard fail only because
+        # eod_close_dte is a runtime knob and a bad override must not stop
+        # the account; the journal and the log both say so.
+        eod_close_dte = int(config.get("eod_close_dte", 1))
+        if int(self.min_days_to_expiration) <= eod_close_dte:
+            logger.warning(
+                "min_days_to_expiration=%s does not exceed eod_close_dte=%s: the funnel permits "
+                "entries the end-of-day backstop will close the same day",
+                self.min_days_to_expiration, eod_close_dte,
+            )
         self.trade_start = _parse_time(config["trade_start"])
         self.trade_end = _parse_time(config["trade_end"])
         self.last_entry = _parse_time(config["last_entry"])
@@ -203,21 +218,32 @@ class RiskManager:
             except ValueError as exc:
                 return False, str(exc)
             dte = (occ.expiration - now.date()).days
-            if not (self.min_days_to_expiration <= dte <= self.max_days_to_expiration):
-                return False, (
-                    f"{dte} days to expiration outside "
-                    f"[{self.min_days_to_expiration}, {self.max_days_to_expiration}]"
-                )
+            if dte < 0:
+                return False, f"expired {-dte} day(s) ago"
 
         held = account.positions.get(p.symbol)
         held_qty = held.qty if held else 0
 
         if p.side == "sell":
+            # No expiration window on a sell: a sell only ever closes something
+            # held, and a position must stay closable all the way to expiry -
+            # by the model, and by exits.py's stop / take-profit / expiry-day
+            # rules, which come through this same funnel. Until #166 the window
+            # ran before this branch, so a held contract on its last day could
+            # not be sold here at all ("0 days to expiration outside [1, 45]").
             if p.qty > held_qty:
                 return False, f"cannot sell {p.qty}, only {held_qty} held"
             return True, "ok"
 
         # buy
+        if p.instrument == "option" and not (self.min_days_to_expiration <= dte <= self.max_days_to_expiration):
+            # Entries only. The floor exists so the funnel refuses what the
+            # end-of-day backstop (eod_close_dte) would sell the same
+            # afternoon; the ceiling keeps multi-month decay out.
+            return False, (
+                f"{dte} days to expiration outside "
+                f"[{self.min_days_to_expiration}, {self.max_days_to_expiration}]"
+            )
         if not self.entries_allowed(now):
             return False, "entries not allowed (outside window or past last_entry)"
 

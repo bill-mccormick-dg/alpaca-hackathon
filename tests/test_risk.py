@@ -134,6 +134,70 @@ class OptionsExpirationTest(RiskManagerTestBase):
         self.assertFalse(ok)
 
 
+class ExpirationWindowGatesEntriesOnlyTest(RiskManagerTestBase):
+    """#166. The window used to run before the sell branch, so it applied to
+    every option order. Two consequences: a held contract could not be sold
+    on its last day ('0 days to expiration outside [1, 45]' - and exits.py's
+    expiry-day rule comes through this same funnel), and raising the floor
+    to keep 1-DTE entries out would have locked in every 1-DTE holding."""
+
+    def setUp(self):
+        super().setUp()
+        self.risk = RiskManager(make_config(min_days_to_expiration=2), logs_dir=Path(self.tmpdir.name))
+        self.account = AccountState(
+            equity=100000, start_of_day_equity=100000, cash=100000,
+            positions={
+                "AAPL260115P00200000": Position(symbol="AAPL260115P00200000", instrument="option", qty=3, market_value=600, underlying="AAPL"),
+                "AAPL260116P00200000": Position(symbol="AAPL260116P00200000", instrument="option", qty=3, market_value=600, underlying="AAPL"),
+                "AAPL260110P00200000": Position(symbol="AAPL260110P00200000", instrument="option", qty=3, market_value=600, underlying="AAPL"),
+            },
+        )
+
+    def _sell(self, symbol):
+        return Proposal(instrument="option", symbol=symbol, side="sell", qty=3, underlying="AAPL")
+
+    def test_a_buy_below_the_floor_is_refused(self):
+        p = Proposal(instrument="option", symbol="AAPL260116C00200000", side="buy", qty=1, underlying="AAPL")  # 1 DTE
+        ok, reason = self.risk.check_order(p, self.account, 2.0, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "1 days to expiration outside [2, 45]")
+
+    def test_a_held_contract_can_be_sold_on_its_last_day(self):
+        ok, reason = self.risk.check_order(self._sell("AAPL260115P00200000"), self.account, 2.0, self.mid_session)  # 0 DTE
+        self.assertTrue(ok, reason)
+
+    def test_a_held_contract_can_be_sold_below_the_entry_floor(self):
+        ok, reason = self.risk.check_order(self._sell("AAPL260116P00200000"), self.account, 2.0, self.mid_session)  # 1 DTE
+        self.assertTrue(ok, reason)
+
+    def test_an_expired_contract_cannot_be_sold(self):
+        """Not a window question - nothing fills after expiry."""
+        ok, reason = self.risk.check_order(self._sell("AAPL260110P00200000"), self.account, 2.0, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "expired 5 day(s) ago")
+
+    def test_stock_sells_are_untouched_by_the_option_window(self):
+        account = AccountState(equity=1, start_of_day_equity=1, cash=1,
+                               positions={"AAPL": Position(symbol="AAPL", instrument="stock", qty=5, market_value=500)})
+        ok, reason = self.risk.check_order(Proposal(instrument="stock", symbol="AAPL", side="sell", qty=5), account, 100, self.mid_session)
+        self.assertTrue(ok, reason)
+
+
+class FloorMustExceedBackstopTest(unittest.TestCase):
+    """The floor and eod_close_dte are two config keys that only agree by
+    hand. A warning, not a refusal: eod_close_dte is a runtime knob and a bad
+    override must not stop the account."""
+
+    def test_warns_when_the_floor_does_not_exceed_eod_close_dte(self):
+        with tempfile.TemporaryDirectory() as tmp, self.assertLogs("bot.risk", level="WARNING") as logs:
+            RiskManager(make_config(min_days_to_expiration=1, eod_close_dte=1), logs_dir=Path(tmp))
+        self.assertIn("min_days_to_expiration=1 does not exceed eod_close_dte=1", logs.output[0])
+
+    def test_silent_when_the_floor_is_above_it(self):
+        with tempfile.TemporaryDirectory() as tmp, self.assertNoLogs("bot.risk", level="WARNING"):
+            RiskManager(make_config(min_days_to_expiration=2, eod_close_dte=1), logs_dir=Path(tmp))
+
+
 class PositionCapTest(RiskManagerTestBase):
     def test_rejects_buy_exceeding_max_position_usd(self):
         p = Proposal(instrument="stock", symbol="AAPL", side="buy", qty=100)

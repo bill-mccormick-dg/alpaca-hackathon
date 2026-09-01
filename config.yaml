@@ -28,10 +28,17 @@ max_contracts_per_order: 10
 # and halt for the day (flatten logic: a later step).
 daily_loss_cutoff_pct: 2.0
 
-# Options expiration window — reject proposals for contracts outside this
-# range. Guards against 0-DTE gamma risk on one side, multi-month decay drag
-# on the other.
-min_days_to_expiration: 1
+# Options expiration window — entries (buys) for contracts outside this range
+# are refused; sells are always legal down to expiry, so a position can be
+# closed on its last day. Guards against 0-DTE gamma risk on one side,
+# multi-month decay drag on the other.
+#
+# The floor must exceed eod_close_dte (#166): at 1 the funnel admitted 1-DTE
+# entries the 14:50 CT backstop was guaranteed to sell the same afternoon -
+# the spread paid twice for a thesis given no time. Day 2's 0-2 DTE-at-entry
+# bucket lost $300 over 2 trades. Only the prompt argued against it, and a
+# guardrail that depends on the model's goodwill is not one.
+min_days_to_expiration: 2
 max_days_to_expiration: 45
 
 # Option chain research is bounded to strikes within this fraction of the
