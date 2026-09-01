@@ -8,9 +8,9 @@ change tomorrow.
      rejecting the same idea all day is a prompt/config bug), errors,
      models/tokens/latency/cost, distinct configs seen
   4. every model decision of the day, for skimming
-  5. an ADVISORY read of the day + ONE recommended change, written by the
-     same model the bot uses (plain prose, no JSON contract). A human edits
-     config; this never does.
+  5. an ADVISORY read of the day + ONE recommended change, written by a
+     model that did NOT trade the day (bot/config.py::resolve_review_model;
+     plain prose, no JSON contract). A human edits config; this never does.
 
 Writes logs/eod/<date>-<account>.md and prints it. Read-only against the
 account - safe on the official account any time.
@@ -27,7 +27,7 @@ import sys
 from datetime import datetime
 
 from bot import journal, mqtt, overrides, prior_scores, review
-from bot.config import load_config
+from bot.config import load_config, resolve_review_model
 from bot.credentials import load_credentials, validate_account
 from bot.featherless import DEFAULT_MODEL, FeatherlessClient
 from bot.report import eod_payload
@@ -37,23 +37,24 @@ from trade_report import fetch_orders, fills_from_orders, journaled_sells
 
 EQUITY_LOG = LOGS_DIR / "equity.jsonl"
 
-REVIEW_PROMPT = """You are reviewing one trading day of an autonomous PAPER-trading options agent \
-that you yourself drive (the decisions below were yours). Judging is on total account equity at \
-the end of the week; the strategy thesis is: {thesis}
+REVIEW_PROMPT = """You are the independent reviewer of one trading day of an autonomous PAPER-trading \
+options agent. The decisions below were made by a different model, {trading_model}; you did not \
+trade this day, and your job is to challenge its reasoning, not to explain it. Judging is on total \
+account equity at the end of the week; the strategy thesis is: {thesis}
 
 Below is the day's digest as JSON: equity, completed round trips with how each ended \
-(stop-loss / take-profit / expiry rule / your own sell / end-of-day flatten), a decision audit \
-(holds vs proposals, rejections grouped by the guardrail rule that refused them, errors), the \
-configs in effect, and your raw output each cycle. Each rejection rule key is a short grouping \
-label; "rejection_examples" gives the verbatim detail behind each key - reason from the example, \
-not the label. An empty array "[]" is a deliberate HOLD - \
+(stop-loss / take-profit / expiry rule / the model's own sell / end-of-day flatten), a decision \
+audit (holds vs proposals, rejections grouped by the guardrail rule that refused them, errors), \
+the configs in effect, and the trading model's raw output each cycle. Each rejection rule key is \
+a short grouping label; "rejection_examples" gives the verbatim detail behind each key - reason \
+from the example, not the label. An empty array "[]" is a deliberate HOLD - \
 counted under "holds", never an error; "errors" are separate events (timeouts, malformed \
 output, broker failures) and are listed with their text. A "prior_scores" block, when \
 present, grades the prediction-market priors themselves (Brier score, lower is better; \
 the 0.5 coin flip scores 0.25) - use it to judge whether the priors deserved the weight \
-you gave them, and which crowd to trust when Kalshi and the chain disagree. Its "withheld" \
-rows shadow-grade priors the usability gate kept from you: they say whether the gate \
-discarded good information, not what you leaned on.
+the model gave them, and which crowd to trust when Kalshi and the chain disagree. Its \
+"withheld" rows shadow-grade priors the usability gate kept from the model: they say whether \
+the gate discarded good information, not what the model leaned on.
 
 Write plain text for the operator - no markdown headings, no JSON:
 1. 3-6 sentences on what actually happened and why, in plain language. Be specific: name the \
@@ -100,14 +101,30 @@ def append_equity_log(day: str, account: str, equity: dict) -> None:
     EQUITY_LOG.write_text("\n".join(lines) + "\n")
 
 
-async def model_recommendation(config: dict, creds: dict, digest: dict) -> str:
+def reviewer_model(config: dict) -> str:
+    """The model that writes the critique. resolve_review_model() picks one
+    that did not trade the day; only when it has nothing to pick (no
+    preference list, or every entry is the trading model) does the trading
+    model review itself - a same-model review beats no review.
+
+    This function is the whole fix for #177: resolve_review_model() had been
+    journaled on every config event and shown on the dashboard since #127,
+    but the review itself was still built on config["model"], so every
+    account graded its own homework while the docs said otherwise."""
+    return resolve_review_model(config) or config.get("model") or DEFAULT_MODEL
+
+
+async def model_recommendation(config: dict, creds: dict, digest: dict) -> tuple[str, str]:
+    """(critique text, model that wrote it)."""
+    model = reviewer_model(config)
     client = FeatherlessClient(
-        creds["FEATHERLESS_API_KEY"], model=config.get("model") or DEFAULT_MODEL,
+        creds["FEATHERLESS_API_KEY"], model=model,
         timeout=float(config.get("request_timeout_sec", 60)),
     )
     slim = {k: v for k, v in digest.items() if k not in ("trips",)}
     slim["trips"] = digest.get("trips", [])[:30]
     prompt = REVIEW_PROMPT.format(
+        trading_model=config.get("model") or DEFAULT_MODEL,
         thesis=str(config.get("strategy_notes") or "").strip().splitlines()[0] if config.get("strategy_notes") else "(none)",
         digest=json.dumps(slim, default=str),
     )
@@ -115,7 +132,7 @@ async def model_recommendation(config: dict, creds: dict, digest: dict) -> str:
     if isinstance(config.get("model_params"), dict):
         kwargs.update(config["model_params"])
     response = await client.chat([{"role": "user", "content": prompt}], **kwargs)
-    return (response["choices"][0]["message"].get("content") or "").strip()
+    return (response["choices"][0]["message"].get("content") or "").strip(), model
 
 
 async def run(args: argparse.Namespace) -> int:
@@ -149,9 +166,12 @@ async def run(args: argparse.Namespace) -> int:
             digest["prior_scores"] = {"error": f"{type(exc).__name__}: {exc}"}
 
     if not args.no_model and records:
+        # Recorded before the call, so a failed review still says which model
+        # was asked - "unavailable" from the wrong model is a different bug.
+        digest["review_model"] = reviewer_model(config)
         try:
             creds = load_credentials(args.account)
-            digest["recommendation"] = await model_recommendation(config, creds, digest)
+            digest["recommendation"], digest["review_model"] = await model_recommendation(config, creds, digest)
         except Exception as exc:  # noqa: BLE001 - advisory only
             digest["recommendation"] = f"(model review unavailable: {type(exc).__name__}: {exc})"
 
@@ -171,7 +191,8 @@ async def run(args: argparse.Namespace) -> int:
         print(f"eod publish skipped: {type(exc).__name__}: {exc}", file=sys.stderr)
     print(md)
     print(f"(written to {out})")
-    journal.log("eod_review", day=day, equity=digest["equity"], trades=trade_summary.get("trades") if trade_summary else None)
+    journal.log("eod_review", day=day, equity=digest["equity"], trades=trade_summary.get("trades") if trade_summary else None,
+                review_model=digest.get("review_model"))
     return 0
 
 

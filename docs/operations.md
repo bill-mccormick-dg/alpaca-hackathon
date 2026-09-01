@@ -208,7 +208,7 @@ journaled it did not happen.
 | `override_set` / `override_cleared` | a runtime knob changed |
 | `error` | anything else, with where and the detail |
 | `predictions` | the Kalshi prior the model was handed that cycle — the numbers **and** whether they were withheld |
-| `eod_review` | the end-of-day digest ran |
+| `eod_review` | the end-of-day digest ran, and `review_model` says which model wrote the critique — check it is not the account's own `model` (#177) |
 
 `logs/` is git-ignored and excluded from the deploy rsync, so state on CT 108
 survives redeploys.
