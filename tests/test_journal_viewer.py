@@ -5,6 +5,9 @@ directly; the HTTP layer is stdlib and gets one socket-level smoke test.
 """
 
 import json
+import re
+import shutil
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -183,6 +186,27 @@ class ReasonsAreNotTruncatedTest(unittest.TestCase):
     def test_the_page_still_caps_rows_rather_than_characters(self):
         self.assertIn("MAX_ROWS", journal_viewer.PAGE)
         self.assertIn("white-space:pre-wrap", journal_viewer.PAGE)
+
+
+class PageJavaScriptParsesTest(unittest.TestCase):
+    """The renderer is JavaScript inside a Python string, so Python's own
+    syntax check never sees it and a stray brace ships a blank page to
+    everyone - including judges - with every server-side test still green.
+    Skipped when node is unavailable; CI's ubuntu-latest has it."""
+
+    def test_the_pages_script_is_syntactically_valid(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        match = re.search(r"<script>(.*?)</script>", journal_viewer.PAGE, re.DOTALL)
+        self.assertIsNotNone(match, "the page should carry exactly one inline script")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "feed.js"
+            path.write_text(match.group(1))
+            result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True, check=False)
+
+        self.assertEqual(result.returncode, 0, f"page JavaScript does not parse:\n{result.stderr}")
 
 
 if __name__ == "__main__":
