@@ -164,6 +164,29 @@ class DigestTest(unittest.TestCase):
         md = review.render_markdown(d)
         self.assertIn("no final daily bar", md)
 
+    def test_citation_audit_rolls_up_and_renders(self):
+        """#172: a per-cycle field on decision becomes one digest line, with
+        the offending quotes; days before the field existed show nothing."""
+        records = RECORDS + [
+            rec("11:00:05", "decision", raw="[...]", count=1, model="m1", usage={}, latency_sec=1.0, finish_reason="stop",
+                citations={"checked": 2, "unsupported": [{"symbol": "QQQ260903P00708000", "quoted": "68.7%",
+                                                          "nearest": {"label": "1 - QQQ Kalshi P(above)", "value": 0.874}}]}),
+            rec("11:10:05", "decision", raw="[]", count=0, model="m1", usage={}, latency_sec=1.0, finish_reason="stop",
+                citations={"checked": 0, "unsupported": []}),
+            rec("11:20:05", "decision", raw="[]", count=0, model="m1", usage={}, latency_sec=1.0, finish_reason="stop",
+                citations={"skipped": "research tools ran"}),
+        ]
+        a = review.decision_audit(records)
+        self.assertEqual((a["citations_checked"], a["citations_unsupported"], a["citations_skipped_cycles"]), (2, 1, 1))
+        self.assertEqual(a["citation_examples"][0]["quoted"], "68.7%")
+        md = review.render_markdown(review.build_digest(DAY, "test", records, {"trades": 0}, []))
+        self.assertIn("**prior citations**: 2 checked, 1 unsupported, 1 cycle(s) skipped", md)
+        self.assertIn('11:00 QQQ260903P00708000 quoted "68.7%" - nearest real number: 1 - QQQ Kalshi P(above) 0.874', md)
+
+        a = review.decision_audit(RECORDS)
+        self.assertIsNone(a["citations_checked"])
+        self.assertNotIn("prior citations", review.render_markdown(review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])))
+
     def test_no_prior_scores_no_section(self):
         d = review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])
         self.assertNotIn("Prior scoring", review.render_markdown(d))

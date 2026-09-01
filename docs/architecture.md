@@ -94,6 +94,7 @@ A diagram claiming every write goes through the gate would be wrong.
 | `bot/flatten.py` + `bot/orders.py` | Flatten all / expiring-only, verified against the broker | cancel -> wait -> close -> poll until flat |
 | `bot/journal.py` | JSONL journal per account; `daily_summary()` | the single "something happened" chokepoint |
 | `bot/trades.py` | FIFO round-trip pairing from fills, x100 multiplier, exit classification, cuts | pure |
+| `bot/citations.py` | Checks the percentages in a proposal's reason against the prior it was shown; result journaled on `decision` | reporting only - the funnel does not grade prose (#172) |
 | `bot/review.py` | End-of-day digest facts + markdown | pure; the advisory read is asked of a model that did *not* trade the day |
 
 Entrypoints: `run_cycle.py`, `flatten.py`, `status.py`, `override.py`,
