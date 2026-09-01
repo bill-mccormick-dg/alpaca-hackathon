@@ -162,19 +162,30 @@ jobs:
         #
         # A blunt `systemctl restart` would kill a kill-switch flatten
         # mid-flight, leaving positions half-closed and no halt file
-        # written. So if a command is in flight we do NOT restart: the
-        # bridge's own source watcher exits once it goes idle, and systemd
-        # brings it back. Same fallback when the sudo rule is missing.
-        # Never fails the deploy - the sync succeeded and the trading path
-        # is already current.
+        # written. So if a halt command may still be IN FLIGHT we do not
+        # restart. That window is seconds long: the bridge writes the halt
+        # file and runs flatten.run() in-process, so a file written minutes
+        # ago belongs to a finished command.
+        #
+        # This used to test `ls logs/HALT*`, which was wrong in a way that
+        # got worse with time (#168): daily-loss halt files are date-stamped
+        # and never deleted, so one challenger breach on 2026-08-31 meant
+        # EVERY later deploy skipped the restart - permanently, and for all
+        # three accounts, since the glob is global while a halt is not. The
+        # judged account's K2.6 pin (#167) deployed with the dashboard still
+        # reporting the old model because of it.
+        #
+        # Same fallback when the sudo rule is missing. Never fails the
+        # deploy - the sync succeeded and the trading path is already
+        # current.
         run: |
           unit=alpaca-hackathon-mqtt-bridge
           if ! systemctl is-active --quiet "$unit" 2>/dev/null; then
             echo "::notice::$unit is not running here - nothing to reload"
             exit 0
           fi
-          if ls /opt/alpaca-hackathon/logs/HALT* >/dev/null 2>&1; then
-            echo "::warning::a halt is active - not restarting $unit from CI. Its source watcher will restart it once idle."
+          if find /opt/alpaca-hackathon/logs -maxdepth 1 -name 'HALT*' -newermt '-2 minutes' 2>/dev/null | grep -q .; then
+            echo "::warning::a halt command may be in flight (halt file written in the last 2 minutes) - not restarting $unit from CI. Re-run this deploy, or restart the unit by hand once the flatten has settled."
             exit 0
           fi
           if sudo -n /usr/bin/systemctl restart "$unit" 2>/dev/null; then
@@ -184,4 +195,4 @@ jobs:
               || echo "::warning::$unit did not come back after restart - check journalctl -u $unit"
             exit 0
           fi
-          echo "::warning::no sudo rule to restart $unit (apply homenetwork roles/alpaca-hackathon --tags runner-sudoers). Falling back to its own source watcher, which restarts it within ~25s."
+          echo "::warning::no sudo rule to restart $unit (apply homenetwork roles/alpaca-hackathon --tags runner-sudoers). Its source watcher only fires when the BRIDGE'S OWN source changes, so a config-only deploy (a model pin, a knob, strategy notes) will NOT be picked up - restart the unit by hand."
