@@ -62,9 +62,19 @@ days-to-expiration alone. Either way, do NOT spend effort auditing or reconcilin
 skip anything that looks broken and decide from what is plausible. Keep your reasoning brief \
 and answer decisively.
 
+POSITIONS YOU HOLD, when present below, is the authoritative list of what you own. A sell may \
+name only a symbol from that list, copied exactly: the option menu lists neighbouring strikes at \
+the same expiry right beside what you hold, and a sell that names one of those is not a sale of \
+your position - it is refused (or, when only the strike differs, rewritten to the held contract). \
+Each position carries the reason you gave when you opened it and the prediction-market prior at \
+that moment, next to the prior now. Judge whether a thesis has changed by comparing those two \
+priors and today's price action against the stated reason - not by re-deriving a view from \
+scratch every cycle. RESTING ORDERS are buys you already sent that have not filled: they count \
+against your caps, and sending the same idea again doubles the position when both fill.
+
 STRATEGY (from config.yaml - the thesis you are executing; the hard limits above still win):
 {strategy_notes}
-{learning}{predictions}{tools_note}SNAPSHOT:
+{learning}{predictions}{positions}{tools_note}SNAPSHOT:
 {snapshot}
 
 Respond with ONLY a JSON array (no markdown fence, no prose) of zero or more actions:
@@ -208,7 +218,8 @@ decision; then answer with the JSON array. Tools never place orders.
 
 
 def build_prompt(
-    snapshot: dict, config: dict, today: date | None = None, tools: bool = False, learning: str = ""
+    snapshot: dict, config: dict, today: date | None = None, tools: bool = False, learning: str = "",
+    positions_block: str = "",
 ) -> str:
     today = today or datetime.now(EASTERN).date()
     payload = {
@@ -220,6 +231,9 @@ def build_prompt(
         tools_note=tools_note,
         learning=learning or "",
         predictions=predictions.prompt_block(snapshot.get("predictions") or {}),
+        # bot/holdings.py - the held symbols with their entry thesis and the
+        # prior then vs now (#170, #173). Sits after the prior it refers to.
+        positions=positions_block or "",
         max_position_usd=float(config["max_position_usd"]),
         max_positions=int(config["max_positions"]),
         max_contracts_per_order=int(config["max_contracts_per_order"]),
@@ -382,7 +396,7 @@ async def _chat_with_research(client: FeatherlessClient, mcp, config: dict, prom
 
 async def decide(
     snapshot: dict, config: dict, client: FeatherlessClient, today: date | None = None, mcp=None,
-    learning: str = "",
+    learning: str = "", positions_block: str = "",
 ) -> Decision:
     """One decision. With research tools enabled (config + an MCP client),
     the model may look things up first (bounded); otherwise a single call.
@@ -391,7 +405,7 @@ async def decide(
     carries usage, latency and the tool calls made so the journal can
     attribute cost, speed and evidence to the model/config that produced it."""
     use_tools = _research_enabled(config, mcp)
-    prompt = build_prompt(snapshot, config, today, tools=use_tools, learning=learning)
+    prompt = build_prompt(snapshot, config, today, tools=use_tools, learning=learning, positions_block=positions_block)
     started = time.monotonic()
     tool_calls: list[dict] = []
     if use_tools:

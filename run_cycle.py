@@ -17,7 +17,7 @@ import asyncio
 import sys
 from datetime import date, datetime, timedelta, timezone
 
-from bot import execute, journal, learning, mqtt, overrides, predictions
+from bot import execute, holdings, journal, learning, mqtt, overrides, predictions
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import config_provenance, load_config
 from bot.credentials import load_credentials, validate_account
@@ -83,6 +83,25 @@ async def learning_block(client: AlpacaMCPClient, config: dict, snap: dict, now:
     except Exception as exc:  # noqa: BLE001 - advisory context only
         journal.log("error", where="learning", detail=describe_error(exc))
         return ""
+
+
+def holdings_block(snap: dict, prior: dict | None) -> str:
+    """POSITIONS YOU HOLD / RESTING ORDERS for the prompt (bot/holdings.py;
+    #170, #173): the held symbols with the reason and prior they were opened
+    on, and the prior now. Always rendered - a flat account gets the one-line
+    "none" so a sell is unmistakably a naked short. The journal walk is what
+    can fail; then the positions still print, just without their history."""
+    account = snap.get("account") or {}
+    positions = account.get("positions") or []
+    open_orders = account.get("open_orders", [])
+    context: dict = {}
+    if positions:
+        try:
+            history = journal.read_events("all", events=("order_submitted", "predictions", "flatten", "daily_loss_flatten"))
+            context = holdings.entry_context(positions, history)
+        except Exception as exc:  # noqa: BLE001 - context is advisory; the list of holdings is not
+            journal.log("error", where="holdings", detail=describe_error(exc))
+    return holdings.render_positions_block(positions, open_orders, context, prior)
 
 
 def account_from_snapshot(snap: dict) -> AccountState:
@@ -274,6 +293,7 @@ async def run(args: argparse.Namespace) -> int:
             return 0
 
         outcomes = await learning_block(client, config, snap, now)
+        positions_block = holdings_block(snap, prior)
 
         # Measured 21% of cycles losing their decision to a transient model
         # failure (issue #85). Without a retry the slot is simply forfeited -
@@ -297,7 +317,8 @@ async def run(args: argparse.Namespace) -> int:
 
         try:
             decision = await call_with_retry(
-                lambda: decide(snap, config, featherless, today=now.date(), mcp=client, learning=outcomes),
+                lambda: decide(snap, config, featherless, today=now.date(), mcp=client, learning=outcomes,
+                               positions_block=positions_block),
                 budget=budget,
                 on_retry=_on_retry,
             )
@@ -325,6 +346,7 @@ async def run(args: argparse.Namespace) -> int:
             reasoning=decision.reasoning or None,
             tool_calls=decision.tool_calls or None,
             learning_chars=len(outcomes) or None,
+            positions_block_chars=len(positions_block) or None,
         )
 
         if args.verbose:
@@ -352,10 +374,19 @@ async def run(args: argparse.Namespace) -> int:
                 entries_today[rec["symbol"]] = rec.get("ts")
 
         for p in proposals:
+            # #170: a sell naming a neighbouring strike of the one contract
+            # held at that expiry means the held one. Resolved before every
+            # guard so the min-hold check and the funnel judge the real
+            # position; the journal keeps what the model actually wrote.
+            as_written = p.symbol
+            p, resolution = holdings.resolve_sell(p, acct.positions)
+            resolved = {"resolved_from": as_written} if resolution else {}
+            if resolution:
+                print(f"RESOLVED {resolution}")
             block = early_exit_block(p, acct.positions.get(p.symbol), entries_today.get(p.symbol), config, now)
             if block:
                 journal.log("order_rejected", detail=block, side=p.side, qty=p.qty,
-                            symbol=p.symbol, instrument=p.instrument, price=None, reason=p.reason)
+                            symbol=p.symbol, instrument=p.instrument, price=None, reason=p.reason, **resolved)
                 print(f"REJECTED {p.side} {p.qty} {p.symbol}: {block}")
                 continue
             price = price_for_proposal(snap, p)
@@ -383,7 +414,7 @@ async def run(args: argparse.Namespace) -> int:
             label = f"{p.side} {p.qty} {p.symbol}"
             fields = {
                 "side": p.side, "qty": p.qty, "symbol": p.symbol, "instrument": p.instrument,
-                "price": price, "price_source": price_source, "reason": p.reason,
+                "price": price, "price_source": price_source, "reason": p.reason, **resolved,
             }
             if r.status == execute.ZERO_QTY:
                 continue

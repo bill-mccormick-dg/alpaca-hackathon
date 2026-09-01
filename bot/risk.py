@@ -232,7 +232,17 @@ class RiskManager:
             # ran before this branch, so a held contract on its last day could
             # not be sold here at all ("0 days to expiration outside [1, 45]").
             if p.qty > held_qty:
-                return False, f"cannot sell {p.qty}, only {held_qty} held"
+                detail = f"cannot sell {p.qty}, only {held_qty} held"
+                if not held and p.instrument == "option":
+                    # Name what IS held on that underlying (#170): the next
+                    # cycle's learning block replays today's rejections, so
+                    # the right symbol travels with the refusal.
+                    from bot.holdings import held_on_same_underlying
+
+                    same = held_on_same_underlying(p, account.positions)
+                    detail += f"; held on {p.whitelist_symbol}: {', '.join(same)}" if same else \
+                        f"; nothing held on {p.whitelist_symbol}"
+                return False, detail
             return True, "ok"
 
         # buy

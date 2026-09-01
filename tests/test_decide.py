@@ -292,6 +292,26 @@ class BuildPromptTest(unittest.TestCase):
         self.assertIn("SPY via KXINX", prompt)
         self.assertLess(prompt.index("PREDICTION MARKETS"), prompt.index("SNAPSHOT:"))
 
+    def test_positions_block_sits_after_the_prior_and_before_the_snapshot(self):
+        """bot/holdings.py's block refers to 'the prior now', so it follows the
+        PREDICTION MARKETS block; and like every prose block it precedes the
+        JSON so the model reads the rules before the data."""
+        block = "POSITIONS YOU HOLD (the ONLY symbols a sell may name - copy them exactly):\n- X x1 @ 1\n\n"
+        snap = _snapshot()
+        snap["predictions"] = {"SPY": {"series": "KXINX", "close_time": "2026-01-15T21:00:00Z",
+                                       "reference_close": 7400.0, "implied_median": 7425.0, "implied_move_pct": 0.34,
+                                       "p_above_reference": 0.6, "p_up_over_1pct": 0.2, "p_down_over_1pct": 0.1, "volume": 500}}
+        prompt = decide.build_prompt(snap, _config(), TODAY, positions_block=block)
+        self.assertLess(prompt.index("PREDICTION MARKETS"), prompt.index("POSITIONS YOU HOLD (the ONLY"))
+        self.assertLess(prompt.index("POSITIONS YOU HOLD (the ONLY"), prompt.index("SNAPSHOT:"))
+        self.assertNotIn("- X x1 @ 1", decide.build_prompt(snap, _config(), TODAY))
+
+    def test_prompt_explains_the_positions_block_and_resting_orders(self):
+        prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
+        self.assertIn("A sell may name only a symbol from that list, copied exactly", prompt)
+        self.assertIn("not by re-deriving a view from scratch", prompt)
+        self.assertIn("RESTING ORDERS are buys you already sent that have not filled", prompt)
+
     def test_requests_only_market_or_limit_orders(self):
         prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
         self.assertIn('"market"|"limit"', prompt)
