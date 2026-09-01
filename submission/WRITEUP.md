@@ -17,8 +17,10 @@ can name. It is bad at managing a position minute to minute, so it doesn't.
 ## AI logic
 
 Every 10 minutes in market hours the agent builds a snapshot through Alpaca's
-MCP server — account, positions, clock, and per underlying the ~12
-nearest-the-money contracts in a 2–45 DTE window, each with Alpaca's own IV and
+MCP server — account, positions, open orders, clock, and per underlying a
+12-contract menu from a chain fetched across the whole 2–45 DTE window: the
+at-the-money and a slightly-out-of-the-money strike per side across three
+expiries in the tactics' band, each with Alpaca's own IV and
 Greeks (Black-Scholes in `bot/greeks.py` fills in only the contracts Alpaca
 does not price, and marks them as derived). The model then
 runs a **bounded research loop**: up to six read-only tool calls (recent bars, a

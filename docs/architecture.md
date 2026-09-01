@@ -87,6 +87,7 @@ A diagram claiming every write goes through the gate would be wrong.
 | `bot/stale_orders.py` | Cancels the bot's own entry buys still resting from an earlier cycle, before the account is read for decisions | never a sell; each outcome journaled as `order_canceled` (#171) |
 | `bot/holdings.py` | The positions block: held symbols as the only legal sell targets, each with its journaled entry reason and the prior then vs now; resolves a neighbouring-strike sell onto the held contract | always rendered, even when flat (#170, #173) |
 | `bot/research.py` | Four read-only tools the model may call (bars, stock snapshot, option contracts, news) | maps to MCP with fixed safe args; nothing that orders |
+| `bot/menu.py` | Which contracts make the prompt: ATM + slightly-OTM per side across three expiries in the tactics' band, by Alpaca's delta | constants, not knobs; pure and deterministic (#159) |
 | `bot/decide.py` | Prompt assembly, bounded tool loop, lenient proposal parsing, `Decision` (usage, latency, reasoning, tool calls) | thinking models need `model_params` |
 | `bot/exits.py` | expiry / stop_loss / take_profit rules, checked before the model | code decides when a trade is done |
 | `bot/risk.py` | `RiskManager.check_order()` - the one gate; halt files; trading window | never clamps, only rejects with a reason |

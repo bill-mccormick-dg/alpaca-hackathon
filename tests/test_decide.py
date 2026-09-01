@@ -48,9 +48,10 @@ class SummarizeOptionsTest(unittest.TestCase):
     def test_summarizes_only_the_contracts_that_make_the_menu(self):
         """#158: the fetched chain can be thousands of contracts. The
         Black-Scholes solve inside _summarize_contract must run on the N
-        chosen, not the pool - and the choice must still be nearest-the-money,
-        shortest-DTE first, with expired and unparseable symbols dropped
-        before the slice so the menu is never left short."""
+        chosen, not the pool - with expired and unparseable symbols dropped
+        before the choice so the menu is never left short. The choice itself
+        is bot/menu.py's (#159): here one expiry bucket, so the ATM call, the
+        ATM put and the out-of-the-money call, in expiry/strike order."""
         snap = _snapshot(
             AAPL={
                 "underlying_price": 200.0,
@@ -68,7 +69,7 @@ class SummarizeOptionsTest(unittest.TestCase):
             result = decide._summarize_options(snap, _config(research_contracts_per_underlying=3), TODAY)
 
         chosen = [c["symbol"] for c in result["AAPL"]["contracts"]]
-        self.assertEqual(chosen, ["AAPL260204C00200000", "AAPL260227P00200000", "AAPL260204P00201000"])
+        self.assertEqual(chosen, ["AAPL260204C00200000", "AAPL260204P00201000", "AAPL260204C00210000"])
         self.assertEqual(summarize.call_count, 3)
 
     def test_derives_strike_type_dte_from_occ_symbol(self):
@@ -199,9 +200,9 @@ class SummarizeOptionsTest(unittest.TestCase):
 
         kept = result["AAPL"]["contracts"]
         self.assertEqual(len(kept), 2)
-        # 200 is exactly at the money; 190 ties 210 on distance but sorts
-        # first (stable sort preserves the original dict's insertion order).
-        self.assertEqual({c["strike"] for c in kept}, {200.0, 190.0})
+        # 200 is at the money; the second slot is the slightly-OTM call the
+        # tactics ask for (#159), not the in-the-money 190.
+        self.assertEqual({c["strike"] for c in kept}, {200.0, 210.0})
 
     def test_underlying_with_no_price_gets_empty_contracts(self):
         snap = _snapshot(AAPL={"underlying_price": None, "contracts": {}})
