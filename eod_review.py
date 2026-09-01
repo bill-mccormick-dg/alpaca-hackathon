@@ -44,12 +44,16 @@ the end of the week; the strategy thesis is: {thesis}
 Below is the day's digest as JSON: equity, completed round trips with how each ended \
 (stop-loss / take-profit / expiry rule / your own sell / end-of-day flatten), a decision audit \
 (holds vs proposals, rejections grouped by the guardrail rule that refused them, errors), the \
-configs in effect, and your raw output each cycle. An empty array "[]" is a deliberate HOLD - \
+configs in effect, and your raw output each cycle. Each rejection rule key is a short grouping \
+label; "rejection_examples" gives the verbatim detail behind each key - reason from the example, \
+not the label. An empty array "[]" is a deliberate HOLD - \
 counted under "holds", never an error; "errors" are separate events (timeouts, malformed \
 output, broker failures) and are listed with their text. A "prior_scores" block, when \
 present, grades the prediction-market priors themselves (Brier score, lower is better; \
 the 0.5 coin flip scores 0.25) - use it to judge whether the priors deserved the weight \
-you gave them, and which crowd to trust when Kalshi and the chain disagree.
+you gave them, and which crowd to trust when Kalshi and the chain disagree. Its "withheld" \
+rows shadow-grade priors the usability gate kept from you: they say whether the gate \
+discarded good information, not what you leaned on.
 
 Write plain text for the operator - no markdown headings, no JSON:
 1. 3-6 sentences on what actually happened and why, in plain language. Be specific: name the \

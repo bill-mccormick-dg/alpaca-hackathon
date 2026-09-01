@@ -20,8 +20,11 @@ Simplifications, on purpose:
   resolved from the tracked ETF's daily bar (iex feed) — direction almost
   always agrees; divergence (dividends, settlement-print quirks) is noise
   at this sample size.
-- Suppressed priors are not scored: the question is whether what the
-  model LEANED ON was predictive, not whether the withheld ones were.
+- Suppressed priors are scored separately and kept OUT of the headline
+  means (#155): the means answer whether what the model LEANED ON was
+  predictive; the "withheld" rows answer whether the usability gate threw
+  away good information - the calibration data #111 needs, which the
+  competition week is the only time to collect.
 
 Read-only against the market, after hours, out of band from trading —
 same safety class as the rest of eod_review.
@@ -53,6 +56,27 @@ def last_forecasts(records: list[dict]) -> dict[str, dict[str, float]]:
             cp = chain.get("p_above_reference")
             if cp is not None and not chain.get("suppressed"):
                 out.setdefault(underlying, {})["chain"] = float(cp)
+    return out
+
+
+def last_withheld(records: list[dict]) -> dict[str, dict[str, dict]]:
+    """{underlying: {source: {"p": ..., "reason": ...}}} - the mirror image
+    of last_forecasts: each source's last SUPPRESSED forecast of the day and
+    the gate that withheld it."""
+    out: dict[str, dict[str, dict]] = {}
+    for r in records:
+        if r.get("event") != "predictions":
+            continue
+        for underlying, s in r.items():
+            if underlying in ("ts", "event", "account") or not isinstance(s, dict):
+                continue
+            p = s.get("p_above_reference")
+            if p is not None and s.get("suppressed"):
+                out.setdefault(underlying, {})["kalshi"] = {"p": float(p), "reason": str(s["suppressed"])}
+            chain = s.get("chain") or {}
+            cp = chain.get("p_above_reference")
+            if cp is not None and chain.get("suppressed"):
+                out.setdefault(underlying, {})["chain"] = {"p": float(cp), "reason": str(chain["suppressed"])}
     return out
 
 
@@ -90,6 +114,15 @@ def score(forecasts: dict[str, dict[str, float]], outcomes: dict[str, int]) -> l
     return rows
 
 
+def score_withheld(withheld: dict[str, dict[str, dict]], outcomes: dict[str, int]) -> list[dict]:
+    """score() for the withheld forecasts, each row carrying the gate's
+    reason as `suppressed` so the log can be split by why."""
+    rows = score({u: {s: v["p"] for s, v in by.items()} for u, by in withheld.items()}, outcomes)
+    for row in rows:
+        row["suppressed"] = withheld[row["underlying"]][row["source"]]["reason"]
+    return rows
+
+
 def _day_means(rows: list[dict]) -> dict[str, float]:
     by_source: dict[str, list[float]] = {}
     for r in rows:
@@ -97,11 +130,14 @@ def _day_means(rows: list[dict]) -> dict[str, float]:
     return {s: round(sum(v) / len(v), 4) for s, v in sorted(by_source.items())}
 
 
-def append_scores_log(day: str, account: str, rows: list[dict]) -> None:
+def append_scores_log(day: str, account: str, rows: list[dict], withheld_rows: list[dict] | None = None) -> None:
     """One line per (date, account), rewritten if the day is re-run —
-    the same pattern as eod_review's equity.jsonl."""
+    the same pattern as eod_review's equity.jsonl. `day_mean` covers the
+    shown forecasts only; withheld ones sit beside them, never inside."""
+    withheld_rows = withheld_rows or []
     record = {"date": day, "account": account,
-              "forecasts": rows, "day_mean": _day_means(rows)}
+              "forecasts": rows, "day_mean": _day_means(rows),
+              "withheld": withheld_rows, "withheld_day_mean": _day_means(withheld_rows)}
     PRIOR_SCORES_LOG.parent.mkdir(exist_ok=True)
     lines = []
     if PRIOR_SCORES_LOG.exists():
@@ -158,17 +194,23 @@ async def score_day(day: str, account: str, records: list[dict]) -> dict | None:
     journalled no usable prior; {"skipped": reason} when outcomes cannot
     be resolved yet. Appends to the scores log as a side effect."""
     forecasts = last_forecasts(records)
-    if not forecasts:
+    withheld = last_withheld(records)
+    if not forecasts and not withheld:
         return None
-    bars = await fetch_daily_bars(account, sorted(forecasts))
-    outcomes = {u: resolve_outcome(bars[u], day) for u in forecasts}
-    rows = score(forecasts, {u: o for u, o in outcomes.items() if o is not None})
-    if not rows:
+    underlyings = sorted(set(forecasts) | set(withheld))
+    bars = await fetch_daily_bars(account, underlyings)
+    outcomes = {u: resolve_outcome(bars[u], day) for u in underlyings}
+    resolved = {u: o for u, o in outcomes.items() if o is not None}
+    rows = score(forecasts, resolved)
+    withheld_rows = score_withheld(withheld, resolved)
+    if not rows and not withheld_rows:
         return {"skipped": f"no final daily bar for {day} yet - run after the close"}
-    append_scores_log(day, account, rows)
+    append_scores_log(day, account, rows, withheld_rows)
     return {
         "baseline": COIN_FLIP_BRIER,
         "today": _day_means(rows),
         "running": running_means(account),
         "forecasts": rows,
+        "withheld": withheld_rows,
+        "withheld_today": _day_means(withheld_rows),
     }

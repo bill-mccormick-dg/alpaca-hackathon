@@ -47,6 +47,28 @@ class LastForecastsTest(unittest.TestCase):
         self.assertEqual(prior_scores.last_forecasts(records), {})
 
 
+class LastWithheldTest(unittest.TestCase):
+    """#155 / #111: the priors the gate suppressed, graded in the shadows."""
+
+    def test_captures_the_last_withheld_forecast_and_its_reason(self):
+        records = [
+            _prediction_record("2026-08-31T10:00:00", p=0.3, suppressed="thin: volume 53.9 < 250.0"),
+            _prediction_record("2026-08-31T11:00:00", p=0.35, suppressed="thin: volume 90.6 < 250.0"),
+        ]
+        self.assertEqual(prior_scores.last_withheld(records),
+                         {"QQQ": {"kalshi": {"p": 0.35, "reason": "thin: volume 90.6 < 250.0"}}})
+
+    def test_shown_forecasts_are_not_withheld(self):
+        records = [_prediction_record("2026-08-31T15:00:00", p=0.6)]
+        self.assertEqual(prior_scores.last_withheld(records), {})
+
+    def test_chain_withheld_separately_from_kalshi(self):
+        records = [_prediction_record("2026-08-31T15:00:00", p=0.6, chain_p=0.55, chain_suppressed="too flat")]
+        self.assertEqual(prior_scores.last_withheld(records),
+                         {"QQQ": {"chain": {"p": 0.55, "reason": "too flat"}}})
+        self.assertEqual(prior_scores.last_forecasts(records), {"QQQ": {"kalshi": 0.6}})
+
+
 class ResolveOutcomeTest(unittest.TestCase):
     def test_close_above_previous_close_is_one(self):
         self.assertEqual(prior_scores.resolve_outcome(BARS_UP, "2026-08-31"), 1)
@@ -122,6 +144,50 @@ class ScoreDayTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(block["baseline"], 0.25)
         self.assertEqual(block["today"], {"chain": 0.04, "kalshi": 0.16})
         self.assertEqual(block["running"]["kalshi"], {"mean": 0.16, "days": 1})
+        self.assertTrue(self.log.exists())
+
+    async def test_withheld_priors_are_shadow_graded_outside_the_means(self):
+        records = [
+            _prediction_record("2026-08-31T10:00:00", p=0.3, suppressed="thin: volume 90.6 < 250.0"),
+            _prediction_record("2026-08-31T15:00:00", p=0.6),  # shown later in the day
+            _prediction_record("2026-08-31T15:00:00", underlying="SPY", p=0.2, suppressed="too flat"),
+        ]
+
+        async def bars(account, underlyings):
+            self.assertEqual(underlyings, ["QQQ", "SPY"])
+            return {"QQQ": BARS_UP, "SPY": BARS_UP}
+
+        with patch.object(prior_scores, "PRIOR_SCORES_LOG", self.log), \
+             patch.object(prior_scores, "fetch_daily_bars", bars):
+            block = await prior_scores.score_day("2026-08-31", "test", records)
+
+        self.assertEqual(block["today"], {"kalshi": 0.16})  # the shown 0.6 only
+        self.assertEqual(block["running"], {"kalshi": {"mean": 0.16, "days": 1}})
+        self.assertEqual(
+            block["withheld"],
+            [{"underlying": "QQQ", "source": "kalshi", "p": 0.3, "outcome": 1, "brier": 0.49,
+              "suppressed": "thin: volume 90.6 < 250.0"},
+             {"underlying": "SPY", "source": "kalshi", "p": 0.2, "outcome": 1, "brier": 0.64,
+              "suppressed": "too flat"}],
+        )
+        self.assertEqual(block["withheld_today"], {"kalshi": 0.565})
+        logged = json.loads(self.log.read_text().splitlines()[-1])
+        self.assertEqual(logged["day_mean"], {"kalshi": 0.16})
+        self.assertEqual(len(logged["withheld"]), 2)
+        self.assertEqual(logged["withheld_day_mean"], {"kalshi": 0.565})
+
+    async def test_a_day_with_only_withheld_priors_is_still_graded(self):
+        records = [_prediction_record("2026-08-31T15:00:00", p=0.3, suppressed="thin: volume 90.6 < 250.0")]
+
+        async def bars(account, underlyings):
+            return {"QQQ": BARS_DOWN}
+
+        with patch.object(prior_scores, "PRIOR_SCORES_LOG", self.log), \
+             patch.object(prior_scores, "fetch_daily_bars", bars):
+            block = await prior_scores.score_day("2026-08-31", "test", records)
+
+        self.assertEqual(block["today"], {})
+        self.assertEqual(block["withheld_today"], {"kalshi": 0.09})
         self.assertTrue(self.log.exists())
 
     async def test_no_journalled_prior_is_none_and_no_log(self):
