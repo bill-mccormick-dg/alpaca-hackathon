@@ -31,8 +31,9 @@ glossary for the terms these docs use.
   whole opinion about a stock laid out on a grid, and almost everything this
   bot does starts by fetching a slice of it — the strikes within ±8% of the
   current price, in the tradeable expiration window — and showing the model
-  the 12 nearest the money. Read one row as: "the market will sell you the
-  right to buy SPY at 765 until Wednesday for about $2.40."
+  12 of them: at and slightly out of the money, call and put, across three
+  expiries. Read one row as: "the market will sell you the right to buy SPY
+  at 765 until Wednesday for about $2.40."
 - **ATM / OTM** — at-the-money (strike ≈ current price) / out-of-the-money
   (strike beyond it). OTM contracts cost less and need a bigger move.
 - **The Greeks** — the collective name for four sensitivities of an option's
@@ -275,11 +276,12 @@ unparseable"), so shares are held overnight by design. Only the
 | Daily-loss halt, kill switch, end-of-day handling | code | `run_cycle.py`, `flatten.py` |
 | The only order path | code | `bot/execute.py::place_proposal()` |
 
-The model is given: account state, per-underlying spot price, the ~12
-nearest-the-money contracts within the tradeable expiration window (the chain
-is fetched across the *whole* window — paginated, since one API page covers
-only 1–3 DTE on SPY/QQQ — so on $1-strike names those 12 are the at-the-money
-call and put across the nearest expiries rather than neighbouring strikes) with
+The model is given: account state, per-underlying spot price, a menu of ~12
+contracts per name (the chain is fetched across the *whole* window — paginated,
+since one API page covers only 1–3 DTE on SPY/QQQ — and `bot/menu.py` spends
+the 12 slots on three expiries across the tactics' 2–14 DTE band, and per
+expiry and side the at-the-money strike plus the out-of-the-money strike whose
+delta is nearest 0.40; see "What the model sees" below for why) with
 bid/ask/last and Greeks (Alpaca's own IV and delta/gamma/theta/vega/rho where
 the feed supplies them, which is most contracts; `bot/greeks.py` derives them
 from the contract's market price for the rest, tagged as such), the hard
@@ -562,9 +564,8 @@ enforced in `bot/risk.py`. Nothing about the platform caps the list.
 Worth separating from a number it is easy to confuse with:
 `research_contracts_per_underlying: 12` is **12 option contracts per name**, not
 an allowance of twelve symbols. The two are different axes, and together they
-set the size of the menu: 5 underlyings × 12 nearest-the-money contracts = **60
-contracts in every prompt**, each with strike, DTE, bid/ask/last and derived
-Greeks.
+set the size of the menu: 5 underlyings × 12 contracts = **60 contracts in
+every prompt**, each with strike, DTE, bid/ask/last and Greeks.
 
 Three reasons the list stays short:
 
@@ -589,10 +590,11 @@ caveats: `config.yaml` is trading code under the [deploy
 freeze](operations.md#deploy-safety-during-the-scoring-week), so it cannot land
 Mon–Fri 08:20–15:15 CT; and know what raising
 `research_contracts_per_underlying` actually surfaces: the pool is the whole
-strike band across the whole expiration window, sorted nearest-the-money first,
-so on SPY/QQQ ($1 strikes) a higher count is how neighbouring strikes appear,
-while on NVDA/AAPL/MSFT ($2.50–$5 strikes) it mostly adds more expiries of the
-same at-the-money strike.
+strike band across the whole expiration window, and the first twelve slots go
+to the at-the-money and slightly-out-of-the-money strike per side across three
+expiries (`bot/menu.py`, #159); slots beyond that fill nearest-the-money first,
+so a higher count mostly adds neighbouring strikes on SPY/QQQ and more expiries
+of the same strikes on NVDA/AAPL/MSFT.
 
 One mechanical detail, in case you ever debug a rejection: an option proposal is
 checked against its **underlying**, not its OCC symbol. A contract on a
@@ -830,11 +832,28 @@ worth having.
 `option_strike_band_pct`.** These decide the size and shape of the menu.
 Widening the strike band reaches further out of the money (and fetches more
 pages on the index names); raising the contract count shows more of what was
-fetched — the whole band across the whole 2–45 DTE window is the pool, and the
-12 nearest the money are taken from it, which on $1-strike names means the ATM
-call and put across the nearest expiries. Both make the prompt longer and the
-cycle slower. Reach for these if the agent complains it cannot find a suitable
-contract, not to give it more to read.
+fetched — the whole band across the whole 2–45 DTE window is the pool. Both
+make the prompt longer and the cycle slower. Reach for these if the agent
+complains it cannot find a suitable contract, not to give it more to read.
+
+*Which* 12 is `bot/menu.py`'s call, and it changed on 2026-09-01 (#159). The
+menu used to be the 12 nearest the money by |strike − spot|, and on names with
+coarse strikes that collapsed to one strike: NVDA's 12 on day 1 were all K=220
+— call and put across six expiries — MSFT's all 510, AAPL 10 of 12 at 317.5.
+The model could pick side and expiry from the menu and nothing else; "half a
+delta out" was not on offer, and its NVDA flip-flopping (call, put, call, all
+at 220) was exactly the degenerate choice space it had been given. SPY and QQQ
+escaped only by the accident of $1 strikes. The tactics ask for "at or slightly
+out of the money (|delta| roughly 0.35–0.55)" with 2–14 DTE, so the menu now
+spends its slots on that: three expiry buckets, the nearest to 2, 7 and 14 DTE;
+per expiry and side the at-the-money strike, then the out-of-the-money strike
+whose Alpaca delta is nearest 0.40 (the next strike out when a contract has no
+delta). ATM picks for every bucket come before any OTM pick, so a small count
+still spans expiries; leftover slots fall back to nearest-the-money; the result
+is ordered by expiry then strike so the prompt reads as a grid. On NVDA that is
+three strikes × three expiries × two sides instead of one strike × six. The
+targets and the delta are constants, not knobs: the slot count is already a
+knob, and the selection rule is code the config hash does not need to track.
 
 **What the model knows about its own positions.** Every cycle is a fresh
 process, and until #173 the model saw that a position existed and how it was
