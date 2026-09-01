@@ -286,13 +286,16 @@ function line(r){
   else if (e === 'tool_call') body = `<span class="dim">  · ${esc(r.tool)} ${esc(JSON.stringify(r.args||{}).slice(0,70))} → ${r.result_chars} chars</span>`;
   else if (e === 'decision') { body = `✱ MODEL  ${r.count} proposal(s)  <span class="dim">${esc(r.model)}  ${(r.usage||{}).total_tokens} tok  ${r.latency_sec}s</span>`;
     try { let acts = JSON.parse(r.raw); if (acts && !Array.isArray(acts)) acts = acts.actions || acts.proposals || [acts];
-      for (const p of acts||[]) body += `\n<span class="reason">${esc(p.side)} ${esc(p.qty)} ${esc(p.symbol)}${p.limit_price?' @ '+esc(p.limit_price):''} — ${esc((p.reason||'').slice(0,220))}</span>`; } catch(err){} }
-  else if (e === 'order_submitted') body = `✓ ORDER  ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} @ ${esc(r.price)}${r.exit?' (exit)':''}\n<span class="reason">${esc((r.reason||'').slice(0,220))}</span>`;
-  else if (e === 'order_rejected') body = `✗ BLOCKED ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} — ${esc(r.detail)}`;
+      for (const p of acts||[]) body += `\n<span class="reason">${esc(p.side)} ${esc(p.qty)} ${esc(p.symbol)}${p.limit_price?' @ '+esc(p.limit_price):''} — ${esc(p.reason||'')}</span>`; } catch(err){} }
+  else if (e === 'order_submitted') body = `✓ ORDER  ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} @ ${esc(r.price)}${r.exit?' (exit)':''}\n<span class="reason">${esc(r.reason||'')}</span>`;
+  else if (e === 'order_rejected') { body = `✗ BLOCKED ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} — ${esc(r.detail)}`;
+    // Verdict first, then the model's case: they are different facts and a
+    // rejection needs both (same reasoning as bot/report.py::_trade_line).
+    if (r.reason) body += `\n<span class="reason">${esc(r.reason)}</span>`; }
   else if (e === 'order_error') body = `! ORDER ERROR ${esc(r.symbol)} — ${esc(r.detail)}`;
   else if (e === 'dry_run') body = `⋯ DRY    ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} @ ${esc(r.price)}`;
   else if (e === 'cycle_end') body = `<span class="dim">◀ end, ${r.actions} action(s)</span>`;
-  else if (e === 'error') body = `! ERROR in ${esc(r.where)}: ${esc(String(r.detail).slice(0,180))}`;
+  else if (e === 'error') body = `! ERROR in ${esc(r.where)}: ${esc(String(r.detail).slice(0,600))}`;
   else if (e === 'eod_review') body = `◆ EOD ${esc(r.day)}`;
   else body = `${esc(e)} ${esc(JSON.stringify(Object.fromEntries(Object.entries(r).filter(([k])=>!['ts','event','_account'].includes(k)))).slice(0,160))}`;
   return head + `<span class="ev-${e}">${body}</span>`;
