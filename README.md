@@ -234,7 +234,7 @@ config (Qwen3.8-Flash-Next); run it with
 | `override.py show \| set <key> <value> [--until] \| clear <key>\|--all` | Intraday config tweaks without a deploy — see **Runtime overrides** below |
 | `mail_report.py [--dry-run] [--force]` | Hourly team email: summary plus trades / cycles / equity as CSV attachments. A quiet hour (no orders, no flatten closes) sends nothing - so a missing hourly email means an idle hour, not a broken report; a halt or `--force` always sends, and the cron's 15:00 wrap-up entry passes `--force` so the end-of-day report survives quiet afternoons. Read-only, its own cron entry, sends nothing when no recipients are configured |
 | `python -m unittest discover -s tests` | Credential-free guardrail tests |
-| `scripts/verify_*.py` | Manual live checks (Alpaca connectivity, Featherless, snapshot) |
+| `scripts/verify_*.py` | Manual live checks (Alpaca connectivity, Featherless, snapshot, option-chain coverage) |
 
 **Halt files** (under `logs/`, checked at the top of every cycle):
 

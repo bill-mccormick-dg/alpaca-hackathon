@@ -135,7 +135,13 @@ def _summarize_options(snapshot: dict, config: dict, today: date) -> dict:
     """Trims each underlying's option chain to the N contracts nearest the
     money (config's research_contracts_per_underlying), regardless of how
     many bot/snapshot.py fetched - keeps the prompt bounded and relevant
-    without another network round-trip."""
+    without another network round-trip.
+
+    Chosen from the OCC symbol alone, then summarized: the summary solves
+    Black-Scholes per contract, and since #158 the fetched chain can be
+    thousands of contracts, so the solve runs on the N that make the prompt,
+    not the pool. The filters here (unparseable symbol, already expired)
+    mirror _summarize_contract's so the slice is never left short."""
     limit = int(config.get("research_contracts_per_underlying", 12))
     summarized = {}
     for underlying, per_name in (snapshot.get("options") or {}).items():
@@ -144,14 +150,25 @@ def _summarize_options(snapshot: dict, config: dict, today: date) -> dict:
             summarized[underlying] = {"underlying_price": None, "contracts": []}
             continue
 
-        contracts = []
+        candidates = []
         for symbol, raw in (per_name.get("contracts") or {}).items():
+            try:
+                occ = parse_occ_symbol(symbol)
+            except ValueError:
+                continue
+            dte = (occ.expiration - today).days
+            if dte <= 0:
+                continue
+            candidates.append((abs(occ.strike - spot), dte, symbol, raw))
+        candidates.sort(key=lambda c: (c[0], c[1]))
+
+        contracts = []
+        for _, _, symbol, raw in candidates[:limit]:
             entry = _summarize_contract(symbol, raw, spot, today)
             if entry is not None:
                 contracts.append(entry)
-        contracts.sort(key=lambda c: (abs(c["strike"] - spot), c["dte"]))
 
-        summarized[underlying] = {"underlying_price": spot, "contracts": contracts[:limit]}
+        summarized[underlying] = {"underlying_price": spot, "contracts": contracts}
     return summarized
 
 

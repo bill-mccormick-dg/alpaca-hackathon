@@ -31,7 +31,13 @@ from bot.orders import INCOMPLETE
 from bot.report import trades_payload
 from bot.retry import RetryBudget, call_with_retry, summarize
 from bot.risk import EASTERN, RiskManager, early_exit_block
-from bot.snapshot import _data, build_snapshot, price_for_proposal, quote_option_mid
+from bot.snapshot import (
+    _data,
+    build_snapshot,
+    chain_coverage,
+    price_for_proposal,
+    quote_option_mid,
+)
 from bot.trades import pair_round_trips
 
 # Hackathon rule (docs/alpaca-official-guidelines.md): the judging account
@@ -190,6 +196,17 @@ async def run(args: argparse.Namespace) -> int:
             f"equity {acct.equity:.2f}  cash {acct.cash:.2f}  day P&L {day_pnl:+.2f}  "
             f"positions {acct.open_position_count}  account={args.account}"
         )
+        # Whether the option menu actually reached the configured DTE window
+        # this cycle (#158) - an observation, so it rides on cycle_start
+        # rather than config, and a truncated chain is loud, not silent.
+        coverage = chain_coverage(snap.get("options"))
+        for underlying, cov in coverage.items():
+            if cov["truncated"]:
+                print(
+                    f"WARNING: {underlying} option chain truncated at {cov['pages']} page(s) "
+                    f"(max DTE fetched {cov['max_dte']}) - raise CHAIN_MAX_PAGES or narrow the band",
+                    file=sys.stderr,
+                )
         journal.log(
             "cycle_start",
             account=args.account,
@@ -197,6 +214,7 @@ async def run(args: argparse.Namespace) -> int:
             day_pnl=day_pnl,
             positions=acct.open_position_count,
             dry_run=args.dry_run,
+            chain_coverage=coverage,
         )
         # What this cycle actually ran with (git config + active overrides),
         # so a P&L change can be attributed to the config change behind it.

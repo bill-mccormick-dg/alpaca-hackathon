@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest import mock
 
 from bot import decide, journal
 from bot.models import Proposal
@@ -44,6 +45,32 @@ def _snapshot(**options):
 
 
 class SummarizeOptionsTest(unittest.TestCase):
+    def test_summarizes_only_the_contracts_that_make_the_menu(self):
+        """#158: the fetched chain can be thousands of contracts. The
+        Black-Scholes solve inside _summarize_contract must run on the N
+        chosen, not the pool - and the choice must still be nearest-the-money,
+        shortest-DTE first, with expired and unparseable symbols dropped
+        before the slice so the menu is never left short."""
+        snap = _snapshot(
+            AAPL={
+                "underlying_price": 200.0,
+                "contracts": {
+                    "AAPL260204C00210000": _contract(bid=1.0, ask=1.2),   # $10 away
+                    "AAPL260204C00200000": _contract(bid=5.2, ask=5.5),   # ATM, 20 dte
+                    "AAPL260114C00200000": _contract(bid=5.2, ask=5.5),   # ATM but expired
+                    "AAPL260227P00200000": _contract(bid=5.0, ask=5.3),   # ATM, 43 dte
+                    "AAPL260204P00201000": _contract(bid=5.0, ask=5.3),   # $1 away
+                    "not-an-occ-symbol": _contract(bid=1.0, ask=1.1),
+                },
+            }
+        )
+        with mock.patch.object(decide, "_summarize_contract", wraps=decide._summarize_contract) as summarize:
+            result = decide._summarize_options(snap, _config(research_contracts_per_underlying=3), TODAY)
+
+        chosen = [c["symbol"] for c in result["AAPL"]["contracts"]]
+        self.assertEqual(chosen, ["AAPL260204C00200000", "AAPL260227P00200000", "AAPL260204P00201000"])
+        self.assertEqual(summarize.call_count, 3)
+
     def test_derives_strike_type_dte_from_occ_symbol(self):
         snap = _snapshot(
             AAPL={

@@ -269,7 +269,10 @@ unparseable"), so shares are held overnight by design. Only the
 | The only order path | code | `bot/execute.py::place_proposal()` |
 
 The model is given: account state, per-underlying spot price, the ~12
-nearest-the-money contracts within the tradeable expiration window with
+nearest-the-money contracts within the tradeable expiration window (the chain
+is fetched across the *whole* window — paginated, since one API page covers
+only 1–3 DTE on SPY/QQQ — so on $1-strike names those 12 are the at-the-money
+call and put across the nearest expiries rather than neighbouring strikes) with
 bid/ask/last and **derived** Greeks (Alpaca's free feed carries none —
 `bot/greeks.py` solves implied volatility from each contract's market price
 and computes delta/gamma/theta/vega from it), the hard limits, and the
@@ -551,9 +554,12 @@ ten-minute cadence.
 **Changing it** is a one-line config edit — the whitelist is data, not code. Two
 caveats: `config.yaml` is trading code under the [deploy
 freeze](operations.md#deploy-safety-during-the-scoring-week), so it cannot land
-Mon–Fri 08:20–15:15 CT; and prefer adding *names* over raising
-`research_contracts_per_underlying`, since 12 contracts already span the ±8%
-strike band and more per name mostly surfaces strikes the tactics would not pick.
+Mon–Fri 08:20–15:15 CT; and know what raising
+`research_contracts_per_underlying` actually surfaces: the pool is the whole
+strike band across the whole expiration window, sorted nearest-the-money first,
+so on SPY/QQQ ($1 strikes) a higher count is how neighbouring strikes appear,
+while on NVDA/AAPL/MSFT ($2.50–$5 strikes) it mostly adds more expiries of the
+same at-the-money strike.
 
 One mechanical detail, in case you ever debug a rejection: an option proposal is
 checked against its **underlying**, not its OCC symbol. A contract on a
@@ -742,7 +748,7 @@ Every one is safe to move mid-session, and none of them can breach a risk limit
 | `temperature` | 0–2, step 0.1 | 0.2 | how much the model varies between cycles |
 | `max_tokens` | 50–8000, step 50 | 800 | the answer budget per decision |
 | `research_contracts_per_underlying` | 1–60 | 12 | how many contracts per name go into the prompt |
-| `option_strike_band_pct` | 0.01–0.5 | 0.08 | how far from spot the chain is fetched (±8%) |
+| `option_strike_band_pct` | 0.01–0.5 | 0.08 | how far from spot the chain is fetched (±8%) — on SPY/QQQ that is ~245 contracts per expiration, so the band also sets how many pages the fetch takes (capped at `CHAIN_MAX_PAGES`; a cap hit is journaled as `truncated`) |
 | `stop_loss_pct` | 1–100 | 40 | close at this much loss on entry premium |
 | `take_profit_pct` | 1–1000 | 60 | close at this much gain |
 | `eod_close_dte` | 0–45 | 1 | the end-of-day sweep closes contracts with this many days left |
@@ -759,10 +765,12 @@ worth having.
 
 **What the model sees — `research_contracts_per_underlying`,
 `option_strike_band_pct`.** These decide the size and shape of the menu.
-Widening the strike band reaches further out of the money; raising the contract
-count shows more of what was fetched. Both make the prompt longer and the cycle
-slower, and 12 contracts across ±8% already spans more than the tactics would
-pick from. Reach for these if the agent complains it cannot find a suitable
+Widening the strike band reaches further out of the money (and fetches more
+pages on the index names); raising the contract count shows more of what was
+fetched — the whole band across the whole 1–45 DTE window is the pool, and the
+12 nearest the money are taken from it, which on $1-strike names means the ATM
+call and put across the nearest expiries. Both make the prompt longer and the
+cycle slower. Reach for these if the agent complains it cannot find a suitable
 contract, not to give it more to read.
 
 **How positions end — `stop_loss_pct`, `take_profit_pct`, `eod_close_dte`.**

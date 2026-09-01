@@ -334,6 +334,120 @@ class BuildOptionResearchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(research["AAPL"]["contracts"], {})
 
 
+def _page(symbols, next_token=None):
+    """One get_option_chain page in the API's own shape: `snapshots` plus a
+    `next_page_token` that is null on the last page."""
+    return {
+        "data": {
+            "snapshots": {s: {"latestQuote": {"ap": 5.5, "bp": 5.2}} for s in symbols},
+            "next_page_token": next_token,
+        }
+    }
+
+
+class ChainPaginationTest(unittest.IsolatedAsyncioTestCase):
+    """Issue #158: one page covers 1-3 DTE on SPY/QQQ. The API's
+    next_page_token is the truncation signal; follow it until null."""
+
+    TODAY = date(2026, 1, 15)
+
+    def _client(self, pages_by_token: dict):
+        def chain(arguments):
+            return pages_by_token[arguments.get("page_token")]
+
+        return FakeMCPClient({"get_stock_latest_quote": STOCK_QUOTE_RESPONSE, "get_option_chain": chain})
+
+    def _chain_calls(self, client):
+        return [args for name, args in client.calls if name == "get_option_chain"]
+
+    async def test_single_page_without_a_token_key_is_one_call(self):
+        # The legacy fixture omits next_page_token entirely - must mean "done".
+        client = FakeMCPClient({"get_stock_latest_quote": STOCK_QUOTE_RESPONSE, "get_option_chain": OPTION_CHAIN_RESPONSE})
+
+        research = await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        self.assertEqual(len(self._chain_calls(client)), 1)
+        self.assertEqual(research["AAPL"]["pages"], 1)
+        self.assertFalse(research["AAPL"]["truncated"])
+
+    async def test_requests_the_api_maximum_page_size(self):
+        client = self._client({None: _page(["AAPL260204C00200000"])})
+
+        await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        self.assertEqual(self._chain_calls(client)[0]["limit"], snapshot.CHAIN_PAGE_LIMIT)
+        self.assertEqual(snapshot.CHAIN_PAGE_LIMIT, 1000)
+
+    async def test_follows_the_token_and_merges_pages_with_identical_filters(self):
+        client = self._client({
+            None: _page(["AAPL260116C00200000", "AAPL260117C00200000"], next_token="t2"),
+            "t2": _page(["AAPL260227P00200000"], next_token=None),
+        })
+
+        research = await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        calls = self._chain_calls(client)
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("page_token", calls[0])
+        self.assertEqual(calls[1]["page_token"], "t2")
+        for key in ("underlying_symbol", "feed", "expiration_date_gte", "expiration_date_lte",
+                    "strike_price_gte", "strike_price_lte", "limit"):
+            self.assertEqual(calls[0][key], calls[1][key], key)
+        self.assertEqual(len(research["AAPL"]["contracts"]), 3)
+        self.assertEqual(research["AAPL"]["pages"], 2)
+        self.assertFalse(research["AAPL"]["truncated"])
+        self.assertEqual(research["AAPL"]["max_dte"], (date(2026, 2, 27) - self.TODAY).days)
+
+    async def test_stops_at_the_cap_and_says_so(self):
+        # Every page hands back a fresh token: an endless chain.
+        counter = {"n": 0}
+
+        def chain(arguments):
+            counter["n"] += 1
+            return _page([f"AAPL2602{counter['n']:02d}C00200000"], next_token=f"t{counter['n']}")
+
+        client = FakeMCPClient({"get_stock_latest_quote": STOCK_QUOTE_RESPONSE, "get_option_chain": chain})
+
+        research = await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        self.assertEqual(len(self._chain_calls(client)), snapshot.CHAIN_MAX_PAGES)
+        self.assertEqual(research["AAPL"]["pages"], snapshot.CHAIN_MAX_PAGES)
+        self.assertTrue(research["AAPL"]["truncated"])
+
+    async def test_a_repeated_token_breaks_the_loop(self):
+        client = self._client({
+            None: _page(["AAPL260204C00200000"], next_token="same"),
+            "same": _page(["AAPL260205C00200000"], next_token="same"),
+        })
+
+        research = await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        self.assertEqual(len(self._chain_calls(client)), 2)
+        self.assertFalse(research["AAPL"]["truncated"])
+
+    async def test_an_empty_page_breaks_the_loop(self):
+        client = self._client({
+            None: _page(["AAPL260204C00200000"], next_token="t2"),
+            "t2": _page([], next_token="t3"),
+        })
+
+        research = await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        self.assertEqual(len(self._chain_calls(client)), 2)
+        self.assertEqual(len(research["AAPL"]["contracts"]), 1)
+
+    def test_chain_coverage_is_the_journal_shape(self):
+        options = {
+            "SPY": {"underlying_price": 767.0, "contracts": {"a": {}, "b": {}}, "pages": 8, "truncated": False, "max_dte": 45},
+            "QQQ": {"underlying_price": 717.0, "contracts": {}},
+        }
+
+        cov = snapshot.chain_coverage(options)
+
+        self.assertEqual(cov["SPY"], {"contracts": 2, "pages": 8, "max_dte": 45, "truncated": False})
+        self.assertEqual(cov["QQQ"], {"contracts": 0, "pages": None, "max_dte": None, "truncated": False})
+
+
 PRICE_SNAPSHOT = {
     "options": {
         "AAPL": {
