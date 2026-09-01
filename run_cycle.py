@@ -18,6 +18,7 @@ import sys
 from datetime import date, datetime, timedelta, timezone
 
 from bot import (
+    citations,
     execute,
     holdings,
     journal,
@@ -365,9 +366,15 @@ async def run(args: argparse.Namespace) -> int:
             print(f"decision step failed: {detail}", file=sys.stderr)
             return 1
         proposals, raw = decision.proposals, decision.raw
+        # Do the reasons quote numbers the prompt actually contained? (#172)
+        # Journaled on the decision so the digest and reviewer can count it.
+        cited = citations.audit(proposals, prior, decision.tool_calls)
+        if cited and cited.get("unsupported"):
+            print(f"WARNING: {citations.describe(cited)}", file=sys.stderr)
         journal.log(
             "decision",
             raw=raw,
+            citations=cited,
             count=len(proposals),
             model=decision.model,
             usage=decision.usage,

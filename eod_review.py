@@ -54,7 +54,11 @@ present, grades the prediction-market priors themselves (Brier score, lower is b
 the 0.5 coin flip scores 0.25) - use it to judge whether the priors deserved the weight \
 the model gave them, and which crowd to trust when Kalshi and the chain disagree. Its \
 "withheld" rows shadow-grade priors the usability gate kept from the model: they say whether \
-the gate discarded good information, not what the model leaned on.
+the gate discarded good information, not what the model leaned on. The audit's \
+"citations_unsupported" counts numbers the model quoted in its reasons that appear nowhere in \
+the prior it was actually given ("citation_examples" shows each, with the nearest real value): \
+the reason strings are rhetoric, not evidence - judge every decision on the journalled prior, \
+never on the figure the model quoted, and say so when a trade rested on an invented number.
 
 Write plain text for the operator - no markdown headings, no JSON:
 1. 3-6 sentences on what actually happened and why, in plain language. Be specific: name the \

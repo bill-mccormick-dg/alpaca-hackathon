@@ -323,14 +323,37 @@ which supplies the reference level.
 Nothing in the code acts on it. `risk.py`, `execute.py` and `exits.py` never
 see it; it appears in exactly one place, the prompt, labelled:
 
-> PREDICTION MARKETS (Kalshi, crowd-implied, read-only - a PRIOR to weigh, not
-> a signal to copy; compare to what the option chain implies and to today's
-> price action)
+> PREDICTION MARKETS (crowd-implied, read-only - PRIORS to weigh, not signals
+> to copy): Kalshi's event market on the index close, and the option chain's
+> own implied odds … DISAGREEMENT between them is information; agreement is
+> just the base rate. Compare both to today's price action. When you cite one
+> of these numbers in a reason, quote it exactly as printed or refer to it by
+> name - never round or restate it; quoted figures are audited against this
+> block:
 
 So it can only influence a trade by persuading the model, and anything it
 inspires still passes the same `check_order()` funnel as every other proposal.
 Read-only, no API key, never traded, cached for five minutes, and silently
 omitted on any failure.
+
+**And the model's citations of it are audited (#172).** On 2026-09-01 the
+judged account's model quoted the prior three times in its stated reasons —
+"68.7% chance of down>1%", "7.6% chance of finishing above prior close", "81.9%
+down>1%" — and none of the three appeared anywhere in its inputs: the prompt
+said 33.8%, 12.6% and 59.5%, and every error was skewed toward the trade being
+proposed. The prior was fetched, rendered and journaled correctly; research
+tools were off; the prompt was the only source. Those reason strings are
+load-bearing downstream — the digest, the reviewer's critique, the hourly email,
+the public feed and the writeup all quote them — so `bot/citations.py` now
+checks every percentage the model writes in a prior-shaped clause against every
+number the prior block carried (and its complement, for "P(below)" phrasing).
+The result rides on the `decision` journal event as `citations`, the digest
+prints a count and each unsupported quote beside the nearest real value, the
+reviewer prompt says to judge on the journalled prior rather than the quote,
+and the feed marks the cycle. Deliberately reporting only: `check_order()`
+bounds what can be traded and does not grade rhetoric. The prompt's last
+sentence above — quote or name, never restate — is the cheap fix; the audit is
+how we will know whether it worked.
 
 ### When it is withheld
 
@@ -643,7 +666,8 @@ Consequences:
 
 A tiny sample, so diagnostics rather than verdicts (`trade_report.py`, round-trip attribution):
 
-- The model traded on stated reasons, and the journal shows them.
+- The model traded on stated reasons, and the journal shows them — and, since
+  #172, says how often those reasons quoted numbers the prompt never contained.
 - Rejections are rare and *sensible* (a cap, not a malformed proposal) — a
   guardrail rejecting the same idea all day is a prompt bug, not a win.
 - Exits were mostly stops/take-profits doing their job, not expiry rescues.

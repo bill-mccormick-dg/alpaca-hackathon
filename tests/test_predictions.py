@@ -127,6 +127,10 @@ class PromptBlockTest(unittest.TestCase):
         # The pair is the point: the header must tell the model what
         # disagreement between the two crowds means.
         self.assertIn("DISAGREEMENT", block)
+        # #172: the model restated these numbers wrongly, skewed toward its
+        # trade, three times in one day. Quote or name, never restate.
+        self.assertIn("quote it exactly as printed or refer to it by name", block)
+        self.assertIn("audited against this block", block)
 
 
 class UsabilityGateTest(unittest.TestCase):

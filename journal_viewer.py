@@ -286,7 +286,9 @@ function line(r){
   else if (e === 'tool_call') body = `<span class="dim">  · ${esc(r.tool)} ${esc(JSON.stringify(r.args||{}).slice(0,70))} → ${r.result_chars} chars</span>`;
   else if (e === 'decision') { body = `✱ MODEL  ${r.count} proposal(s)  <span class="dim">${esc(r.model)}  ${(r.usage||{}).total_tokens} tok  ${r.latency_sec}s</span>`;
     try { let acts = JSON.parse(r.raw); if (acts && !Array.isArray(acts)) acts = acts.actions || acts.proposals || [acts];
-      for (const p of acts||[]) body += `\n<span class="reason">${esc(p.side)} ${esc(p.qty)} ${esc(p.symbol)}${p.limit_price?' @ '+esc(p.limit_price):''} — ${esc(p.reason||'')}</span>`; } catch(err){} }
+      for (const p of acts||[]) body += `\n<span class="reason">${esc(p.side)} ${esc(p.qty)} ${esc(p.symbol)}${p.limit_price?' @ '+esc(p.limit_price):''} — ${esc(p.reason||'')}</span>`; } catch(err){}
+    const c = r.citations;  // #172: figures the reason quoted that the prior never contained
+    if (c && c.unsupported && c.unsupported.length) body += `\n<span class="reason">⚠ ${c.unsupported.length} unsupported prior citation(s): ${esc(c.unsupported.map(u => u.quoted + ' (nearest real: ' + u.nearest.label + ' ' + u.nearest.value + ')').join('; '))}</span>`; }
   else if (e === 'order_submitted') body = `✓ ORDER  ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} @ ${esc(r.price)}${r.exit?' (exit)':''}\n<span class="reason">${esc(r.reason||'')}</span>`;
   else if (e === 'order_rejected') { body = `✗ BLOCKED ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} — ${esc(r.detail)}`;
     // Verdict first, then the model's case: they are different facts and a
