@@ -11,7 +11,7 @@ max_position_usd: 5000
 max_positions: 4
 max_contracts_per_order: 10
 daily_loss_cutoff_pct: 2.0
-min_days_to_expiration: 1
+min_days_to_expiration: 2  # must exceed eod_close_dte (#166)
 max_days_to_expiration: 45
 option_strike_band_pct: 0.08
 research_contracts_per_underlying: 12

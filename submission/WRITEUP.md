@@ -18,7 +18,7 @@ can name. It is bad at managing a position minute to minute, so it doesn't.
 
 Every 10 minutes in market hours the agent builds a snapshot through Alpaca's
 MCP server — account, positions, clock, and per underlying the ~12
-nearest-the-money contracts in a 1–45 DTE window. Alpaca's free indicative feed
+nearest-the-money contracts in a 2–45 DTE window. Alpaca's free indicative feed
 has no Greeks, so IV, delta, gamma, theta and vega are **derived on the fly**
 from each contract's price via Black-Scholes (`bot/greeks.py`). The model then
 runs a **bounded research loop**: up to six read-only tool calls (recent bars, a
@@ -34,7 +34,7 @@ with thinking disabled; that single setting turned empty answers into decisions.
 `bot/risk.py::check_order()` is the only gate and `bot/execute.py::place_proposal()`
 the only order path. Per proposal: whitelist, side/qty sanity, ≤ $5,000 notional
 per position (contracts × 100 × price), ≤ 4 positions, ≤ 10 contracts per
-order, 1–45 DTE, entries only 09:45–15:15 ET, sells until 15:45. Per cycle,
+order, 2–45 DTE on entries (sells stay legal to expiry), entries only 09:45–15:15 ET, sells until 15:45. Per cycle,
 **before** the model is consulted: close any contract on its expiry day, and
 any position past −40 % / +60 % of entry premium (`bot/exits.py`). Per day:
 a 2 % loss cutoff flattens everything and halts; a manual `HALT` file is a

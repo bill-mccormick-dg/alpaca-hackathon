@@ -518,13 +518,13 @@ with the reasoning each carries in `config.yaml`:
 | Notional per position | $5,000 | what the position costs to open: `contracts x 100 x contract price` for options — the premium paid, *not* the underlying exposure — and `qty x price` for shares |
 | Concurrent positions | 4 | keeps total exposure comprehensible at a glance |
 | Contracts per order | 10 | "a backstop against a fat-fingered or hallucinated large size, independent of the dollar cap" |
-| Expiration window | 1–45 DTE | "guards against 0-DTE gamma risk on one side, multi-month decay drag on the other" |
+| Expiration window (entries) | 2–45 DTE | "guards against 0-DTE gamma risk on one side, multi-month decay drag on the other" — and, since #166, the floor sits above `eod_close_dte` so the funnel refuses what the 14:50 backstop would sell the same day. Sells are exempt: a position must stay closable to expiry |
 | Entries | 09:45–15:15 ET | skips the opening auction's noise; stops opening new risk near the close |
 | Sells | until 15:45 ET | exits stay legal after entries stop |
 | Daily loss | 2% of start-of-day equity | breaching it flattens and halts for the day |
 
 **These are the hard caps, not the tactics.** The prompt asks for 2–14 DTE (see
-above); the *code* permits 1–45. The narrower band is a preference the model is
+above); the *code* permits 2–45. The narrower band is a preference the model is
 told to favour, the wider one is the limit it cannot cross — so a sensible
 contract slightly outside the tactic is allowed, and a wild one is not.
 
@@ -589,8 +589,23 @@ The two keys are easy to confuse and do different jobs:
 |---|---|---|---|
 | `expiry_close_dte` | 0 | `bot/exits.py`, **every cycle** | closes a contract once it has this many days left — 0 means "expiring today" |
 | `eod_close_dte` | 1 | `flatten.py --expiring-only`, **once at 15:50 ET** | the cron backstop, in case a cycle did not run |
+| `min_days_to_expiration` | 2 | `bot/risk.py::check_order()`, **on every buy** | the entry floor — must sit *above* `eod_close_dte`, or the funnel admits contracts the backstop is guaranteed to sell that afternoon |
 
-One is the continuous rule; the other is the end-of-day safety net behind it.
+One is the continuous rule; the other is the end-of-day safety net behind it;
+the third keeps entries out of the zone the second one clears.
+
+**The floor gates entries only.** Until #166 the expiration window ran on every
+option order, sells included, which had two bad consequences. Raising the floor
+to keep 1-DTE entries out would have made every 1-DTE *holding* unsellable
+through the funnel — by the model, and by `exits.py`, whose stop, take-profit
+and expiry-day sells pass through the same `check_order()`. And at the old
+floor of 1, a contract reaching its expiry day was already refused
+("0 days to expiration outside [1, 45]"), so the expiry-day rule could not fire
+at all; only the previous afternoon's backstop stood between a position and
+exercise. Sells now skip the window entirely — a sell only ever closes something
+held, and the one thing it checks is that the contract has not already expired.
+`RiskManager` logs a warning at startup whenever the floor does not exceed
+`eod_close_dte`, because those two keys only agree by hand.
 
 **Both are now stated in the prompt.** The model used to be told the expiration
 *window* (1–45 DTE) but nothing about the rules that *end* a position, so it
@@ -787,7 +802,7 @@ worth having.
 `option_strike_band_pct`.** These decide the size and shape of the menu.
 Widening the strike band reaches further out of the money (and fetches more
 pages on the index names); raising the contract count shows more of what was
-fetched — the whole band across the whole 1–45 DTE window is the pool, and the
+fetched — the whole band across the whole 2–45 DTE window is the pool, and the
 12 nearest the money are taken from it, which on $1-strike names means the ATM
 call and put across the nearest expiries. Both make the prompt longer and the
 cycle slower. Reach for these if the agent complains it cannot find a suitable
@@ -833,8 +848,9 @@ same validator.
 
 Deliberately absent from the dashboard, and from `override.py` entirely:
 `max_position_usd`, `max_positions`, `max_contracts_per_order`, `underlyings`,
-`min_days_to_expiration` / `max_days_to_expiration`, `daily_loss_cutoff_pct`,
-`last_entry` / `trade_end`, `expiry_close_dte` and `final_flatten_date`.
+`min_days_to_expiration` / `max_days_to_expiration` (entries only — sells are
+always legal down to expiry), `daily_loss_cutoff_pct`, `last_entry` /
+`trade_end`, `expiry_close_dte` and `final_flatten_date`.
 
 Those are the risk limits, and changing one takes a config edit, a pull request
 and a deploy — which during market hours the freeze refuses outright. The knobs
