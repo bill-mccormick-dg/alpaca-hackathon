@@ -116,6 +116,44 @@ class SummarizeOptionsTest(unittest.TestCase):
         contract = result["AAPL"]["contracts"][0]
         self.assertIn("iv", contract)
         self.assertIn("delta", contract)
+        self.assertEqual(contract["greeks_source"], "derived")
+
+    def test_prefers_alpacas_own_greeks_over_the_derivation(self):
+        """#160: the snapshot carries impliedVolatility + greeks on most
+        contracts, computed on one surface - ours diverged by ~5 delta points
+        on NVDA. When present they win, rho comes along, and the source is
+        marked so the model knows which numbers are rough."""
+        raw = dict(_contract(bid=5.2, ask=5.5), impliedVolatility=0.30601,
+                   greeks={"delta": 0.52719, "gamma": 0.037612, "rho": 0.02751, "theta": -0.24512, "vega": 0.13774})
+        snap = _snapshot(AAPL={"underlying_price": 200.0, "contracts": {"AAPL260204C00200000": raw}})
+
+        contract = decide._summarize_options(snap, _config(), TODAY)["AAPL"]["contracts"][0]
+
+        self.assertEqual(contract["iv"], 0.306)
+        self.assertEqual(contract["delta"], 0.5272)
+        self.assertEqual(contract["gamma"], 0.03761)
+        self.assertEqual(contract["theta"], -0.2451)
+        self.assertEqual(contract["vega"], 0.1377)
+        self.assertEqual(contract["rho"], 0.0275)
+        self.assertEqual(contract["greeks_source"], "alpaca")
+
+    def test_falls_back_to_the_derivation_when_alpacas_block_is_incomplete(self):
+        raw = dict(_contract(bid=5.2, ask=5.5), impliedVolatility=None, greeks={"delta": None})
+        snap = _snapshot(AAPL={"underlying_price": 200.0, "contracts": {"AAPL260204C00200000": raw}})
+
+        contract = decide._summarize_options(snap, _config(), TODAY)["AAPL"]["contracts"][0]
+
+        self.assertEqual(contract["greeks_source"], "derived")
+        self.assertNotIn("rho", contract)
+
+    def test_alpacas_greeks_do_not_need_a_usable_price(self):
+        # A one-sided quote cannot be solved, but Alpaca may still have priced it.
+        raw = {"latestQuote": {"bp": 0, "ap": 5.5}, "impliedVolatility": 0.4, "greeks": {"delta": 0.3}}
+        snap = _snapshot(AAPL={"underlying_price": 200.0, "contracts": {"AAPL260204C00200000": raw}})
+
+        contract = decide._summarize_options(snap, _config(), TODAY)["AAPL"]["contracts"][0]
+
+        self.assertEqual((contract["iv"], contract["delta"], contract["greeks_source"]), (0.4, 0.3, "alpaca"))
 
     def test_omits_greeks_when_no_price_data_at_all(self):
         snap = _snapshot(
@@ -398,6 +436,13 @@ class ThinkingModelTest(unittest.IsolatedAsyncioTestCase):
     def test_prompt_tells_the_model_not_to_audit_greeks(self):
         prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
         self.assertIn("do NOT spend effort auditing", prompt)
+
+    def test_prompt_explains_where_the_greeks_come_from(self):
+        prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
+        self.assertIn('greeks_source "alpaca"', prompt)
+        self.assertIn('greeks_source "derived"', prompt)
+        self.assertNotIn("carries no Greeks", prompt)
+        self.assertNotIn("not be internally consistent", prompt)
 
 
 class DecideTest(unittest.IsolatedAsyncioTestCase):
