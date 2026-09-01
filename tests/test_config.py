@@ -19,7 +19,7 @@ class OverrideLayerTest(unittest.TestCase):
     def test_no_overrides_file_is_pure_yaml_plus_empty_provenance(self):
         config = load_config(now=NOW, overrides_path=self.ov)
         self.assertEqual(config["_overrides"], {})
-        self.assertEqual(config["model"], "moonshotai/Kimi-K2-Instruct")
+        self.assertEqual(config["model"], "moonshotai/Kimi-K2.6")
 
     def test_active_override_beats_yaml(self):
         overrides.set_override("temperature", 0.9, now=NOW, path=self.ov)

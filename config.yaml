@@ -77,7 +77,17 @@ strategy_notes: |
 # Model - the Featherless model id and sampling for the decide call. Also
 # runtime-overridable (see bot/overrides.py) for intraday A/B without a
 # deploy; a change here in git is the durable version.
-model: moonshotai/Kimi-K2-Instruct
+#
+# K2.6 because it is what this account actually traded on day 1: a runtime
+# override moved it off K2-Instruct at 10:00 ET on 2026-08-31 and it made 32
+# of the day's 33 decisions on K2.6. That override expired at 16:00 ET, so
+# without this line the judged account would silently revert on day 2 to a
+# model with one cycle of live history - a change nobody decided. Pinning it
+# in git makes the durable version match what has been running. Note this is
+# NOT a claim that K2.6 beats K2-Instruct: no model comparison has ever been
+# run (see #165), and this is deliberately the conservative choice of
+# continuity over another unvalidated switch during the scoring week.
+model: moonshotai/Kimi-K2.6
 temperature: 0.2
 max_tokens: 800 # a JSON array of a few proposals, not prose
 request_timeout_sec: 60
@@ -101,15 +111,15 @@ model_params:
   # the bot is running - and bot/overrides.py accepts `model` but has no way
   # to supply matching params alongside it.
   #
-  # Both of the alternatives are thinking models. Measured against this
-  # account's own max_tokens (800) on 2026-08-30, with a realistic decision
-  # prompt: without this toggle Kimi-K2.6 and Qwen3.8-Flash-Next both spend
-  # the entire 800-token budget on hidden reasoning and return
-  # finish_reason=length with EMPTY content - a forfeited cycle, repeating
-  # until the override expires at 16:00 ET. With it, both answer normally
-  # (Qwen in 157 tokens). The current model, Kimi-K2-Instruct, answers with
-  # or without it (515 vs 495 tokens), so this is free insurance rather than
-  # a change to today's behaviour.
+  # LOAD-BEARING for this account, not insurance: Kimi-K2.6 is a thinking
+  # model. Measured against this account's own max_tokens (800) on
+  # 2026-08-30, with a realistic decision prompt: without this toggle
+  # Kimi-K2.6 and Qwen3.8-Flash-Next both spend the entire 800-token budget
+  # on hidden reasoning and return finish_reason=length with EMPTY content -
+  # a forfeited cycle, every cycle. With it, both answer normally (Qwen in
+  # 157 tokens). Kimi-K2-Instruct, the fallback reviewer, answers with or
+  # without it (515 vs 495 tokens). Do not remove this block while `model`
+  # is a thinking model; the account would stop trading entirely.
   chat_template_kwargs:
     enable_thinking: false
 

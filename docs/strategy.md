@@ -654,12 +654,14 @@ account's own `model`:
 
 | Account | Trades on | Reviewed by |
 |---|---|---|
-| `official` | Kimi-K2-Instruct | **Kimi-K2.6** |
+| `official` | Kimi-K2.6 | **Kimi-K2-Instruct** |
 | `test` | Qwen3.8-Flash-Next | **Kimi-K2.6** |
 | `mixed` | Kimi-K2-Instruct | **Kimi-K2.6** |
 
-Nothing trades on K2.6, so all three critiques are independent. It costs one
-call a day.
+No account is ever its own reviewer, because the rule is computed rather than
+configured: when `official` was pinned to K2.6 its reviewer moved to
+K2-Instruct on its own, with no second edit. That is the whole point of
+resolving it at review time. It costs one call a day.
 
 **It is recomputed every time, deliberately.** The trading model is changeable
 at runtime from the dashboard. Had the reviewer been resolved once and stored,
