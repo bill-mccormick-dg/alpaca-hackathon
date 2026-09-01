@@ -110,6 +110,7 @@ can never leak into the judged account.
 | `option_strike_band_pct` | how far from spot the shown strikes reach — and, on SPY/QQQ, how many pages the chain fetch takes |
 | `stop_loss_pct`, `take_profit_pct` | when `bot/exits.py` closes a position |
 | `eod_close_dte` | how near expiry the end-of-day backstop closes |
+| `min_hold_minutes`, `early_exit_drawdown_pct` | the churn guard: how long a position must be held before the model may sell it, and the drawdown that waives the wait |
 | `review_model` | which model critiques the day in `eod_review.py` — computed from `review_model_preference` unless pinned |
 | `predictions_enabled` | whether the Kalshi prior is fetched and shown to the model — a switch in HA |
 
@@ -199,9 +200,9 @@ journaled it did not happen.
 |---|---|
 | `cycle_start`, `cycle_end` | each cycle opens / closes, with equity and position count; `cycle_start` also carries `chain_coverage` — per underlying, how many contracts and pages the option chain fetch took, the furthest DTE it reached, and whether it hit the page cap (`truncated`) |
 | `config` | the effective config for that cycle: values, a hash, any active overrides, and the resolved `review_model` |
-| `decision` | the model answered — raw output, model, token usage, latency, finish reason, reasoning head, tool calls |
+| `decision` | the model answered — raw output, model, token usage, latency, finish reason, reasoning head, tool calls, and the size of the learning and positions blocks it was shown (`learning_chars`, `positions_block_chars`) |
 | `tool_call` | the model used one of its four read-only research tools |
-| `order_submitted` / `order_rejected` / `order_error` / `dry_run` | an order's outcome — rejections carry **the rule that rejected them** |
+| `order_submitted` / `order_rejected` / `order_error` / `dry_run` | an order's outcome — rejections carry **the rule that rejected them**; a sell that code resolved from a neighbouring strike onto the held contract carries `resolved_from` with the symbol the model wrote (#170) |
 | `decide_retry` | a transient model failure was retried inside the cycle |
 | `identity_refused` / `identity_unverified` | the broker's account number did not match the account asked for |
 | `daily_loss_halt`, `daily_loss_flatten`, `flatten`, `manual_halt` | trading stopped, and why |

@@ -787,6 +787,8 @@ Every one is safe to move mid-session, and none of them can breach a risk limit
 | `stop_loss_pct` | 1–100 | 40 | close at this much loss on entry premium |
 | `take_profit_pct` | 1–1000 | 60 | close at this much gain |
 | `eod_close_dte` | 0–45 | 1 | the end-of-day sweep closes contracts with this many days left |
+| `min_hold_minutes` | 0–390 | 30 | a model-proposed sell of a position younger than this is refused (the churn guard, #132) |
+| `early_exit_drawdown_pct` | 1–100 | 25 | …unless the position is already down more than this on its premium |
 | `review_model` | the costed model list | *computed* | which model writes the end-of-day critique |
 | `predictions_enabled` | on / off | on | whether the Kalshi prior is fetched and shown to the model |
 
@@ -807,6 +809,74 @@ fetched — the whole band across the whole 2–45 DTE window is the pool, and t
 call and put across the nearest expiries. Both make the prompt longer and the
 cycle slower. Reach for these if the agent complains it cannot find a suitable
 contract, not to give it more to read.
+
+**What the model knows about its own positions.** Every cycle is a fresh
+process, and until #173 the model saw that a position existed and how it was
+doing — one row in the snapshot JSON — and nothing else: not why it had opened
+it, not what the prior said at the time, not even a plain list of what it was
+allowed to sell. Two live failures on the judged account on 2026-09-01 came
+straight from that. It tried to close a +32% SPY put three cycles running and
+named a neighbouring strike each time (763, 763, 762 for a held 764) — the held
+symbol was one row among thirty, and since #158 the menu lists its same-expiry
+neighbours right beside it (#170). And it proposed exiting a ten-minute-old QQQ
+put on a "weakening thesis" while every number it had cited at entry had moved
+in its favour, because it re-derived the view from scratch (#173).
+
+`bot/holdings.py` now renders a prose block after the prior:
+
+```
+POSITIONS YOU HOLD (the ONLY symbols a sell may name - copy them exactly):
+- QQQ260903P00708000 x4 @ 3.715, +0.4% vs entry; opened 12:10 ET
+    stated at entry: "QQQ down 1.2% intraday with both Kalshi and option chain showing heavy downside odds; ..."
+    prior at entry: Kalshi P(above) 0.090, P(up>1%) 0.050, P(down>1%) 0.461 | chain P(above) 0.126, ...
+    prior now:      Kalshi P(above) 0.087, P(up>1%) 0.044, P(down>1%) 0.595 | chain P(above) 0.126, ...
+RESTING ORDERS (sent, unfilled - they already count against your caps; ...):
+- buy 4 QQQ260903P00709000 @ limit 3.56, submitted 12:00 ET
+```
+
+The entry reason comes from the `order_submitted` event that opened the
+position (the first buy since the symbol was last flat, so a name traded,
+closed and re-bought gets today's reason, not last week's); the prior at entry
+is the `predictions` record journaled in that same cycle. **The prior line is
+what makes replaying the reason safe**: per #172 the model fabricates
+statistics inside its reasons, so a reason alone would let it "verify" the
+position against its own confabulation. Paired with the journaled prior, "has
+my thesis weakened?" becomes a comparison against numbers we control — and in
+the QQQ example above the honest answer was that it had strengthened. A
+position with no journaled opener says *no recorded thesis* rather than
+inventing one. A flat account gets one line — *none — any sell would be a naked
+short* — so the long-only rule is stated in terms of the list rather than left
+to the model's memory of the preamble. The strategy notes changed to match:
+*an open position is presumed valid until a stop, a take-profit, or a NAMED
+change in the evidence cited at entry*, replacing the old "you may still
+propose a sell on a thesis change — say why", which invited a thesis-change
+hunt every ten minutes that a capable model always won.
+
+For the one operation where the symbol is already known, code also closes the
+transcription gap: a sell naming an option that is not held, when exactly one
+held contract shares its underlying, type and expiration, is resolved to that
+contract before any guard runs (`holdings.resolve_sell`; the order event
+carries `resolved_from` with what the model wrote). It can only ever reduce
+exposure, and the quantity still passes `check_order`. Anything ambiguous —
+two puts held at the same expiry — is left to the funnel, whose rejection now
+names what *is* held on that underlying so the next cycle's learning block
+carries the right symbol.
+
+The counter-argument is anchoring: a model that holds a loser because "my
+thesis said so". The asymmetry favours showing the thesis anyway — code owns
+stop-loss, take-profit, expiry and the end-of-day backstop without consulting
+the model, so stubbornness is capped at `stop_loss_pct`, while churn had no
+ceiling beyond `min_hold_minutes`. Watch the EOD digest for a rise in stop-loss
+exits after this landed.
+
+**The churn guard — `min_hold_minutes`, `early_exit_drawdown_pct`.** Before the
+positions block existed, the treatment for ten-minute exits was a leash
+(#132): a model-proposed sell of a position opened fewer than `min_hold_minutes`
+ago is refused unless the position is already down more than
+`early_exit_drawdown_pct` of its premium — the stop and take-profit own the
+marks; the model's early exit has to wait out the hold. Code exits never pass
+through it. Both are runtime knobs, and both stay: the block above removes the
+reason to churn, the leash bounds it if the model churns anyway.
 
 **How positions end — `stop_loss_pct`, `take_profit_pct`, `eod_close_dte`.**
 The first two are checked at the top of every cycle *before* the model is

@@ -18,6 +18,7 @@ def make_config(**overrides):
         "max_contracts_per_order": 10,
         "daily_loss_cutoff_pct": 2.0,
         "min_days_to_expiration": 1,
+        "eod_close_dte": 0,  # below the floor, so RiskManager does not warn on every fixture (#166)
         "max_days_to_expiration": 45,
         "trade_start": "09:45",
         "trade_end": "15:45",
@@ -275,6 +276,22 @@ class SellSideTest(RiskManagerTestBase):
         p = Proposal(instrument="stock", symbol="AAPL", side="sell", qty=1)
         ok, _ = self.risk.check_order(p, self.account, 100, self.mid_session)
         self.assertFalse(ok)
+
+    def test_a_sell_of_an_option_not_held_names_what_is_held_on_that_underlying(self):
+        """#170: the rejection travels back into the next cycle's prompt via
+        the learning block, so it should carry the right symbol."""
+        account = AccountState(
+            equity=100000, start_of_day_equity=100000, cash=100000,
+            positions={"SPY260908P00764000": Position(symbol="SPY260908P00764000", instrument="option", qty=10, market_value=4990, underlying="SPY")},
+        )
+        p = Proposal(instrument="option", symbol="SPY260908P00763000", side="sell", qty=10, underlying="SPY")
+        ok, reason = self.risk.check_order(p, account, 4.99, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "cannot sell 10, only 0 held; held on SPY: SPY260908P00764000 x10")
+
+        p = Proposal(instrument="option", symbol="QQQ260908P00700000", side="sell", qty=1, underlying="QQQ")
+        ok, reason = self.risk.check_order(p, account, 4.99, self.mid_session)
+        self.assertEqual(reason, "cannot sell 1, only 0 held; nothing held on QQQ")
 
     def test_sell_allowed_past_last_entry_but_before_trade_end(self):
         past_last_entry = datetime(2026, 1, 15, 15, 30)  # after 15:15, before 15:45

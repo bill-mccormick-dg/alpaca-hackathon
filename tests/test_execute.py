@@ -19,6 +19,7 @@ def make_config(**overrides):
         "max_contracts_per_order": 10,
         "daily_loss_cutoff_pct": 2.0,
         "min_days_to_expiration": 1,
+        "eod_close_dte": 0,
         "max_days_to_expiration": 45,
         "trade_start": "09:45",
         "trade_end": "15:45",
