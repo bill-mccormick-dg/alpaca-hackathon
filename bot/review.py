@@ -91,9 +91,9 @@ def decision_audit(records: list[dict]) -> dict:
     audited = [(ts, c) for ts, c in cites if not c.get("skipped")]
     citations_checked = sum(int(c.get("checked") or 0) for _, c in audited) if cites else None
     citation_examples = [
-        {"ts": ts, "symbol": u.get("symbol"), "quoted": u.get("quoted"),
+        {"ts": ts, "symbol": u.get("symbol"), "quoted": u.get("quoted"), "kind": kind,
          "nearest": f"{(u.get('nearest') or {}).get('label')} {(u.get('nearest') or {}).get('value')}"}
-        for ts, c in audited for u in (c.get("unsupported") or [])
+        for ts, c in audited for kind in ("unsupported", "misattributed") for u in (c.get(kind) or [])
     ]
 
     return {
@@ -118,7 +118,8 @@ def decision_audit(records: list[dict]) -> dict:
         "latency_avg_sec": round(sum(latencies) / len(latencies), 2) if latencies else None,
         "latency_max_sec": round(max(latencies), 2) if latencies else None,
         "citations_checked": citations_checked,
-        "citations_unsupported": len(citation_examples) if cites else None,
+        "citations_unsupported": sum(1 for u in citation_examples if u["kind"] == "unsupported") if cites else None,
+        "citations_misattributed": sum(1 for u in citation_examples if u["kind"] == "misattributed") if cites else None,
         "citations_skipped_cycles": sum(1 for _, c in cites if c.get("skipped")) if cites else None,
         "citation_examples": citation_examples[:8],
     }
@@ -232,10 +233,13 @@ def render_markdown(d: dict) -> str:
         lines.append("- errors: " + " | ".join(a["error_samples"]))
     if a.get("citations_checked") is not None:
         skipped = f", {a['citations_skipped_cycles']} cycle(s) skipped (research tools ran)" if a.get("citations_skipped_cycles") else ""
-        lines.append(f"- **prior citations**: {a['citations_checked']} checked, {a['citations_unsupported']} unsupported{skipped}"
-                     "  (a figure the model quoted that appears nowhere in the prior it was given - judge the decision on the journalled prior, not the quote)")
+        lines.append(f"- **prior citations**: {a['citations_checked']} checked, {a['citations_unsupported']} unsupported, "
+                     f"{a.get('citations_misattributed') or 0} misattributed{skipped}"
+                     "  (unsupported: a figure that appears nowhere in the prior the model was given; misattributed: another "
+                     "underlying's figure quoted as this one's - judge the decision on the journalled prior, not the quote)")
         for u in a.get("citation_examples") or []:
-            lines.append(f"  - {str(u['ts'])[11:16]} {u['symbol']} quoted \"{u['quoted']}\" - nearest real number: {u['nearest']}")
+            what = "nearest real number" if u.get("kind") == "unsupported" else "actually"
+            lines.append(f"  - {str(u['ts'])[11:16]} {u['symbol']} quoted \"{u['quoted']}\" - {what}: {u['nearest']}")
     lines.append(f"- models: {a['models']}; {a['tokens_in']:,} in / {a['tokens_out']:,} out tokens; "
                  f"latency avg {a['latency_avg_sec']}s max {a['latency_max_sec']}s; truncated outputs {a['truncated_outputs']}"
                  + (f"; est. cost ${d['cost_usd']}" if d.get("cost_usd") is not None else ""))

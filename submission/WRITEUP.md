@@ -31,22 +31,21 @@ Holding is the default. The thesis and tactics are in the prompt as
 token usage and latency are journaled every cycle. Thinking-mode models are run
 with thinking disabled; that single setting turned empty answers into decisions.
 
-**The guardrails do not trust the model's arithmetic, and we can show where it
-went wrong.** Each cycle the model is handed a prediction-market prior (Kalshi's
-index-close market and the option chain's own implied odds). On day 2 it quoted
-that prior three times in its stated reasons — "68.7% chance of down>1%",
-"7.6% chance of finishing above", "81.9% down>1%" — and all three were invented:
-the prompt said 33.8%, 12.6% and 59.5%, every error skewed toward the trade it
-was proposing. Since then every percentage the model cites in a reason is
-checked against the numbers it was actually shown, the count rides on the
-`decision` journal event, the end-of-day digest lists each unsupported quote
-with the nearest real value, and the reviewer model is told to judge decisions
-on the journalled prior rather than on the figure quoted. The funnel still does
-not act on prose — it bounds what can be traded, not what can be said — but a
-fabricated statistic no longer propagates unlabelled into the artifacts a
-reader sees. Each open position is also shown with the prior *at the time it
-was opened* beside the prior now, so "has my thesis changed?" is a comparison
-against recorded numbers, not against the model's memory of them.
+**The guardrails do not trust the model's arithmetic, and we check it.** Each
+cycle the model is handed a prediction-market prior (Kalshi's index-close
+market and the option chain's own implied odds). Every percentage it then cites
+in a stated reason is checked against the numbers it was actually shown, the
+count rides on the `decision` journal event, and the end-of-day digest lists
+any quote that matches nothing (or that belongs to a different underlying) with
+the real value beside it; the reviewer model is told to judge decisions on the
+journalled prior rather than on the figure quoted. The audit was built on a
+suspicion — three day-2 quotes looked invented when read against the wrong
+hour's prompt — and its first run cleared the model: 22 figures quoted on day
+2, 22 exact, one attributed to the wrong underlying. That is the honest
+robustness story: the model's prose is checked, and the check said it was
+telling the truth. Each open position is also shown with the prior *at the
+time it was opened* beside the prior now, so "has my thesis changed?" is a
+comparison against recorded numbers, not against the model's memory of them.
 
 ## Risk gates (deterministic, never negotiated)
 

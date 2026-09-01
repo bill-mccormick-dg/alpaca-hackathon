@@ -27,7 +27,7 @@ def main() -> int:
     args = ap.parse_args()
     journal.use_account(args.account)
 
-    prior, checked, unsupported, skipped = None, 0, [], 0
+    prior, checked, unsupported, misattributed, skipped = None, 0, [], [], 0
     for r in journal.read_events(args.day, events=("predictions", "decision")):
         if r["event"] == "predictions":
             prior = r
@@ -45,8 +45,12 @@ def main() -> int:
         checked += result["checked"]
         for u in result["unsupported"]:
             unsupported.append((str(r.get("ts"))[11:16], u))
-            print(f"{str(r.get('ts'))[11:16]}  {u['symbol']:<22} quoted {u['quoted']:>6}   nearest: {u['nearest']['label']} {u['nearest']['value']}")
-    print(f"\n{args.account} {args.day}: {checked} citation(s) checked, {len(unsupported)} unsupported, {skipped} cycle(s) skipped (research tools ran)")
+            print(f"{str(r.get('ts'))[11:16]}  {u['symbol']:<22} quoted {u['quoted']:>6}   UNSUPPORTED - nearest: {u['nearest']['label']} {u['nearest']['value']}")
+        for u in result.get("misattributed") or []:
+            misattributed.append((str(r.get("ts"))[11:16], u))
+            print(f"{str(r.get('ts'))[11:16]}  {u['symbol']:<22} quoted {u['quoted']:>6}   misattributed - it is {u['nearest']['label']}")
+    print(f"\n{args.account} {args.day}: {checked} citation(s) checked, {len(unsupported)} unsupported, "
+          f"{len(misattributed)} misattributed, {skipped} cycle(s) skipped (research tools ran)")
     return 0
 
 

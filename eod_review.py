@@ -56,7 +56,8 @@ the model gave them, and which crowd to trust when Kalshi and the chain disagree
 "withheld" rows shadow-grade priors the usability gate kept from the model: they say whether \
 the gate discarded good information, not what the model leaned on. The audit's \
 "citations_unsupported" counts numbers the model quoted in its reasons that appear nowhere in \
-the prior it was actually given ("citation_examples" shows each, with the nearest real value): \
+the prior it was actually given, and "citations_misattributed" counts another underlying's figure \
+quoted as this one's ("citation_examples" shows each, with the real value): \
 the reason strings are rhetoric, not evidence - judge every decision on the journalled prior, \
 never on the figure the model quoted, and say so when a trade rested on an invented number.
 
