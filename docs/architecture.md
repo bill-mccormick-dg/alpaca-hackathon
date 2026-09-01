@@ -80,7 +80,7 @@ A diagram claiming every write goes through the gate would be wrong.
 | `bot/identity.py` | Broker account number vs the `--account` name | The only guard keyed on the credentials, not the CLI string; fail-closed for challengers, warn-and-proceed for `official` |
 | `bot/config.py` + `bot/overrides.py` | `config.yaml` + runtime overrides (allowlisted, expire 16:00 ET) | `config_provenance()` is what the journal records each cycle; `resolve_review_model()` picks a reviewer that did not trade the day, recomputed each call so a dashboard model swap cannot make an account its own reviewer |
 | `bot/snapshot.py` | Account/positions, option chains in a strike band around spot (paginated until the configured DTE window is covered; coverage journaled per cycle), clock | `feed=indicative` always (no OPRA) |
-| `bot/greeks.py` | Black-Scholes IV solve (bisection) + delta/gamma/theta/vega | Alpaca's free feed has none |
+| `bot/greeks.py` | Black-Scholes IV solve (bisection) + delta/gamma/theta/vega | the fallback for contracts Alpaca's snapshot does not price; most carry Alpaca's own IV/Greeks (#160) |
 | `bot/predictions.py` | Kalshi daily index-close markets -> implied median, P(above prior close), P(\|move\|>1%) | prior only, never traded |
 | `bot/learning.py` | Facts-only block: recent round trips, open positions vs entry, today's rejections by rule | windowed, capped |
 | `bot/research.py` | Four read-only tools the model may call (bars, stock snapshot, option contracts, news) | maps to MCP with fixed safe args; nothing that orders |

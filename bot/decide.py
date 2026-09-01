@@ -52,16 +52,15 @@ spread_pct where both sides of the quote exist: the bid/ask spread as a percenta
 spread_pct is what a buy-then-sell round trip at market costs you before the underlying moves \
 at all (entry and exit each pay half the spread relative to mid) - your thesis must clear at \
 least that much just to break even. Prefer the tighter contract when two express the same view. \
-Alpaca's \
-feed carries no Greeks or implied volatility, so where a contract's price was stable enough \
-to solve for it, implied volatility and the standard Greeks (delta, gamma, theta per day, \
-vega per 1 vol point) were derived from it via Black-Scholes and are included too. A contract \
-missing those fields means the price data was too thin or stale to solve reliably - judge \
-that one on price, strike, and days-to-expiration alone. The Greeks are solved independently \
-per contract from a free indicative feed, so they will not be internally consistent (put and \
-call deltas at one strike need not sum to -1, and a few quotes are plainly stale). Treat them as \
-rough guides; do NOT spend effort auditing or reconciling the data - skip anything that looks \
-broken and decide from what is plausible. Keep your reasoning brief and answer decisively.
+Each \
+contract also carries implied volatility and the standard Greeks (delta, gamma, theta per day, \
+vega per 1 vol point, rho) as Alpaca computes them (greeks_source "alpaca"). Where Alpaca has \
+none - a thin or stale quote - they were derived from the contract's own price via \
+Black-Scholes instead (greeks_source "derived"): treat those as rough guides only. A contract \
+with no Greeks at all had price data too thin to solve - judge that one on price, strike, and \
+days-to-expiration alone. Either way, do NOT spend effort auditing or reconciling the data - \
+skip anything that looks broken and decide from what is plausible. Keep your reasoning brief \
+and answer decisively.
 
 STRATEGY (from config.yaml - the thesis you are executing; the hard limits above still win):
 {strategy_notes}
@@ -117,6 +116,16 @@ def _summarize_contract(symbol: str, raw: dict, spot: float, today: date) -> dic
         mid = (bid + ask) / 2
         entry["spread_pct"] = round((ask - bid) / mid * 100, 1)
 
+    # Alpaca's snapshot carries IV and Greeks on most contracts (#160 - the
+    # "free feed has none" belief was wrong; the far-OTM and quote-less ones
+    # lack them). Prefer those: computed on one surface with rates and
+    # dividends, so put and call deltas at a strike agree. Black-Scholes on
+    # our side is the fallback for the rest, and is marked as such.
+    provided = _alpaca_greeks(raw)
+    if provided:
+        entry.update(provided, greeks_source="alpaca")
+        return entry
+
     price = _contract_market_price(raw)
     if price is not None:
         g = greeks.greeks(price, spot, occ.strike, dte / 365, occ.option_type)
@@ -127,8 +136,26 @@ def _summarize_contract(symbol: str, raw: dict, spot: float, today: date) -> dic
                 gamma=round(g.gamma, 5),
                 theta=round(g.theta, 4),
                 vega=round(g.vega, 4),
+                greeks_source="derived",
             )
     return entry
+
+
+def _alpaca_greeks(raw: dict) -> dict | None:
+    """The snapshot's own impliedVolatility + greeks block, in the prompt's
+    field names and rounding; None unless IV and delta are both present."""
+    g = raw.get("greeks") or {}
+    iv = raw.get("impliedVolatility")
+    if not isinstance(g, dict) or iv is None or g.get("delta") is None:
+        return None
+    try:
+        out = {"iv": round(float(iv), 4), "delta": round(float(g["delta"]), 4)}
+        for name, places in (("gamma", 5), ("theta", 4), ("vega", 4), ("rho", 4)):
+            if g.get(name) is not None:
+                out[name] = round(float(g[name]), places)
+    except (TypeError, ValueError):
+        return None
+    return out
 
 
 def _summarize_options(snapshot: dict, config: dict, today: date) -> dict:

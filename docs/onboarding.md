@@ -87,8 +87,10 @@ that talks to Alpaca or Featherless is wrapped so a fake can stand in (see
 
 ## 5. Things that will bite you
 
-- Alpaca's free options feed has **no Greeks**; ours are derived per contract
-  (`bot/greeks.py`) and are not internally consistent. The prompt says so.
+- Alpaca's options snapshot **does** carry IV and Greeks on most contracts
+  (the code believed otherwise until #160). Contracts it does not price get
+  `bot/greeks.py`'s Black-Scholes derivation, tagged `greeks_source: derived`
+  in the prompt — those are rough, and the prompt says so.
 - Newer Featherless models are **thinking models**: without
   `model_params: {chat_template_kwargs: {enable_thinking: false}}` they return
   empty content. `config-test.yaml` has it set.

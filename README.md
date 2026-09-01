@@ -68,9 +68,10 @@ differ here, both hackathon requirements:
   instead of raw SDK calls — the model gets broad *read* access (account,
   positions, option chains, bars) to research with, but never calls the
   order-placing tools directly; `bot/risk.py` validates every proposal
-  before our own code submits anything. Alpaca's free indicative options
-  feed carries no Greeks or IV, so `bot/greeks.py` derives them from each
-  contract's market price via Black-Scholes.
+  before our own code submits anything. Alpaca's indicative options feed
+  supplies IV and Greeks for most contracts; `bot/greeks.py` derives them via
+  Black-Scholes only for the ones it does not price, and the prompt says which
+  is which.
 - **[Featherless.ai](https://featherless.ai)** (OpenAI-compatible, tool-calling
   confirmed on `moonshotai/Kimi-K2-Instruct` and the Qwen 3 family) instead of
   the Claude CLI.

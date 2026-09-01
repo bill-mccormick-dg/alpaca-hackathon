@@ -37,8 +37,9 @@ glossary for the terms these docs use.
   (strike beyond it). OTM contracts cost less and need a bigger move.
 - **The Greeks** — the collective name for four sensitivities of an option's
   price, each written as a Greek letter, and each answering "if *one* thing
-  changes, how much does this contract move?" `bot/greeks.py` derives all four
-  per contract. They are the next four entries.
+  changes, how much does this contract move?" Alpaca's snapshot supplies them
+  (plus rho) for most contracts; `bot/greeks.py` derives them only for the
+  ones it could not price. They are the next four entries.
 - **Delta** — how much the option moves per $1 move in the stock. Runs 0 to +1
   for a call and −1 to 0 for a put, which is why the tactics say `|delta|`. It
   doubles as a rough "chance this finishes in the money", so |delta| ≈ 0.4 is a
@@ -140,19 +141,25 @@ makes the guardrails able to be simple absolute numbers rather than
 margin-aware, assignment-aware risk logic — the sort we could not prove correct
 in four days.
 
-### The Greeks are indicative, and the prompt says so
+### Where the Greeks come from, and the prompt says so
 
-`bot/greeks.py` solves each contract's implied volatility from *its own* market
-price and derives delta/gamma/theta/vega from that — independently, per
-contract. They will therefore not be internally consistent: put and call deltas
-at one strike need not sum to −1, and some quotes are plainly stale.
+Alpaca's option snapshot carries `impliedVolatility` and a `greeks` block
+(delta, gamma, theta, vega, rho) on most contracts — computed on one surface
+with rates and dividends, so put and call deltas at a strike agree. Those are
+what the prompt shows, tagged `greeks_source: alpaca`. (Until 2026-08-31 the
+bot believed the free feed carried none and re-derived everything; on NVDA the
+home-grown numbers were ~5 vol points and ~5 delta points off, with the
+call/put skew the wrong way round — see #160.)
 
-This is stated in the prompt rather than hidden, along with an instruction not
-to spend effort auditing or reconciling the numbers: skip anything that looks
-broken and decide from what is plausible. A contract whose price was too thin to
-solve arrives with no Greeks at all and is to be judged on price, strike and DTE
-alone. Presenting derived figures as if they were an exchange feed would invite
-exactly the wrong kind of confidence.
+The contracts Alpaca does not price — far out of the money, or a one-sided
+quote — fall back to `bot/greeks.py`, which solves implied volatility from the
+contract's *own* market price and derives the rest, independently per contract.
+Those arrive tagged `greeks_source: derived` and the prompt tells the model to
+treat them as rough guides, along with an instruction not to spend effort
+auditing or reconciling the numbers: skip anything that looks broken and decide
+from what is plausible. A contract whose price was too thin even for that
+arrives with no Greeks at all and is to be judged on price, strike and DTE
+alone.
 
 ## When the bot buys or sells stock
 
@@ -273,9 +280,10 @@ nearest-the-money contracts within the tradeable expiration window (the chain
 is fetched across the *whole* window — paginated, since one API page covers
 only 1–3 DTE on SPY/QQQ — so on $1-strike names those 12 are the at-the-money
 call and put across the nearest expiries rather than neighbouring strikes) with
-bid/ask/last and **derived** Greeks (Alpaca's free feed carries none —
-`bot/greeks.py` solves implied volatility from each contract's market price
-and computes delta/gamma/theta/vega from it), the hard limits, and the
+bid/ask/last and Greeks (Alpaca's own IV and delta/gamma/theta/vega/rho where
+the feed supplies them, which is most contracts; `bot/greeks.py` derives them
+from the contract's market price for the rest, tagged as such), the hard
+limits, and the
 strategy notes. It returns a JSON array of proposals or `[]`. Holding is the
 default and is treated as a good decision.
 
