@@ -675,6 +675,16 @@ Set `review_model` — in config, or as a runtime override, or from the
 dashboard's **Review model** selector — to pin one instead of computing it.
 Unset is the normal case.
 
+**The claim is checkable, because for two days it was false.** From #127 the
+resolved reviewer was journaled on every `config` event and shown on the
+dashboard, but `eod_review.py` itself still built its client on `model` — so
+on 2026-08-31 and 2026-09-01 every account graded its own homework while this
+section said otherwise (#177). Since then the digest's last heading names the
+model that actually wrote it (`## Model's read of the day (advisory, by …)`),
+and the `eod_review` journal event carries `review_model`. If the heading ever
+names the account's trading model, the preference list is exhausted or
+misconfigured — not a feature.
+
 #### What it actually produces
 
 From a verification run on Kimi-K2.6 (against a *synthetic* digest — no real

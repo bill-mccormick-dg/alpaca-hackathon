@@ -244,5 +244,9 @@ def render_markdown(d: dict) -> str:
             lines.append(f"- {str(r['ts'])[11:16]} ({r['count']}): `{r['raw']}`")
 
     if d.get("recommendation"):
-        lines += ["", "## Model's read of the day (advisory)", "", d["recommendation"]]
+        # Name the reviewer: the docs promise it is not the model that traded,
+        # and for two days it silently was (#177). A claim in the header is
+        # one a reader can check against the config block above.
+        by = f", by {d['review_model']}" if d.get("review_model") else ""
+        lines += ["", f"## Model's read of the day (advisory{by})", "", d["recommendation"]]
     return "\n".join(lines) + "\n"
