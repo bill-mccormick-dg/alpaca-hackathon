@@ -65,6 +65,15 @@ def decision_audit(records: list[dict]) -> dict:
 
     rej_by_rule = Counter(_rejection_key(r.get("detail")) for r in rejected)
     rej_by_symbol = Counter(r.get("symbol") for r in rejected)
+    # One verbatim detail per rule (#155). The key is a grouping label, and
+    # on 2026-08-31 the reviewer read 'price must be' as limit prices too
+    # aggressive to fill, when the detail was 'price must be positive' - the
+    # funnel could not price the contract at all - and recommended widening
+    # the strike band for a bug that was already fixed. Count by the key,
+    # reason from the example.
+    rej_examples: dict[str, str] = {}
+    for r in rejected:
+        rej_examples.setdefault(_rejection_key(r.get("detail")), str(r.get("detail") or "")[:200])
 
     usage_in = sum(int((r.get("usage") or {}).get("prompt_tokens") or 0) for r in decisions)
     usage_out = sum(int((r.get("usage") or {}).get("completion_tokens") or 0) for r in decisions)
@@ -86,6 +95,7 @@ def decision_audit(records: list[dict]) -> dict:
         "dry_run": len(dry),
         "rejected": len(rejected),
         "rejections_by_rule": dict(rej_by_rule.most_common(REJECTION_TOP_N)),
+        "rejection_examples": {rule: rej_examples[rule] for rule, _ in rej_by_rule.most_common(REJECTION_TOP_N)},
         "rejections_by_symbol": dict(rej_by_symbol.most_common(REJECTION_TOP_N)),
         "errors": len(errors),
         "error_samples": [f"{r.get('where') or r.get('symbol')}: {str(r.get('detail'))[:120]}" for r in errors[:5]],
@@ -199,6 +209,8 @@ def render_markdown(d: dict) -> str:
                  f"{a['rejected']} rejected, {a['errors']} errors, {a['dry_run']} dry-run")
     if a["rejections_by_rule"]:
         lines.append(f"- **rejections by rule**: {a['rejections_by_rule']}  (a rule rejecting the same idea all day is a prompt/config bug)")
+        for rule, example in (a.get("rejection_examples") or {}).items():
+            lines.append(f"  - `{rule}` in full: \"{example}\"")
         lines.append(f"- rejections by symbol: {a['rejections_by_symbol']}")
     if a["error_samples"]:
         lines.append("- errors: " + " | ".join(a["error_samples"]))
@@ -215,6 +227,11 @@ def render_markdown(d: dict) -> str:
             for source, today in (ps.get("today") or {}).items():
                 run = (ps.get("running") or {}).get(source) or {}
                 lines.append(f"- {source}: today {today}, running {run.get('mean')} over {run.get('days')} day(s)")
+            withheld = ps.get("withheld") or []
+            for source, mean in (ps.get("withheld_today") or {}).items():
+                reasons = sorted({str(r.get("suppressed")) for r in withheld if r.get("source") == source})
+                lines.append(f"- withheld {source}: today {mean} - shadow-graded, not in the means above "
+                             f"(withheld for: {'; '.join(reasons)})")
 
     if d.get("config_changes"):
         lines += ["", "## Config seen today"]
