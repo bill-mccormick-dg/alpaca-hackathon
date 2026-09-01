@@ -38,7 +38,7 @@ locally). Every entrypoint takes `--account <name>` (default **test**) and
 | `trade_report.py [--days N] [--json]` | Round trips reconstructed from Alpaca's fills, exits classified, cuts by underlying / instrument / DTE / hour |
 | `eod_review.py [--date] [--no-model] [--json]` | The end-of-day digest (see The daily loop) |
 | `python -m unittest discover -s tests` | Credential-free tests |
-| `scripts/verify_*.py` | Manual live checks (Alpaca connectivity, Featherless, snapshot) |
+| `scripts/verify_*.py` | Manual live checks (Alpaca connectivity, Featherless, snapshot, option-chain coverage) |
 
 ## Named accounts
 
@@ -107,7 +107,7 @@ can never leak into the judged account.
 | `temperature`, `max_tokens` | sampling and answer length |
 | `strategy_notes` | the tactics paragraph appended to the prompt — the main dial |
 | `research_contracts_per_underlying` | how many contracts the model is shown |
-| `option_strike_band_pct` | how far from spot the shown strikes reach |
+| `option_strike_band_pct` | how far from spot the shown strikes reach — and, on SPY/QQQ, how many pages the chain fetch takes |
 | `stop_loss_pct`, `take_profit_pct` | when `bot/exits.py` closes a position |
 | `eod_close_dte` | how near expiry the end-of-day backstop closes |
 | `review_model` | which model critiques the day in `eod_review.py` — computed from `review_model_preference` unless pinned |
@@ -197,7 +197,7 @@ journaled it did not happen.
 
 | Event | Written when |
 |---|---|
-| `cycle_start`, `cycle_end` | each cycle opens / closes, with equity and position count |
+| `cycle_start`, `cycle_end` | each cycle opens / closes, with equity and position count; `cycle_start` also carries `chain_coverage` — per underlying, how many contracts and pages the option chain fetch took, the furthest DTE it reached, and whether it hit the page cap (`truncated`) |
 | `config` | the effective config for that cycle: values, a hash, any active overrides, and the resolved `review_model` |
 | `decision` | the model answered — raw output, model, token usage, latency, finish reason, reasoning head, tool calls |
 | `tool_call` | the model used one of its four read-only research tools |
@@ -243,7 +243,18 @@ grep '"order_rejected"' logs/journal.jsonl | tail -5
 
 # what the model actually said, most recent first
 grep '"decision"' logs/journal.jsonl | tail -1
+
+# did the option menu actually reach the configured DTE window this cycle
+grep '"cycle_start"' logs/journal.jsonl | tail -1 | jq .chain_coverage
 ```
+
+Read `chain_coverage` per underlying: `max_dte` should sit near
+`max_days_to_expiration` (45); far below it with `truncated: true` means the
+fetch hit `CHAIN_MAX_PAGES` (`bot/snapshot.py`) — raise the cap or narrow
+`option_strike_band_pct`. Far below it with `truncated: false` just means no
+listed expiry that far out inside the band. Before #158 this was invisible:
+SPY/QQQ silently stopped at 3 DTE, and an in-window proposal the model found
+through its research tools was refused as unpriceable.
 
 ## Home Assistant over MQTT
 

@@ -17,6 +17,16 @@ from bot.models import AccountState, Position, Proposal
 from bot.occ import parse_occ_symbol
 from bot.risk import EASTERN
 
+# Option chain paging (issue #158). Alpaca returns the chain ordered by
+# expiration and pages it; on SPY/QQQ ($1 strikes, an expiry every weekday)
+# an 8% band is ~245 contracts per expiration, so one page covered 1-3 DTE
+# of a 45-day window. CHAIN_PAGE_LIMIT is the API maximum. CHAIN_MAX_PAGES
+# is a latency/memory safety cap, not a strategy knob - SPY's full window is
+# ~8 pages - and hitting it is reported as `truncated` in the research dict
+# and journaled on cycle_start rather than silently shortening the menu.
+CHAIN_PAGE_LIMIT = 1000
+CHAIN_MAX_PAGES = 12
+
 
 def _data(result) -> dict:
     """Unwrap an MCP tool_call result's {"data": ...} envelope.
@@ -96,12 +106,14 @@ async def quote_option_mid(client: AlpacaMCPClient, symbol: str) -> float | None
     """Bid/ask mid for ONE option contract, from a live quote - the pricing
     path for a proposal the snapshot cannot price.
 
-    The snapshot's chain is one API page (500 contracts), and for SPY inside
-    an 8% strike band that is three expiries, whatever the configured DTE
-    window says. A model with research tools can look at a fourth expiry,
-    propose it with a perfectly good limit price, and have the funnel reject
-    it as "price must be positive" - which is what happened twice on
-    2026-08-31 to a 4-DTE SPY put. This closes that gap without loosening
+    Until #158 the snapshot's chain was one API page (500 contracts), and for
+    SPY inside an 8% strike band that was three expiries, whatever the
+    configured DTE window said. A model with research tools could look at a
+    fourth expiry, propose it with a perfectly good limit price, and have the
+    funnel reject it as "price must be positive" - which is what happened
+    twice on 2026-08-31 to a 4-DTE SPY put. The chain is paginated now, so
+    this is the fallback for a contract outside the fetched band or window
+    (or beyond the page cap), and it closes that gap without loosening
     anything: a real quote still has to exist, so an invented symbol is
     rejected exactly as before, and the price used for sizing is the
     market's, not the model's.
@@ -159,24 +171,78 @@ async def build_option_research(client: AlpacaMCPClient, config: dict, today: da
     research = {}
     for underlying in config["underlyings"]:
         price = await get_underlying_price(client, underlying)
-        result = await client.call_tool(
-            "get_option_chain",
-            {
-                "underlying_symbol": underlying,
-                "feed": "indicative",
-                "expiration_date_gte": min_exp.isoformat(),
-                "expiration_date_lte": max_exp.isoformat(),
-                "strike_price_gte": round(price * (1 - band), 2),
-                "strike_price_lte": round(price * (1 + band), 2),
-                "limit": 500,
-            },
-        )
-        data = _data(result)
+        query = {
+            "underlying_symbol": underlying,
+            "feed": "indicative",
+            "expiration_date_gte": min_exp.isoformat(),
+            "expiration_date_lte": max_exp.isoformat(),
+            "strike_price_gte": round(price * (1 - band), 2),
+            "strike_price_lte": round(price * (1 + band), 2),
+            "limit": CHAIN_PAGE_LIMIT,
+        }
+        contracts, pages, truncated = await _fetch_chain_pages(client, query)
         research[underlying] = {
             "underlying_price": price,
-            "contracts": data.get("snapshots", {}),
+            "contracts": contracts,
+            "pages": pages,
+            "truncated": truncated,
+            "max_dte": _max_dte(contracts, today),
         }
     return research
+
+
+async def _fetch_chain_pages(client: AlpacaMCPClient, query: dict) -> tuple[dict, int, bool]:
+    """Follow next_page_token until the chain inside the query's band and
+    expiration window is complete. (contracts, pages fetched, truncated).
+
+    The server already applies the expiration window, so the last page IS
+    the last in-window expiry - there is nothing to early-stop on. What ends
+    the loop: no token (the API sends null on the last page; the test
+    fixtures omit the key entirely and mean the same), a token equal to the
+    one just sent or an empty page (both would spin forever), or the safety
+    cap - the only exit that leaves the menu short, hence `truncated`."""
+    contracts: dict = {}
+    token = None
+    pages = 0
+    while True:
+        args = dict(query, page_token=token) if token else dict(query)
+        data = _data(await client.call_tool("get_option_chain", args))
+        pages += 1
+        page = data.get("snapshots") or {}
+        contracts.update(page)
+        next_token = data.get("next_page_token")
+        if not next_token or next_token == token or not page:
+            return contracts, pages, False
+        if pages >= CHAIN_MAX_PAGES:
+            return contracts, pages, True
+        token = next_token
+
+
+def _max_dte(contracts: dict, today: date) -> int | None:
+    """Furthest expiry actually fetched, in days - the number to compare with
+    max_days_to_expiration when asking whether the menu reached the window."""
+    dtes = []
+    for symbol in contracts:
+        try:
+            dtes.append((parse_occ_symbol(symbol).expiration - today).days)
+        except ValueError:
+            continue
+    return max(dtes) if dtes else None
+
+
+def chain_coverage(options: dict) -> dict:
+    """Per-underlying fetch coverage for the cycle_start journal event, so the
+    day a proposal is refused as unpriceable, the review can see whether the
+    menu even reached that expiry."""
+    return {
+        underlying: {
+            "contracts": len(block.get("contracts") or {}),
+            "pages": block.get("pages"),
+            "max_dte": block.get("max_dte"),
+            "truncated": bool(block.get("truncated")),
+        }
+        for underlying, block in (options or {}).items()
+    }
 
 
 def price_for_proposal(snapshot: dict, p: Proposal) -> float | None:
