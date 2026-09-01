@@ -134,10 +134,20 @@ async def quote_option_mid(client: AlpacaMCPClient, symbol: str) -> float | None
 async def get_underlying_price(client: AlpacaMCPClient, symbol: str) -> float:
     """Mid of the latest bid/ask for a stock symbol — used both as the
     option chain's strike-price anchor and as the fill-price estimate for
-    stock proposals."""
+    stock proposals.
+
+    One-sided quotes are the quoted side, not the mid: the IEX feed prints a
+    zero bid after hours (and can briefly during the session), and the mid
+    of 0 and 761.85 is 380.93 - seen on 2026-09-01 evening, when it put the
+    strike band on a part of the chain that does not exist and the menu
+    came back with 64 contracts at strikes nobody trades. Both sides
+    missing is a real failure and raises like any other bad quote."""
     result = await client.call_tool("get_stock_latest_quote", {"symbols": symbol})
     quote = _data(result)["quotes"][symbol]
-    return (float(quote["bp"]) + float(quote["ap"])) / 2
+    sides = [float(v) for v in (quote.get("bp"), quote.get("ap")) if v is not None and float(v) > 0]
+    if not sides:
+        raise RuntimeError(f"no usable quote for {symbol}: bid {quote.get('bp')!r} ask {quote.get('ap')!r}")
+    return sum(sides) / len(sides)
 
 
 async def build_option_research(client: AlpacaMCPClient, config: dict, today: date | None = None) -> dict:

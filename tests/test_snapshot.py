@@ -259,6 +259,29 @@ class BuildAccountStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("AAPL", account.positions)
 
 
+class OneSidedQuoteTest(unittest.IsolatedAsyncioTestCase):
+    """The mid of a zero bid and a real ask is half the price. After hours
+    IEX prints exactly that, and a strike band centred on half of SPY
+    fetches a chain nobody trades."""
+
+    async def test_a_zero_bid_means_the_ask_is_the_price(self):
+        client = FakeMCPClient({"get_stock_latest_quote": _stock_quote_response("SPY", 0, 761.85)})
+        self.assertEqual(await snapshot.get_underlying_price(client, "SPY"), 761.85)
+
+    async def test_a_missing_ask_means_the_bid_is_the_price(self):
+        client = FakeMCPClient({"get_stock_latest_quote": {"data": {"quotes": {"SPY": {"bp": 761.5, "ap": None}}}}})
+        self.assertEqual(await snapshot.get_underlying_price(client, "SPY"), 761.5)
+
+    async def test_two_sided_is_still_the_mid(self):
+        client = FakeMCPClient({"get_stock_latest_quote": _stock_quote_response("SPY", 761.5, 761.9)})
+        self.assertAlmostEqual(await snapshot.get_underlying_price(client, "SPY"), 761.7)
+
+    async def test_no_sides_at_all_raises(self):
+        client = FakeMCPClient({"get_stock_latest_quote": _stock_quote_response("SPY", 0, 0)})
+        with self.assertRaises(RuntimeError):
+            await snapshot.get_underlying_price(client, "SPY")
+
+
 def _research_config(**overrides):
     config = {
         "underlyings": ["AAPL"],
