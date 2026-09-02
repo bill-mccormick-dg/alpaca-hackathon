@@ -91,7 +91,7 @@ class CycleEndAlwaysPublishesTest(unittest.TestCase):
 
     There are four of them - exits-only, final-day skip, no-proposals, and the
     normal finish - and an earlier version hooked the trade-report publish to
-    only the first. So the Home Assistant trade card and the team dashboard
+    only the first. So the Home Assistant trade and report cards
     refreshed only on cycles that closed a position, which on a normal day is
     never. Nothing failed; the card just sat at `unknown`.
 

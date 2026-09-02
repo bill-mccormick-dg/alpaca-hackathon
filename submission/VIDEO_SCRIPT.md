@@ -63,7 +63,7 @@ cycle and shot 2 has a fresh one to show.
 | - | slides | Greeks: Alpaca's, with Black-Scholes as the backstop; then Brier-scoring the priors |
 | 4 | `demo.sh` | the kill switch, verified against the broker, and the next cycle refusing |
 | - | browser | the live viewer, and the four bugs it caught in two days |
-| - | browser | Home Assistant: operator dashboard, team dashboard, what pushes and what does not |
+| - | browser | Home Assistant: the dashboard (desktop, then a phone frame), what pushes and what does not |
 | 5, 7 | `demo.sh` | the end-of-day digest, then `DEPLOYED` and the runner: it ships itself |
 | - | slides | results, thanks |
 

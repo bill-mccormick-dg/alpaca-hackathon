@@ -89,9 +89,20 @@ Requires `identity_refused` / `identity_unverified` to be published, which
 needs the `EVENT_TOPICS` entry added in the same change — they were journaled
 but dropped at the broker before that.
 
-## Remote team access (issue #87)
+## Remote team access (issue #87 — revised by #145)
 
-Teammates who are not on the LAN reach the dashboard over **Tailscale**. The
+**Remote teammates read the journal viewer** ([bot.wpmccormick.pw](https://bot.wpmccormick.pw),
+Cloudflare tunnel + email one-time PIN — see the repo README), which carries
+the live journal, per-account filters and replay. The separate read-only
+"team" Home Assistant dashboard that used to serve this purpose is retired
+(#145); its trade-log and end-of-day cards now sit at the bottom of each
+account's section on the operational dashboard, and the role removes the
+deployed team file on its next converge.
+
+The Home Assistant dashboard is therefore **operator-only**. If a teammate
+does need HA itself (not just the viewer), the guidance below still applies.
+
+Teammates who are not on the LAN reach HA over **Tailscale**. The
 network layer may already exist — a firewall acting as a Tailscale subnet
 router advertising the whole LAN — but do **not** simply add a teammate to the
 tailnet and rely on that: accepting that route hands them the entire private
@@ -122,22 +133,19 @@ to the internet and no port is forwarded.
 
 **Home Assistant has no per-entity permissions.** A non-admin user can operate
 any entity rendered on a dashboard they can open — including the kill
-switches. So the separation is done with two dashboards:
-
-| Dashboard | Contents | Who |
-|---|---|---|
-| `alpaca-hackathon` (`dashboard.yaml.j2`) | state **plus kill switches and tunable knobs** | admins only — set `require_admin: true` |
-| `alpaca-hackathon-team` (`dashboard_team.yaml.j2`) | state, intra-day trade log, EOD digest — **no controls** | teammates |
+switches. With the team dashboard retired (#145) there is one dashboard, and
+it carries the controls, so an HA login for a teammate has to be locked down
+at the user and visibility level:
 
 - Create a **non-admin** Home Assistant user per teammate (Settings → People →
   add person → uncheck "Administrator"). Non-admin users get no Settings and no
-  Developer Tools, so a dashboard with no control entities is genuinely
-  read-only for them.
-- Mark the operational dashboard `require_admin: true` — the role prints the
-  exact `lovelace:` snippet when it runs.
-- `tests/test_dashboard.py` fails the build if a control entity ever appears in
-  the team template. That test is the guard; keep it passing rather than
-  reasoning about the YAML by eye.
+  Developer Tools, so they cannot call services directly.
+- Mark the operational dashboard `require_admin: true` in its `lovelace:`
+  entry, so it never appears in their sidebar.
+- Then follow "Protecting the kill switch" below — `require_admin` hides the
+  dashboard, not the entities.
+
+For read-only access, prefer the journal viewer: it needs none of this.
 
 ### Protecting the kill switch
 
@@ -183,11 +191,12 @@ ever looks uncertain during the scoring window, dropping the official
 account's switch from `mqtt_bridge.py`'s `discovery_payloads()` is a
 one-line change that makes the question moot.
 
-### What the team view shows
+### The report cards
 
-Published by `bot/report.py` via `bot/mqtt.py` as two attribute-carrying
+Published by `bot/report.py` via `bot/mqtt.py` as attribute-carrying
 sensors (HA caps a sensor's *state* at 255 characters, so the readable content
-travels as a JSON attribute):
+travels as a JSON attribute), rendered at the bottom of each account's
+dashboard section:
 
 - `sensor.ai_day_trader_<account>_recent_trades` — the day's fills, rejections
   and dry-runs with the reason the model gave, republished every cycle from the
