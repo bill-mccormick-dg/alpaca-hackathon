@@ -135,7 +135,7 @@
   section:nth-of-type(3) { font-size:0.799em; }
   section:nth-of-type(10) { font-size:0.909em; }
   section:nth-of-type(11) { font-size:0.942em; }
-  section:nth-of-type(12) { font-size:0.876em; }
+  section:nth-of-type(12) { font-size:0.818em; }
   section:nth-of-type(13) { font-size:0.897em; }
   section:nth-of-type(16) { font-size:0.862em; }
   @media print {
@@ -145,8 +145,8 @@
     section:nth-of-type(10) svg { max-height:509px; }
     section:nth-of-type(11) img { max-height:377px; }
     section:nth-of-type(11) svg { max-height:528px; }
-    section:nth-of-type(12) img { max-height:350px; }
-    section:nth-of-type(12) svg { max-height:491px; }
+    section:nth-of-type(12) img { max-height:327px; }
+    section:nth-of-type(12) svg { max-height:458px; }
     section:nth-of-type(13) img { max-height:359px; }
     section:nth-of-type(13) svg { max-height:502px; }
     section:nth-of-type(16) img { max-height:345px; }
@@ -359,7 +359,7 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
 </section>
 
 <section>
-  <h2>One feed, three audiences</h2>
+  <h2>Home Assistant, over MQTT</h2>
   <!-- The screenshot is pinned to its own pixel size inline, which beats both the
        print block's 360px image cap and anything fit_slides.py generates. That is
        deliberate: shrinking this image is what made it unreadable (#230), so the
@@ -367,11 +367,15 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
        take the width the portrait crop does not want. -->
   <div class="split" style="grid-template-columns:auto 1fr; align-items:start; margin-top:.7em">
     <img src="../images/ha-dashboard-state.png" style="width:auto; height:auto; max-height:424px; max-width:100%" alt="The Official account's state card in Home Assistant, mid-session: equity 99,552.71 USD, day P&amp;L -655.10 USD, two open positions, halt state none, last decision hold">
-    <div class="stack">
-      <div class="card"><p class="k">Operator</p><p>Kill switch and knobs.</p></div>
-      <div class="card"><p class="k t">Team</p><p>The journal viewer, read-only by construction. Home Assistant has no per-entity permissions, so the separation is a different surface, not a second dashboard.</p></div>
-      <div class="card"><p class="k w">Phone</p><p>Problems only. A fill sends nothing; <em>silence</em> does, when no cycle has run for 25 minutes.</p></div>
-    </div>
+    <table>
+      <tr><th>Kill switch</th><td>flatten and halt, <b>that account only</b> — stopping all three stays CLI-only</td></tr>
+      <tr><th>State</th><td>equity, day P&amp;L, open positions, halt state, last decision</td></tr>
+      <tr><th>Day P&amp;L</th><td>a history graph per account, off the same sensor</td></tr>
+      <tr><th>Control knobs</th><td>stop-loss, take-profit, EOD close DTE, min hold, early-exit drawdown, strike band, research breadth, temperature, Kalshi prior on/off — live, and expiring at the close</td></tr>
+      <tr><th>AI controls</th><td>model and review model from a dropdown, max tokens, tokens today and all time</td></tr>
+      <tr><th>Live journal</th><td>the cycle feed as it lands, the same events the viewer shows</td></tr>
+      <tr><th>Trades &amp; EOD</th><td>today's fills and rejections, then the end-of-day digest under them</td></tr>
+    </table>
   </div>
 </section>
 
