@@ -1,74 +1,60 @@
-# Video script — AI Day Trader - Long Premium, Short Leash
+# Video script - AI Day Trader: Long Premium, Short Leash
 
-**First cut lives in `submission/video/`**: `demo.sh` (the CT 108 terminal
-footage - live cycle, kill switch, eod_review, override - captioned,
-`PAUSE=0` to rehearse), `demo_local.sh` + `mqtt_watch.py` (the local half:
-the docker-compose farm/A-B comparison, and a genuine live MQTT capture -
-subscribe locally, trigger a cycle on CT 108, watch the messages arrive),
-`narration.md` (word-for-word voice-over with director's notes on which
-footage each block sits over, timed to ~4:58 under the 5:00 cap),
-`slides.html` (twelve slides, arrow keys, real journal/tool-call/MQTT
-excerpts). The outline below is the original plan the first cut follows.
+**Word-for-word narration is [`video/narration.md`](video/narration.md)**; the
+terminal half is [`video/demo.sh`](video/demo.sh), which prints a caption before
+each command and pauses for you. This file is the shot list and the checklist.
 
-**Format:** MP4, 1080p, ≤ 5:00 (target 3:30–4:30). Screen recording + voice.
-Terminal font ≥ 16 pt, dark theme, window ~1600×900. Record Wed or Thu after a
-day with real trades. Dry-run the whole command sequence once first.
+**Format:** MP4, 1080p, <= 5:00 (this cut is timed to ~4:40). Screen recording
+plus voice. Terminal font >= 16 pt, dark theme, window ~1600x900.
+**Every shot is the real system running** - no generated imagery, no mockups.
 
-Every shot is the real system running — no generated imagery.
+## Before you press record
 
-## 0:00–0:35 · Pitch (slide 2, then slide 3)
+Have these open, each on its own desktop or window:
 
-> "This is Long Premium, Short Leash — an autonomous options agent built on
-> Alpaca's MCP server. The idea in one sentence: buy defined-risk, short-dated
-> premium when an open-source model can name a reason, and let deterministic
-> code size it, stop it, and close it before expiry. The model never touches
-> an order. Open model proposes; code disposes."
+| Window | What |
+|---|---|
+| Deck | `video/slides.html` in a browser, full screen, arrow keys |
+| Terminal | `ssh` to CT 108, `cd /opt/alpaca-hackathon`, 16pt+ |
+| Viewer | https://bot.wpmccormick.pw - log in first, the OTP takes a minute |
+| Home Assistant | the operator dashboard, and the read-only team dashboard |
+| GitHub | the repo's Actions tab, deploy workflow |
 
-## 0:35–2:15 · The agent in action (terminal on CT 108, during market hours)
+Then rehearse once, without touching the test account's positions:
 
-Command: `./.venv/bin/python run_cycle.py --account test --config config-test.yaml --verbose`
+```sh
+PAUSE=0 SKIP_HALT=1 bash submission/video/demo.sh
+```
 
-Narrate as it scrolls:
-- equity/positions line — "live paper account through Alpaca's MCP server"
-- (pause on the prompt contract block if shown) — "Alpaca's free feed has no
-  Greeks, so we derive IV and delta from each contract's price on the fly"
-- `research:` lines — "before deciding, the model investigates: bars, a
-  snapshot, news — read-only Alpaca MCP tools, six calls max, every one
-  journaled"
-- `model output:` — "then it must answer: a JSON array, or hold"
-- `SUBMITTED ...` / `REJECTED ...: ...` — "and here's the leash: this proposal
-  passes; this one is refused by the position cap, and the journal records
-  which rule said no"
+`SKIP_HALT=1` skips the one destructive shot. Drop it for the take - the kill
+switch closing real positions is the point of that shot. `FORCE=--force` lets
+the whole thing rehearse outside market hours.
 
-Then `./.venv/bin/python status.py` — positions, halt state, today's summary.
+**Record during market hours**, Wednesday or Thursday, so shot 1 is a real
+cycle and shot 2 has a fresh one to show.
 
-## 2:15–3:00 · The leash (kill switch)
+## Shot list
 
-Command: `./.venv/bin/python flatten.py --halt --account test`
-> "One command closes everything, verified against the broker, and trips the
-> kill switch." Then run a cycle: `halted: manual halt`. Show the `HALT` file,
-> delete it. (If the Home Assistant light exists: cut to it going red.)
+| # | Source | Shows |
+|---|---|---|
+| - | slides 1-3 | thesis, then the runtime diagram: the model in one box, one order path |
+| 1 | `demo.sh` | a live cycle: gates, snapshot, research tools, JSON, the gate |
+| 2 | `demo.sh` | `last_cycle.py` - the chain it was given (pagination), the prior (including a withheld one), the decision, the order and its stated reason |
+| - | slides | Greeks: Alpaca's, with Black-Scholes as the backstop; then Brier-scoring the priors |
+| 4 | `demo.sh` | the kill switch, verified against the broker, and the next cycle refusing |
+| - | browser | the live viewer, and the four bugs it caught in two days |
+| - | browser | Home Assistant: operator dashboard, team dashboard, what pushes and what does not |
+| 5, 7 | `demo.sh` | the end-of-day digest, then `DEPLOYED` and the runner: it ships itself |
+| - | slides | results, thanks |
 
-## 3:00–3:45 · Measure, then change (eod_review)
-
-Command: `./.venv/bin/python eod_review.py --account official --date <yesterday>`
-> "At the close, one command reconstructs every round trip from Alpaca's fills,
-> groups rejections by rule, appends the equity curve, and then a *different*
-> model - one that did not trade today - writes its read of the day with one
-> recommended change. Featherless is twenty thousand models behind one API, so
-> the reviewer costs one call and is not grading its own homework. We apply it with an
-> override that expires at the close, or a config PR that CI deploys to the
-> box before the open." Show `override.py show` and the PR list briefly.
-
-## 3:45–4:20 · Results and honesty (slide 9)
-
-Equity curve Mon→Thu, round trips, exit mix, official vs challenger. One
-sentence on what didn't work and what we'd change. Then slide 10 for two
-seconds: repo, MIT, next steps.
+Shots 3 and 6 (`status.py`, `override.py`) are in `demo.sh` and are good filler
+if a block runs short; neither is in the narration's timing.
 
 ## Capture checklist
 
-- [ ] Rehearse the command sequence; keep output short (`| head` where needed)
-- [ ] QuickTime/OBS 1080p; mic level check; no notifications
-- [ ] Export H.264/AAC MP4; check length ≤ 5:00
+- [ ] Rehearse the command sequence (`PAUSE=0 SKIP_HALT=1`)
+- [ ] Log into the viewer *before* recording - the email OTP is slow on camera
+- [ ] Collapse the Home Assistant sidebar (it lists the rest of the home network)
+- [ ] QuickTime/OBS 1080p; mic level check; notifications off
+- [ ] Export H.264/AAC MP4; check length <= 5:00
 - [ ] Upload YouTube (unlisted); test the link logged out; paste into METADATA.md

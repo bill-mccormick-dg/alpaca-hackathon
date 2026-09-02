@@ -9,6 +9,13 @@ Ten minutes from clone to a dry-run cycle. Nothing to install but Docker.
 
 ## 1. Access
 
+**Start here, it takes a minute:** open
+[bot.wpmccormick.pw](https://bot.wpmccormick.pw), enter your email, paste the
+one-time PIN. That is the live journal - every cycle, the model's reasoning,
+every order and the rule behind every rejection. No repo access, no VPN and no
+credentials needed, and watching one live cycle explains more than this page
+will. The rest of this section is for actually running the thing.
+
 - Ask for collaborator access to `bill-mccormick-dg/alpaca-hackathon` (private
   until submission).
 - Create **your own** Alpaca paper trading account at
@@ -75,6 +82,10 @@ that talks to Alpaca or Featherless is wrapped so a fake can stand in (see
 `tests/test_decide.py`).
 
 ## 4. Where to look first
+
+Before reading any of it: watch one cycle arrive in the
+[live viewer](https://bot.wpmccormick.pw). Ten minutes of that is worth an
+hour of the journal read cold.
 
 | You want to... | Read / run |
 |---|---|

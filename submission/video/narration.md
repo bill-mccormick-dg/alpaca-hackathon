@@ -1,9 +1,11 @@
-# Narration — first cut (target 4:45, hard cap 5:00)
+# Narration — second cut (target 4:40, hard cap 5:00)
 
-Read at a natural pace; each block is timed for the footage it sits over.
-Slides: `slides.html` (arrow keys). CT 108 footage: `demo.sh`. Local footage
-(farm, MQTT): `demo_local.sh` + `mqtt_watch.py` — **director's notes** mark
-where to actually cut to a live screen recording versus stay on a slide.
+Read at a natural pace. Each block names the footage it sits over: **slide N**
+is `slides.html` (arrow keys), **shot N** is the caption `demo.sh` prints, and
+**browser** is one of the three windows `demo.sh` stops and asks for.
+
+Have open before you start: the deck, a terminal on CT 108, the live viewer,
+both Home Assistant dashboards, and the repo's Actions tab.
 
 ---
 
@@ -12,74 +14,113 @@ AI Day Trader: Long Premium, Short Leash. An autonomous options agent on
 Alpaca's MCP server, built this week for the Alpaca AI Trading Agents
 Hackathon.
 
-**[0:08 — slide 2, thesis — 20s]**
-The idea in one sentence: buy defined-risk, short-dated options premium on the
-most liquid names when an open-source model can name a reason — and let
-deterministic code size it, stop it, and close it before expiry. The model
-never touches an order. Open model proposes; code disposes.
+**[0:08 — slide 2, thesis — 17s]**
+One sentence: buy defined-risk, short-dated options premium on the most liquid
+names when an open-source model can name a reason — and let deterministic code
+size it, stop it, and close it before expiry. The model never touches an order.
+Open model proposes; code disposes.
 
-**[0:28 — slide 3, one cycle — 25s]**
-Every ten minutes: exits run first, then a snapshot through Alpaca's MCP
-server — derived Greeks, since the free feed has none, plus a Kalshi
-prediction-market prior on where the index might close today. The model may
-investigate with read-only tools before it answers. Every proposal goes
-through one risk gate. Our own code places the order.
+**[0:25 — slide 3, one cycle — 20s]**
+Every ten minutes: gates, a snapshot through Alpaca's MCP server, and code's
+own exit rules run *before* the model is asked anything. The model gets one
+box. It returns JSON. Its proposals and code's own exit sells go through the
+same `check_order`, which rejects and never negotiates — and everything either
+of them does lands in the journal.
 
-**[0:53 — terminal, shot 1 — 55s]** *(director: `demo.sh` on CT 108)*
-Here's a live cycle. The equity line is the real paper account. Watch the
-research lines — bars, snapshots, news, six calls, each journaled — then the
-answer: a JSON array, or hold. And here's the leash: this proposal passes the
-risk gate; this one would be refused, and the journal records exactly which
-rule said no.
+**[0:45 — shot 1, live cycle — 35s]** *(director: `demo.sh` on CT 108)*
+Here is a real cycle on a live paper account. Equity and positions from the
+broker. The model may investigate first — bars, a snapshot, news, read-only
+Alpaca tools, six calls at most, every one journaled. Then it answers: a JSON
+array, or an empty one, which is a hold and a perfectly good decision. What it
+proposes goes to the gate.
 
-**[1:48 — terminal, shot 2+3 — 20s]** *(director: `demo.sh`)*
-Status shows what's held and whether anything is halted. The journal: every
-decision, order, rejection, exit and tool call, with the config each cycle
-actually ran with.
+**[1:20 — shot 2, `last_cycle.py` — 45s]** *(director: hold on this screen; it
+is the densest thing in the video)*
+This is one cycle from the judged account — the inputs, and what came of them.
 
-**[2:08 — terminal, shot 4 — 30s]** *(director: `demo.sh`)*
-The kill switch. One command closes everything — cancelled, settled, closed,
-verified against the broker — and writes a HALT file. The next cycle refuses
-to run until a human deletes it.
+Top: the option chain it was actually given. Twenty-nine hundred SPY contracts
+across three API pages, out to forty-five days. That matters because one page
+is five hundred contracts, and on SPY, at dollar strikes with daily expiries,
+five hundred contracts is *three days*. For two days our config said forty-five
+and the model was quietly seeing three, and reaching off-menu for contracts it
+could not price. Now it paginates until the window is covered, and journals the
+coverage so the question has an answer.
 
-**[2:38 — terminal, shot 5 — 30s]** *(director: `demo.sh`)*
-At the close, one command reconstructs every round trip from Alpaca's fills,
-classifies how each ended, groups rejections by rule, appends the equity
-curve, and the model writes its own read of the day with one recommended
-change.
+Middle: the second opinion. Kalshi's index-close market and the option chain's
+own implied odds — two independent crowds on the same question. Note the
+withheld line: that market had barely traded, so the model was told nothing
+rather than something unearned.
 
-**[3:08 — terminal, shot 6 — 15s]** *(director: `demo.sh`)*
-We apply that change with an override that expires at the close, or a config
-PR that deploys before the open. Tomorrow always starts from git.
+Bottom: the decision, and the order — with the reason it gave, quoting those
+same numbers back.
 
-**[3:23 — slide "the farm" + terminal — 35s]** *(director: `demo_local.sh` part 1,
-local machine — `docker compose --profile farm config`, then the diff against
-the challenger config, then `trade_report.py` for both accounts side by side)*
-Four days isn't enough for a real backtest, so we built the next best thing: a
-docker-compose farm, one container per variant, each its own config and its
-own paper account, all trading the same live market. Different model,
-different thesis, different risk parameters — same conditions. Whichever one
-wins gets promoted into the official config with a pull request.
+**[2:05 — slide, Greeks — 18s]**
+About those contracts. We spent three days believing Alpaca's free feed carried
+no Greeks and solving implied volatility ourselves. That was wrong: the
+snapshot carries them on ninety-four percent of the chain. So we use Alpaca's,
+and our Black-Scholes solve is the *backstop* for the rest — every contract
+says which it got, so the model knows which numbers are rough.
 
-**[3:58 — slide "MQTT/HA" + screen recording — 30s]** *(director: `demo_local.sh`
-part 2 — split screen or cut between the two terminals: `mqtt_watch.py`
-subscribed locally, a cycle triggered on CT 108, messages arriving live; then
-cut to the Home Assistant dashboard if deployed)*
-Every decision also publishes over MQTT — fully decoupled, so a broker being
-offline never touches a trading cycle. Home Assistant picks the sensors up
-automatically: equity, day P&L, halt state, one dashboard per account plus
-the comparison chart. And it's two-way — a config change can be published
-from Home Assistant and applied the same way the CLI does, expiring at the
-close.
+**[2:23 — slide, grading the prior — 20s]**
+A prior nobody scores is decoration, so every night we Brier-score the exact
+probabilities the model was handed against what the market did. Yesterday:
+Kalshi four thousandths, the chain eight — against twenty-five hundredths for a
+coin flip. One day, and a day with a clear direction. The point is that we grade
+the inputs, not just the model.
 
-**[4:28 — slide 9, results — 25s]**
-(Fill after Thursday's close.) Equity from Monday's open to Thursday's close:
-___. ___ round trips, exits split ___. The challenger did ___. What didn't
-work: ___.
+**[2:43 — shot 4, kill switch — 22s]** *(director: `demo.sh`)*
+The leash. One command closes everything — cancelled, settled, closed, verified
+against the broker — and writes a halt file. The next cycle refuses to run until
+a human deletes it.
 
-**[4:53 — slide 10 — 10s]**
-Everything is MIT-licensed and in the repo. Thanks to Alpaca, lablab.ai and
-Featherless.
+**[3:05 — browser: the live viewer — 40s]** *(director: `bot.wpmccormick.pw`;
+show a cycle arriving, then a blocked line, then the date picker)*
+Everything you just saw is also a web page. The journal streams to a browser
+over server-sent events, published through a Cloudflare tunnel with an email
+one-time PIN — no VPN, nothing to install. It is read-only; it cannot halt or
+trade.
 
-*(~4:58 with results filled in briefly; trim slide 3 or shot 1 by a few
-seconds if it runs over 5:00 once real footage is timed)*
+It has earned its keep. In two days of watching this scroll past, we found four
+bugs — none of them a failing test, because in every case the code did exactly
+what we had told it to. The feed cut the model's reasoning mid-word. Trying to
+close a thirteen-hundred-dollar winner, the model named a neighbouring strike,
+three cycles running. An unfilled limit order sat invisible, and ten minutes
+later the same idea was bought again next door. And a ten-minute-old position
+was proposed for exit on a weakening thesis, when every number it had cited had
+moved in its favour. All four are fixed and deployed.
+
+**[3:45 — browser: Home Assistant — 25s]** *(director: operator dashboard, then
+the read-only team one)*
+The same journal publishes over MQTT, fire-and-forget, so a broker being down
+never touches a trading cycle. Home Assistant discovers the sensors on its own:
+equity, day P&L, halt state, the last decision, per account. This dashboard has
+the kill switch and the knobs; the team gets a second one with no controls at
+all, because Home Assistant has no per-entity permissions, so the separation has
+to *be* the dashboard. The phone gets problems only — never fills. What it does
+buzz about is silence: no cycle for twenty-five minutes, the one failure a
+dashboard cannot show.
+
+**[4:10 — shot 5 then shot 7 — 25s]** *(director: `demo.sh`)*
+At the close, one command rebuilds every round trip from Alpaca's fills, groups
+the rejections by the rule that refused them, and scores the priors. A different
+model — one that did not trade the day — writes the critique. Then it ships
+itself: CI runs seven hundred and thirty-two tests on every pull request, a
+runner on the container deploys the merge in about a minute, and a freeze window
+hard-fails any trading-code merge while the market is open.
+
+**[4:35 — slide, results — 15s]**
+(Fill after Thursday's close.) From Monday's open to Thursday's close the judged
+account went ___. ___ round trips. What didn't work: ___.
+
+**[4:50 — slide, thanks — 8s]**
+MIT licensed, in the repo. Thanks to Alpaca, lablab.ai and Featherless.
+
+---
+
+## If it runs long
+
+In order, the first things to cut: the Greeks slide to one sentence (−10s), the
+second half of the Home Assistant block (−12s), the pagination detail in shot 2
+down to "one page is three days on SPY; now it paginates" (−15s). Do not cut the
+four bugs — it is the only part of the video that shows the *loop* working
+rather than the system running.
