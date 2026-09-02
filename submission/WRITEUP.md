@@ -98,7 +98,7 @@ All market data and every order go through **Alpaca's official MCP server**
 (`alpaca-mcp-server`, stdio) from a thin async client; the model only ever sees
 a curated read-only subset of its tools. Paper-only is hardcoded. A dedicated
 LXC on a home Proxmox host runs the bot from cron; a **self-hosted GitHub
-Actions runner** on that host deploys every merge (160 PRs, CI-gated, 765 unit
+Actions runner** on that host deploys every merge (169 PRs, CI-gated, 795 unit
 tests). A JSONL journal is the single source of truth: decisions, orders,
 rejections, exits, tool calls, and the exact config hash each cycle ran with.
 `trade_report.py` reconstructs round trips from Alpaca's fills and classifies
