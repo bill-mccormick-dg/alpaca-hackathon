@@ -236,6 +236,21 @@ class BuildPromptTest(unittest.TestCase):
         self.assertIn("How long a position can actually live", prompt)
         self.assertIn("end-of-day backstop", prompt)
 
+    def test_instrument_note_defaults_to_options_first_and_is_overridable(self):
+        """#211: the hardcoded options-first sentence was the OFFICIAL
+        account's policy in every account's prompt, and it silently overrode
+        the mixed variant's instrument-choice experiment - 70 decisions over
+        two days, zero that even mentioned stock. The default keeps the
+        official behaviour verbatim; a variant supplies its own sentence."""
+        default = decide.build_prompt(_snapshot(), _config(), TODAY)
+        self.assertIn("Options trading is the core of this challenge", default)
+
+        neutral = decide.build_prompt(
+            _snapshot(), _config(instrument_note="Options and stock are peers - choose per idea."), TODAY
+        )
+        self.assertIn("Options and stock are peers", neutral)
+        self.assertNotIn("should support your options thesis", neutral)
+
     def test_holding_period_rules_come_from_config_not_hardcoded(self):
         prompt = decide.build_prompt(
             _snapshot(), _config(expiry_close_dte=2, eod_close_dte=6), TODAY
