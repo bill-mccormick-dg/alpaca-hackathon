@@ -6,7 +6,7 @@ the file at the same path, re-export the PDF, and nothing else changes.
 | File | Slide | What it should show |
 |---|---|---|
 | `ha-dashboard.png` | *(source, not on a slide)* | the Official column of the operational dashboard: state, day-P&L graph, controls |
-| `ha-dashboard-state.png` | One feed, three audiences | **derived** - the state card of that capture, cropped (see below) |
+| `ha-dashboard-state.png` | Home Assistant, over MQTT | **derived** - the state card of that capture, cropped (see below) |
 | `viewer.png` | Watching it think | a band of the live journal viewer: an order with the model's full stated reason, then the priors and cycle lines under it |
 | `equity-curve.svg` | Results | **generated** - `python scripts/equity_curve.py` |
 

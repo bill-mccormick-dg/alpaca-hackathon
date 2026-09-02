@@ -1,0 +1,20 @@
+Output ../build/shots/shot2.raw.mp4
+Set Shell "bash"
+Set FontSize 22
+Set Width 1920
+Set Height 1080
+Set Padding 30
+Set Margin 0
+Set Theme "Catppuccin Mocha"
+Set WindowBar "Colorful"
+Set TypingSpeed 8ms
+Set Framerate 30
+
+# The ssh invocation is scaffolding, not content: demo.sh prints its own caption
+# and its own '$ command' line, and those are what should be on screen.
+Hide
+Type "clear && ssh -o BatchMode=yes root@192.168.212.10 'cd /opt/alpaca-hackathon && PAUSE=0 FORCE='' SKIP_HALT=1 bash submission/video/demo.sh 2; sleep 2.0; echo ___shot_done___'"
+Enter
+Sleep 1500ms
+Show
+Wait+Screen@600s /___shot_done___/
