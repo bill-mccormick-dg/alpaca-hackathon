@@ -1,6 +1,7 @@
 # Submission metadata — lablab.ai form fields
 
-Deadline **Thu Sep 4, 2026, 10:00 AM CDT**. Every field below is pasted into
+Deadline **Fri Sep 4, 2026, 10:00 AM CDT** - seven days to the hour from the
+Fri Aug 28 10:00 CDT kickoff. Every field below is pasted into
 the form as-is; edit here, not in the text box.
 
 Form: <https://lablab.ai/ai-hackathons/alpaca-ai-trading-agents-hackathon/razorsedge/submission>
@@ -16,10 +17,12 @@ is **no P&L leaderboard** for this event (the FAQ says so outright, and
 submission itself is the only thing that puts the project in front of
 judges.
 
-## Pre-flight (do in this order on Thu morning)
+## Pre-flight (do in this order Thu evening or Fri morning)
 
 - [ ] Repo flipped to **public** (`gh repo edit bill-mccormick-dg/alpaca-hackathon --visibility public`) and `LICENSE` present
-- [ ] Video uploaded (MP4, ≤ 5:00, target 3–5 min), link opens **logged out**
+- [ ] Video uploaded (MP4, ≤ 5:00, target 3–5 min, **≤ 300 MB** — lablab's
+      stated cap; 5 min of 1080p H.264 screen content fits easily, a
+      high-bitrate or ProRes export does not), link opens **logged out**
 - [ ] Slides exported (PDF or Google Slides link, view access for anyone with the link)
 - [ ] Cover image uploaded (`submission/cover.png`, 1600×900)
 - [ ] Account ID below matches the official account exactly
@@ -44,7 +47,7 @@ judges.
 - [ ] **Step 3** — not started (GitHub URL, demo URL, **Alpaca account ID**,
       which the rules call out as required for judging).
 - [ ] **Actually submit.** Completing the last step is what moves the team
-      out of "draft in progress". Do not leave this to 09:59 on Thu Sep 4.
+      out of "draft in progress". Do not leave this to 09:59 on Fri Sep 4.
 
 ## Fields
 
@@ -79,11 +82,20 @@ MIT licensed and original to the event; pre-kickoff infrastructure is disclosed 
 
 **Public GitHub repository**: https://github.com/bill-mccormick-dg/alpaca-hackathon
 
-**Demo application URL**: N/A — autonomous agent, no UI required (per FAQ)
+**Demo application platform**: self-hosted (Proxmox LXC); the journal viewer is
+published through a Cloudflare tunnel
 
-**Video presentation**: (YouTube unlisted link — fill Thu)
+**Demo application URL**: N/A — autonomous agent, no UI required (per FAQ).
+The live journal viewer at <https://bot.wpmccormick.pw> is the closest thing,
+but it is behind an email one-time PIN, so it is not a link a judge can open.
 
-**Slide presentation**: (link — fill Thu)
+**Additional information** (free-text field on step 3): scaling beyond the
+event — the risk funnel and the journal are broker-agnostic; what is
+Alpaca-specific is the MCP client and the option-chain shape.
+
+**Video presentation**: (YouTube unlisted link — fill after Thu's close)
+
+**Slide presentation**: (link — fill after Thu's close)
 
 **Cover image**: `submission/cover.png` — generated, 1600x900. `python scripts/make_cover.py --png`. A price series that runs up, rolls over, and stops dead on a line held by a rope; the dashed ghost below is where it was going. Drawn rather than screenshotted: a terminal is an unreadable grey rectangle at thumbnail size.
 

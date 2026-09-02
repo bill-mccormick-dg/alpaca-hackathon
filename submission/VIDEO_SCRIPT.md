@@ -70,7 +70,7 @@ cycle and shot 2 has a fresh one to show.
 Shots 3 and 6 (`status.py`, `override.py`) are in `demo.sh` and are good filler
 if a block runs short; neither is in the narration's timing.
 
-**Slide 15, "Choosing the model, honestly", is deliberately deck-only.** The
+**Slide 16, "Choosing the model, honestly", is deliberately deck-only.** The
 narration's last block already ends at 4:58 against a 5:00 cap, so a new beat
 does not fit; the model-selection argument is made in the deck and the
 write-up instead, and `narration.md` names what to cut first if it runs long. If a
@@ -90,5 +90,5 @@ that one."*
       Home Assistant shots fit the whole dashboard in frame by themselves
 - [ ] Don't click inside the deck while narrating - it advances on any click
 - [ ] QuickTime/OBS 1080p; mic level check; notifications off
-- [ ] Export H.264/AAC MP4; check length <= 5:00
+- [ ] Export H.264/AAC MP4; check length <= 5:00 **and size <= 300 MB**
 - [ ] Upload YouTube (unlisted); test the link logged out; paste into METADATA.md
