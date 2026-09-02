@@ -5,7 +5,8 @@ the file at the same path, re-export the PDF, and nothing else changes.
 
 | File | Slide | What it should show |
 |---|---|---|
-| `ha-dashboard.png` | Home Assistant | the operational dashboard with all three accounts populated |
+| `ha-dashboard.png` | *(source, not on a slide)* | the whole operational dashboard: state rows, day-P&L graphs and controls, all three accounts |
+| `ha-dashboard-state.png` | One feed, three audiences | **derived** - the state row of that capture, cropped (see below) |
 | `viewer.png` | Watching it think | a band of the live journal viewer: an order with the model's full stated reason, then the priors and cycle lines under it |
 | `equity-curve.svg` | Results | **generated** - `python scripts/equity_curve.py` |
 
@@ -13,6 +14,31 @@ the file at the same path, re-export the PDF, and nothing else changes.
 accounts, their state rows, and the controls with each account's own model in
 the dropdown. Flat P&L and "hold" everywhere, because nothing has traded yet —
 so it is still worth recapturing after Thursday's close.
+
+## Why the slide shows a band and not the whole dashboard (#230)
+
+The full capture was unreadable on the slide, and the two halves of that
+compounded. It was captured at `zoom = 0.62` so that the state rows, the graphs
+and the controls would fit in one frame, and then the slide — which caps images
+by *height*, because the page box is only 720px — rendered its 1400x784 at
+550x308, another 39%. Dashboard body text landed near 5px. It read as a texture
+that says "there is a dashboard" rather than as a dashboard.
+
+Cropping to the state row makes the image **wide and short (1400x230)**, so it
+is limited by the 1088px content width instead of by height and renders at 78%
+of source. Everything on it is legible in the PDF, and the slide stops needing
+a font scale at all. What is lost is the controls and the (currently flat)
+graphs; the `Operator / Team / Phone` cards under it carry the argument.
+
+```sh
+ffmpeg -y -i submission/images/ha-dashboard.png -vf "crop=1400:230:0:33" \
+  submission/images/ha-dashboard-state.png
+```
+
+The `33` skips Home Assistant's own title bar and keeps the tab row, which is
+what names each account. Re-run it after replacing the source capture — if the
+recapture is a different width, scale it to 1400 first (below) so the crop box
+still lands on the same rows.
 
 `equity-curve.svg` is **generated from `logs/equity.jsonl`**, so it is never a
 placeholder and never hand-drawn:
@@ -84,12 +110,19 @@ collapse the sidebar and zoom the page out (the 2026-08-30 capture used
 the controls at once). Zooming is honest — stitching separate screenshots into
 one image is not.
 
+Zooming out is also what made the text too small to read (see above), so if the
+only thing the deck needs is the state row, capture it at **zoom 1.0** and crop
+to the row. A 100% capture of the state row alone is about 2200px wide; scale it
+to 1400 and the crop box above still applies.
+
 Target roughly 1400px wide. A 4K capture will add megabytes to the exported PDF
 for no visible gain at slide size.
 
 ## After replacing
 
 ```sh
+ffmpeg -y -i submission/images/ha-dashboard.png \
+  -vf "crop=1400:230:0:33" submission/images/ha-dashboard-state.png
 python -m unittest discover -s tests      # image references still resolve
 python scripts/fit_slides.py              # re-fit: an image changes slide height
 # then re-export - see ../README-export.md
