@@ -141,6 +141,19 @@ model_params:
   chat_template_kwargs:
     enable_thinking: false
 
+# Per-model exceptions to model_params, merged on top per top-level key at
+# call time against the EFFECTIVE model (bot/config.py::model_params_for,
+# #206). Kimi-K3 is the reason this exists: verified live on Featherless
+# 2026-09-02, it REFUSES tool calls while thinking is disabled ("tool usage
+# is currently disabled", in prose) but tool-calls correctly with its
+# default thinking on - and unlike K2.6/Qwen its thinking is brief (a
+# trivial prompt answered in 37 completion tokens), so leaving thinking on
+# does not eat the budget the way the global toggle exists to prevent.
+model_params_by_model:
+  moonshotai/Kimi-K3:
+    chat_template_kwargs:
+      enable_thinking: true
+
 
 # Transient model failures cost a whole cycle otherwise - the next attempt is
 # the next cron slot, 10 minutes later (issue #85: 21% of early cycles lost a
@@ -208,6 +221,10 @@ model_prices:
   moonshotai/Kimi-K2-Instruct: {in: 0.6, out: 2.5}
   moonshotai/Kimi-K2.6: {in: 0.77, out: 3.5}
   Qwen/Qwen3.8-Flash-Next: {in: 0.15, out: 0.5}
+  # K3 (#206): public per-M rates from llm-stats (via Fireworks) - the most
+  # expensive option on the list by far; the dashboard select shows it, the
+  # nightly cost line prices it.
+  moonshotai/Kimi-K3: {in: 3.0, out: 15.0}
 
 # Deterministic exits (bot/exits.py), checked at the top of every cycle
 # BEFORE the model is consulted. Percentages are of the entry premium (or

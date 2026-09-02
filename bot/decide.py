@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from bot import greeks, journal, predictions, research
+from bot.config import model_params_for
 from bot.featherless import FeatherlessClient
 from bot.menu import select_menu
 from bot.models import Proposal
@@ -327,15 +328,16 @@ def _sampling_kwargs(config: dict) -> dict:
     merged verbatim into the request body - the escape hatch for
     model-specific controls such as reasoning/thinking toggles
     (chat_template_kwargs, reasoning_effort, thinking), which differ per
-    model family and belong in the variant's config, not in code."""
+    model family and belong in the variant's config, not in code - with
+    `model_params_by_model[<effective model>]` winning on top (#206:
+    Kimi-K3 needs thinking ON to tool-call while K2.6/Qwen need it off to
+    answer at all)."""
     kwargs = {}
     if config.get("temperature") is not None:
         kwargs["temperature"] = float(config["temperature"])
     if config.get("max_tokens") is not None:
         kwargs["max_tokens"] = int(config["max_tokens"])
-    extra = config.get("model_params")
-    if isinstance(extra, dict):
-        kwargs.update(extra)
+    kwargs.update(model_params_for(config, config.get("model")))
     return kwargs
 
 

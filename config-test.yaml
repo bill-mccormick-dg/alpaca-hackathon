@@ -136,6 +136,31 @@ temperature: 0.2
 max_tokens: 1500
 request_timeout_sec: 60
 
+# Per-token prices (USD per million) for the nightly cost line - this file
+# never had the block (an oversight; mixed.yaml has it), so the test
+# account's costs went unpriced. Same list as config.yaml.
+model_prices:
+  moonshotai/Kimi-K2-Instruct: {in: 0.6, out: 2.5}
+  moonshotai/Kimi-K2.6: {in: 0.77, out: 3.5}
+  Qwen/Qwen3.8-Flash-Next: {in: 0.15, out: 0.5}
+  # K3 (#206): public per-M rates from llm-stats (via Fireworks) - the most
+  # expensive option on the list by far; the dashboard select shows it, the
+  # nightly cost line prices it.
+  moonshotai/Kimi-K3: {in: 3.0, out: 15.0}
+
+# Per-model exceptions to model_params, merged on top per top-level key at
+# call time against the EFFECTIVE model (bot/config.py::model_params_for,
+# #206). Kimi-K3 is the reason this exists: verified live on Featherless
+# 2026-09-02, it REFUSES tool calls while thinking is disabled ("tool usage
+# is currently disabled", in prose) but tool-calls correctly with its
+# default thinking on - and unlike K2.6/Qwen its thinking is brief (a
+# trivial prompt answered in 37 completion tokens), so leaving thinking on
+# does not eat the budget the way the global toggle exists to prevent.
+model_params_by_model:
+  moonshotai/Kimi-K3:
+    chat_template_kwargs:
+      enable_thinking: true
+
 # Transient model failures cost a whole cycle otherwise - the next attempt is
 # the next cron slot, 10 minutes later (issue #85: 21% of early cycles lost a
 # decision this way, split between upstream no_response and a 200 carrying an

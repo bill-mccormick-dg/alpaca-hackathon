@@ -4,7 +4,13 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from bot import overrides
-from bot.config import CONFIG_FILE, config_provenance, load_config, resolve_review_model
+from bot.config import (
+    CONFIG_FILE,
+    config_provenance,
+    load_config,
+    model_params_for,
+    resolve_review_model,
+)
 from bot.risk import EASTERN
 
 NOW = datetime(2026, 9, 1, 10, 30, tzinfo=EASTERN)
@@ -69,6 +75,39 @@ class LoadConfigTest(unittest.TestCase):
         self.assertIn("min_days_to_expiration", config)
         self.assertIn("max_days_to_expiration", config)
         self.assertLess(config["min_days_to_expiration"], config["max_days_to_expiration"])
+
+
+PARAMS_CFG = {
+    "model_params": {"chat_template_kwargs": {"enable_thinking": False}},
+    "model_params_by_model": {"k3": {"chat_template_kwargs": {"enable_thinking": True}}},
+}
+
+
+class ModelParamsForTest(unittest.TestCase):
+    """Per-model exceptions to model_params (#206): Kimi-K3 refuses tool
+    calls with thinking disabled, while K2.6/Qwen forfeit the cycle with it
+    enabled - one global toggle cannot serve both."""
+
+    def test_the_global_params_apply_to_an_unlisted_model(self):
+        self.assertEqual(model_params_for(PARAMS_CFG, "qwen"),
+                         {"chat_template_kwargs": {"enable_thinking": False}})
+
+    def test_a_listed_model_gets_its_override(self):
+        self.assertEqual(model_params_for(PARAMS_CFG, "k3"),
+                         {"chat_template_kwargs": {"enable_thinking": True}})
+
+    def test_the_merge_is_per_top_level_key(self):
+        """An override replaces the whole nested dict for its key and leaves
+        other keys from the base intact - readable, not deep-merged."""
+        cfg = {"model_params": {"chat_template_kwargs": {"enable_thinking": False}, "reasoning_effort": "low"},
+               "model_params_by_model": {"k3": {"chat_template_kwargs": {"enable_thinking": True}}}}
+        self.assertEqual(model_params_for(cfg, "k3"),
+                         {"chat_template_kwargs": {"enable_thinking": True}, "reasoning_effort": "low"})
+
+    def test_no_model_or_no_blocks_degrade_gracefully(self):
+        self.assertEqual(model_params_for(PARAMS_CFG, None),
+                         {"chat_template_kwargs": {"enable_thinking": False}})
+        self.assertEqual(model_params_for({}, "k3"), {})
 
 
 class ResolveReviewModelTest(unittest.TestCase):

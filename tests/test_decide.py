@@ -501,6 +501,18 @@ class DecideTest(unittest.IsolatedAsyncioTestCase):
         _, kwargs = client.calls[0]
         self.assertEqual(kwargs, {})
 
+    async def test_per_model_params_follow_the_effective_model(self):
+        """#206: the K3 exception rides on config['model'], which the
+        dashboard can change mid-session - the request must carry the params
+        for the model actually being called."""
+        client = FakeFeatherlessClient("[]")
+        cfg = _config(model="k3",
+                      model_params={"chat_template_kwargs": {"enable_thinking": False}},
+                      model_params_by_model={"k3": {"chat_template_kwargs": {"enable_thinking": True}}})
+        await decide.decide(_snapshot(), cfg, client, TODAY)
+        _, kwargs = client.calls[0]
+        self.assertEqual(kwargs, {"chat_template_kwargs": {"enable_thinking": True}})
+
     async def test_empty_array_means_no_proposals(self):
         d = await decide.decide(_snapshot(), _config(), FakeFeatherlessClient("[]"), TODAY)
         self.assertEqual(d.proposals, [])
