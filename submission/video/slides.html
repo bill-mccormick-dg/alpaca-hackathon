@@ -102,12 +102,16 @@
     width:auto; max-width:none; max-height:none; border:none; border-radius:0;
     align-self:auto; }
   section.shot > .scrim { position:absolute; inset:0; background:
-    linear-gradient(90deg, rgba(6,18,31,0) 42%, rgba(6,18,31,.86) 48%, var(--bg2) 52%),
+    linear-gradient(90deg, rgba(6,18,31,0) 42%, rgba(6,18,31,.9) 46%, var(--bg2) 48.5%),
     linear-gradient(0deg, var(--bg2) 7%, rgba(6,18,31,0) 26%); }
   /* Starts where the scrim is already solid: the Official column ends at 42%
      of the page and its numbers are the point of the screenshot, so the fade
      may not begin before them. */
-  section.shot > .over { position:relative; margin-left:53%; }
+  section.shot > .over { position:relative; margin-left:49%; }
+  /* Nine rows in half a slide. What costs the height here is the row padding,
+     not the type - trimmed, fit_slides.py comes back off its 0.72 floor and the
+     text stays legible. */
+  section.shot th, section.shot td { padding:.3em .6em; line-height:1.4; }
 
   /* Injected into every slide by the script below, so it prints too. */
   .pagefoot { position:absolute; left:7vw; right:7vw; bottom:3.6vh;
@@ -154,7 +158,7 @@
   section:nth-of-type(3) { font-size:0.799em; }
   section:nth-of-type(10) { font-size:0.909em; }
   section:nth-of-type(11) { font-size:0.942em; }
-  section:nth-of-type(12) { font-size:0.750em; }
+  section:nth-of-type(12) { font-size:0.780em; }
   section:nth-of-type(13) { font-size:0.897em; }
   section:nth-of-type(16) { font-size:0.862em; }
   @media print {
@@ -164,8 +168,8 @@
     section:nth-of-type(10) svg { max-height:509px; }
     section:nth-of-type(11) img { max-height:377px; }
     section:nth-of-type(11) svg { max-height:528px; }
-    section:nth-of-type(12) img { max-height:300px; }
-    section:nth-of-type(12) svg { max-height:420px; }
+    section:nth-of-type(12) img { max-height:312px; }
+    section:nth-of-type(12) svg { max-height:437px; }
     section:nth-of-type(13) img { max-height:359px; }
     section:nth-of-type(13) svg { max-height:502px; }
     section:nth-of-type(16) img { max-height:345px; }
@@ -383,13 +387,15 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
   <div class="over">
     <h2>Home Assistant, over MQTT</h2>
     <table>
-      <tr><th>Kill switch</th><td>flatten and halt, <b>that account only</b> — stopping all three stays CLI-only</td></tr>
+      <tr><th>Three accounts</th><td>official, test and mixed — one section each, the same entities</td></tr>
+      <tr><th>Kill switch</th><td>flatten and halt, <b>that account only</b>; all three stays CLI-only</td></tr>
       <tr><th>State</th><td>equity, day P&amp;L, open positions, halt state, last decision</td></tr>
-      <tr><th>Day P&amp;L</th><td>a history graph per account, off the same sensor</td></tr>
-      <tr><th>Control knobs</th><td>stop-loss, take-profit, EOD close DTE, min hold, early-exit drawdown, strike band, research breadth, temperature, Kalshi prior on/off — live, and expiring at the close</td></tr>
-      <tr><th>AI controls</th><td>model and review model from a dropdown, max tokens, tokens today and all time</td></tr>
-      <tr><th>Live journal</th><td>the cycle feed as it lands, the same events the viewer shows</td></tr>
-      <tr><th>Trades &amp; EOD</th><td>today's fills and rejections, then the end-of-day digest under them</td></tr>
+      <tr><th>Day P&amp;L</th><td>a history graph, per account</td></tr>
+      <tr><th>Control knobs</th><td>stop-loss, take-profit, EOD close DTE, min hold, early-exit drawdown, strike band, research breadth, temperature, Kalshi prior — live, expiring at the close</td></tr>
+      <tr><th>AI controls</th><td>model and review model, max tokens, tokens today and all time</td></tr>
+      <tr><th>Live journal</th><td>the cycle feed as it lands</td></tr>
+      <tr><th>Trades &amp; EOD</th><td>today's fills and rejections, then the digest</td></tr>
+      <tr><th>On a phone</th><td>the grid reflows to one account per screen; halts, identity refusals and 25 minutes of <em>silence</em> push — fills do not</td></tr>
     </table>
   </div>
 </section>
