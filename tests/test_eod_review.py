@@ -57,6 +57,26 @@ class ReviewerModelTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(eod_review.reviewer_model({"model": "x/only"}), "x/only")
         self.assertEqual(eod_review.reviewer_model({}), eod_review.DEFAULT_MODEL)
 
+    async def test_a_reviewer_that_traded_under_an_expired_override_is_not_asked(self):
+        """#218: the config says K3 traded and pins Qwen; the journal says
+        Qwen made every decision. The reviewer is chosen against the journal."""
+        config = {"model": "moonshotai/Kimi-K3", "review_model": "Qwen/Qwen3.8-Flash-Next",
+                  "review_model_preference": ["moonshotai/Kimi-K2.6", "Qwen/Qwen3.8-Flash-Next"]}
+        digest = {"audit": {"by_model": {"Qwen/Qwen3.8-Flash-Next": {"decisions": 29, "errors": 0},
+                                         "moonshotai/Kimi-K3": {"decisions": 0, "errors": 6},
+                                         "(no model)": {"decisions": 0, "errors": 1}}}}
+
+        self.assertEqual(eod_review.traded_models(digest), {"Qwen/Qwen3.8-Flash-Next", "moonshotai/Kimi-K3"})
+        self.assertEqual(eod_review.reviewer_model(config, eod_review.traded_models(digest)), "moonshotai/Kimi-K2.6")
+        with patch.object(eod_review, "FeatherlessClient", CapturingClient):
+            _, model = await eod_review.model_recommendation(config, {"FEATHERLESS_API_KEY": "k"}, digest)
+        self.assertEqual(model, "moonshotai/Kimi-K2.6")
+        self.assertIn("Qwen/Qwen3.8-Flash-Next (29 decisions), moonshotai/Kimi-K3 (6 errors)", CapturingClient.last_prompt)
+
+    def test_an_explicit_pin_equal_to_the_trading_model_falls_through(self):
+        config = {"model": "x/a", "review_model": "x/a", "review_model_preference": ["x/a", "x/b"]}
+        self.assertEqual(eod_review.reviewer_model(config), "x/b")
+
     async def test_the_prompt_names_the_trading_model_and_not_as_the_reader(self):
         """The old prompt opened with 'the decisions below were yours' - true
         only while the reviewer was the trader, which was the bug."""

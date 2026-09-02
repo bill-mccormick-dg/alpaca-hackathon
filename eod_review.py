@@ -27,7 +27,12 @@ import sys
 from datetime import datetime
 
 from bot import journal, mqtt, overrides, prior_scores, review
-from bot.config import load_config, model_params_for, resolve_review_model
+from bot.config import (
+    load_config,
+    model_params_for,
+    resolve_review_model,
+    review_choice,
+)
 from bot.credentials import load_credentials, validate_account
 from bot.featherless import DEFAULT_MODEL, FeatherlessClient
 from bot.report import eod_payload
@@ -111,22 +116,52 @@ def append_equity_log(day: str, account: str, equity: dict) -> None:
     EQUITY_LOG.write_text("\n".join(lines) + "\n")
 
 
-def reviewer_model(config: dict) -> str:
+def traded_models(digest: dict) -> set[str]:
+    """Every model the journal says decided, erred or retried today - the
+    digest's per-model rows (#231), never config["model"]: overrides expire
+    at 16:00 ET and this runs at 16:05, so the config is the one thing that
+    may not describe the day (#218)."""
+    audit = digest.get("audit") or {}
+    rows = audit.get("by_model") or audit.get("models") or {}
+    return {m for m in rows if m and m != review.NO_MODEL}
+
+
+def reviewer_model(config: dict, traded=()) -> str:
     """The model that writes the critique. resolve_review_model() picks one
     that did not trade the day; only when it has nothing to pick (no
-    preference list, or every entry is the trading model) does the trading
-    model review itself - a same-model review beats no review.
+    preference list, or every entry traded) does the trading model review
+    itself - a same-model review beats no review.
 
     This function is the whole fix for #177: resolve_review_model() had been
     journaled on every config event and shown on the dashboard since #127,
     but the review itself was still built on config["model"], so every
-    account graded its own homework while the docs said otherwise."""
-    return resolve_review_model(config) or config.get("model") or DEFAULT_MODEL
+    account graded its own homework while the docs said otherwise. #218 is
+    its second half: the comparison is against `traded`, what the journal
+    says ran, not against the config at 16:05."""
+    return resolve_review_model(config, traded) or config.get("model") or DEFAULT_MODEL
 
 
-async def model_recommendation(config: dict, creds: dict, digest: dict) -> tuple[str, str]:
-    """(critique text, model that wrote it)."""
-    model = reviewer_model(config)
+def describe_traded(digest: dict, config: dict) -> str:
+    """'Qwen/Qwen3.8-Flash-Next (29 decisions), moonshotai/Kimi-K3 (6 errors)'
+    - what the prompt calls the model under review. The config's `model`
+    is the fallback for a digest with no per-model rows."""
+    rows = ((digest.get("audit") or {}).get("by_model") or {})
+    parts = []
+    for model, m in rows.items():
+        if model == review.NO_MODEL:
+            continue
+        bits = [f"{m['decisions']} decisions"] if m.get("decisions") else []
+        if m.get("errors"):
+            bits.append(f"{m['errors']} errors")
+        parts.append(f"{model} ({', '.join(bits)})" if bits else model)
+    return ", ".join(parts) or config.get("model") or DEFAULT_MODEL
+
+
+async def model_recommendation(config: dict, creds: dict, digest: dict, model: str | None = None) -> tuple[str, str]:
+    """(critique text, model that wrote it). `model` is the reviewer run()
+    already resolved against the day's models; resolving here from config
+    alone is the #218 hole."""
+    model = model or reviewer_model(config, traded_models(digest))
     client = FeatherlessClient(
         creds["FEATHERLESS_API_KEY"], model=model,
         timeout=float(config.get("request_timeout_sec", 60)),
@@ -134,7 +169,7 @@ async def model_recommendation(config: dict, creds: dict, digest: dict) -> tuple
     slim = {k: v for k, v in digest.items() if k not in ("trips",)}
     slim["trips"] = digest.get("trips", [])[:30]
     prompt = REVIEW_PROMPT.format(
-        trading_model=config.get("model") or DEFAULT_MODEL,
+        trading_model=describe_traded(digest, config),
         thesis=str(config.get("strategy_notes") or "").strip().splitlines()[0] if config.get("strategy_notes") else "(none)",
         digest=json.dumps(slim, default=str),
     )
@@ -179,10 +214,18 @@ async def run(args: argparse.Namespace) -> int:
     if not args.no_model and records:
         # Recorded before the call, so a failed review still says which model
         # was asked - "unavailable" from the wrong model is a different bug.
-        digest["review_model"] = reviewer_model(config)
+        traded = traded_models(digest)
+        reviewer, refused = review_choice(config, traded)
+        digest["review_model"] = reviewer or config.get("model") or DEFAULT_MODEL
+        if refused:
+            digest["review_pin_ignored"] = refused
+        if digest["review_model"] in traded:
+            # Say it, rather than letting the heading carry it alone (#218).
+            digest["review_note"] = (f"same-model review: {digest['review_model']} traded today and every "
+                                     "review_model_preference entry did too - read the critique as self-assessment")
         try:
             creds = load_credentials(args.account)
-            digest["recommendation"], digest["review_model"] = await model_recommendation(config, creds, digest)
+            digest["recommendation"], digest["review_model"] = await model_recommendation(config, creds, digest, digest["review_model"])
         except Exception as exc:  # noqa: BLE001 - advisory only
             digest["recommendation"] = f"(model review unavailable: {type(exc).__name__}: {exc})"
 
@@ -203,7 +246,8 @@ async def run(args: argparse.Namespace) -> int:
     print(md)
     print(f"(written to {out})")
     journal.log("eod_review", day=day, equity=digest["equity"], trades=trade_summary.get("trades") if trade_summary else None,
-                review_model=digest.get("review_model"))
+                review_model=digest.get("review_model"), review_pin_ignored=digest.get("review_pin_ignored"),
+                traded_models=sorted(traded_models(digest)))
     return 0
 
 

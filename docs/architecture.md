@@ -96,7 +96,7 @@ Entrypoints: `run_cycle.py`, `flatten.py`, `status.py`, `override.py`,
 | When a position is done (stop / take-profit / expiry) | code (`exits.py`) |
 | Daily-loss halt, kill switch, end-of-day, final day | code |
 | The only order path | code (`execute.py`) |
-| Which model critiques the day afterwards | code (`config.py::resolve_review_model`), from a preference list, excluding the model that traded |
+| Which model critiques the day afterwards | code (`config.py::review_choice`), from a preference list, excluding every model the journal says traded that day — a pin naming one is refused |
 
 ## Infrastructure
 

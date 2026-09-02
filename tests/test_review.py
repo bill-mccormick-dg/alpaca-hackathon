@@ -230,6 +230,15 @@ class DigestTest(unittest.TestCase):
         self.assertIsNone(a["citations_checked"])
         self.assertNotIn("prior citations", review.render_markdown(review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])))
 
+    def test_render_says_when_a_pin_was_ignored_or_the_review_is_same_model(self):
+        d = review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])
+        d.update(recommendation="Change nothing.", review_model="m1", review_pin_ignored="m1",
+                 review_note="same-model review: m1 traded today and every review_model_preference entry did too")
+        md = review.render_markdown(d)
+        self.assertIn("_review_model pin `m1` ignored: it traded today (#218)._", md)
+        self.assertIn("_same-model review: m1 traded today", md)
+        self.assertTrue(md.rstrip().endswith("Change nothing."))
+
     def test_no_prior_scores_no_section(self):
         d = review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])
         self.assertNotIn("Prior scoring", review.render_markdown(d))
