@@ -1,6 +1,7 @@
 # Submission metadata — lablab.ai form fields
 
-Deadline **Thu Sep 4, 2026, 10:00 AM CDT**. Every field below is pasted into
+Deadline **Fri Sep 4, 2026, 10:00 AM CDT** - seven days to the hour from the
+Fri Aug 28 10:00 CDT kickoff. Every field below is pasted into
 the form as-is; edit here, not in the text box.
 
 Form: <https://lablab.ai/ai-hackathons/alpaca-ai-trading-agents-hackathon/razorsedge/submission>
@@ -16,7 +17,7 @@ is **no P&L leaderboard** for this event (the FAQ says so outright, and
 submission itself is the only thing that puts the project in front of
 judges.
 
-## Pre-flight (do in this order on Thu morning)
+## Pre-flight (do in this order Thu evening or Fri morning)
 
 - [ ] Repo flipped to **public** (`gh repo edit bill-mccormick-dg/alpaca-hackathon --visibility public`) and `LICENSE` present
 - [ ] Video uploaded (MP4, ≤ 5:00, target 3–5 min), link opens **logged out**
@@ -44,7 +45,7 @@ judges.
 - [ ] **Step 3** — not started (GitHub URL, demo URL, **Alpaca account ID**,
       which the rules call out as required for judging).
 - [ ] **Actually submit.** Completing the last step is what moves the team
-      out of "draft in progress". Do not leave this to 09:59 on Thu Sep 4.
+      out of "draft in progress". Do not leave this to 09:59 on Fri Sep 4.
 
 ## Fields
 
@@ -81,9 +82,9 @@ MIT licensed and original to the event; pre-kickoff infrastructure is disclosed 
 
 **Demo application URL**: N/A — autonomous agent, no UI required (per FAQ)
 
-**Video presentation**: (YouTube unlisted link — fill Thu)
+**Video presentation**: (YouTube unlisted link — fill after Thu's close)
 
-**Slide presentation**: (link — fill Thu)
+**Slide presentation**: (link — fill after Thu's close)
 
 **Cover image**: `submission/cover.png` — generated, 1600x900. `python scripts/make_cover.py --png`. A price series that runs up, rolls over, and stops dead on a line held by a rope; the dashed ghost below is where it was going. Drawn rather than screenshotted: a terminal is an unreadable grey rectangle at thumbnail size.
 
