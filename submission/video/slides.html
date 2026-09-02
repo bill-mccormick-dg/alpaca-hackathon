@@ -135,7 +135,7 @@
   section:nth-of-type(3) { font-size:0.799em; }
   section:nth-of-type(10) { font-size:0.909em; }
   section:nth-of-type(11) { font-size:0.942em; }
-  section:nth-of-type(12) { font-size:0.838em; }
+  section:nth-of-type(12) { font-size:0.769em; }
   section:nth-of-type(13) { font-size:0.897em; }
   section:nth-of-type(16) { font-size:0.862em; }
   @media print {
@@ -145,8 +145,8 @@
     section:nth-of-type(10) svg { max-height:509px; }
     section:nth-of-type(11) img { max-height:377px; }
     section:nth-of-type(11) svg { max-height:528px; }
-    section:nth-of-type(12) img { max-height:335px; }
-    section:nth-of-type(12) svg { max-height:469px; }
+    section:nth-of-type(12) img { max-height:308px; }
+    section:nth-of-type(12) svg { max-height:431px; }
     section:nth-of-type(13) img { max-height:359px; }
     section:nth-of-type(13) svg { max-height:502px; }
     section:nth-of-type(16) img { max-height:345px; }
@@ -363,7 +363,7 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
   <img src="../images/ha-dashboard.png" alt="The operational Home Assistant dashboard: equity, day P&amp;L, positions, halt state, last decision and today's trades, for all three accounts">
   <div class="cards three" style="margin-top:.8em">
     <div class="card"><p class="k">Operator</p><p>Kill switch and knobs.</p></div>
-    <div class="card"><p class="k t">Team</p><p>A read-only dashboard. Home Assistant has no per-entity permissions, so the separation has to <em>be</em> the dashboard.</p></div>
+    <div class="card"><p class="k t">Team</p><p>The journal viewer, read-only by construction. Home Assistant has no per-entity permissions, so the separation is a different surface, not a second dashboard.</p></div>
     <div class="card"><p class="k w">Phone</p><p>Problems only. A fill sends nothing; <em>silence</em> does, when no cycle has run for 25 minutes.</p></div>
   </div>
 </section>

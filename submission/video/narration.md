@@ -93,16 +93,14 @@ later the same idea was bought again next door. And a ten-minute-old position
 was proposed for exit on a weakening thesis, when every number it had cited had
 moved in its favour. All four are fixed and deployed.
 
-**[3:45 — browser: Home Assistant — 25s]** *(director: operator dashboard, then
-the read-only team one)*
+**[3:45 — browser: Home Assistant — 15s]** *(director: the operator dashboard)*
 The same journal publishes over MQTT, fire-and-forget, so a broker being down
 never touches a trading cycle. Home Assistant discovers the sensors on its own:
 equity, day P&L, halt state, the last decision, per account. This dashboard has
-the kill switch and the knobs; the team gets a second one with no controls at
-all, because Home Assistant has no per-entity permissions, so the separation has
-to *be* the dashboard. The phone gets problems only — never fills. What it does
-buzz about is silence: no cycle for twenty-five minutes, the one failure a
-dashboard cannot show.
+the kill switch and the knobs; the team reads the viewer you just saw, which
+has none. The phone gets problems only — never fills. What it does buzz about
+is silence: no cycle for twenty-five minutes, the one failure a dashboard
+cannot show.
 
 **[4:10 — shot 5 then shot 7 — 25s]** *(director: `demo.sh`)*
 At the close, one command rebuilds every round trip from Alpaca's fills, groups
@@ -124,7 +122,7 @@ MIT licensed, in the repo. Thanks to Alpaca, lablab.ai and Featherless.
 ## If it runs long
 
 In order, the first things to cut: the Greeks slide to one sentence (−10s), the
-second half of the Home Assistant block (−12s), the pagination detail in shot 2
+pagination detail in shot 2
 down to "one page is three days on SPY; now it paginates" (−15s). Do not cut the
 four bugs — it is the only part of the video that shows the *loop* working
 rather than the system running.
