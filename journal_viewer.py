@@ -221,7 +221,7 @@ class Handler(BaseHTTPRequestHandler):
 
 PAGE = r"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI Day Trader — journal</title>
+<title>Autobelay — journal</title>
 <style>
   :root { --bg:#0f1720; --fg:#e6edf3; --dim:#8b98a5; --official:#d48ae0; --test:#6fd3d3; --mixed:#7fa7e8; }
   body { background:var(--bg); color:var(--fg); font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; margin:0; }
@@ -248,7 +248,7 @@ PAGE = r"""<!doctype html>
   #trimmed { color:var(--dim); font-style:italic; padding:4px 0; }
 </style></head><body>
 <header>
-  <b>AI Day Trader — journal</b>
+  <b>Autobelay — journal</b>
   <span id="status" class="dim">connecting…</span>
   <label><input type="checkbox" class="acct" value="official" checked> official</label>
   <label><input type="checkbox" class="acct" value="test" checked> test</label>

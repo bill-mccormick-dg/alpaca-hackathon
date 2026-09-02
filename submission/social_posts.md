@@ -6,17 +6,17 @@ METADATA.md as they go up.
 
 1. **Sat — the thesis**
    > Building for the @AlpacaHQ x @lablabai AI trading agents hackathon:
-   > "AI Day Trader - Long Premium, Short Leash." An open-source model (via Featherless)
+   > "Autobelay - long premium, short leash." An open-source model (via Featherless)
    > proposes defined-risk options trades; deterministic code sizes, stops and
    > closes every one. The model never touches an order. 280 tests so far.
    + screenshot: README thesis block or the risk gate table.
 
-2. **Sun — derived Greeks**
-   > Alpaca's free options feed has no Greeks. So the agent solves implied vol
-   > from each contract's price and derives delta/theta/vega on the fly —
-   > Black-Scholes, pure Python, unit-tested against textbook values. Here's
-   > what the model sees per contract.
-   + screenshot: a prompt contract block with iv/delta/theta.
+2. **Sun — Greeks, and a belief worth checking**
+   > We spent three days sure Alpaca's free options feed carried no Greeks, and
+   > solved implied vol ourselves. It carries them on 94% of the chain. Now we
+   > use Alpaca's and our Black-Scholes solve is the backstop — every contract
+   > records which it got, so the model knows which numbers are rough.
+   + screenshot: a prompt contract block with iv/delta/greeks_source.
 
 3. **Mon — first live day**
    > First live session on the competition account. Every decision, order,
