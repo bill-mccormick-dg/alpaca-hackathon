@@ -63,6 +63,55 @@ def esc(s: str) -> str:
     return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 
+# ---------------------------------------------------------------- text metrics
+# SVG has no text wrapping: a <text> element that is too wide simply draws past
+# whatever box it was meant to sit in, silently and only in the artifact. Five
+# labels on the journal diagram did exactly that in the exported deck. So we
+# measure before we draw, and the measurement needs per-character advances.
+#
+# These are Helvetica's, in em units. Chrome resolves the diagram's font stack
+# to a system face that runs about 5% wider than Helvetica's metrics, measured
+# over the eighteen labels below (canvas measureText at 14.5px, ratios 0.92 to
+# 0.97) - hence WIDTH_FUDGE, which makes the estimate conservative rather than
+# optimistic. A label that measures as fitting must actually fit; one that is
+# wrongly wrapped costs a line break, and one wrongly kept costs a broken slide.
+_EM = {" ": .278, "!": .278, '"': .355, "#": .556, "$": .556, "%": .889, "&": .667,
+       "'": .191, "(": .333, ")": .333, "*": .389, "+": .584, ",": .278, "-": .333,
+       ".": .278, "/": .278, ":": .278, ";": .278, "<": .584, "=": .584, ">": .584,
+       "?": .556, "@": 1.015, "[": .278, "]": .278, "_": .556, "`": .333, "{": .334,
+       "|": .26, "}": .334, "~": .584}
+_EM.update({c: .556 for c in "0123456789"})
+_EM.update(zip("ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+               (.667, .667, .722, .722, .667, .611, .778, .722, .278, .5, .667, .556, .833,
+                .722, .778, .667, .778, .722, .667, .611, .722, .667, .944, .667, .667, .611)))
+_EM.update(zip("abcdefghijklmnopqrstuvwxyz",
+               (.556, .556, .5, .556, .556, .278, .556, .556, .222, .222, .5, .222, .833,
+                .556, .556, .556, .556, .333, .5, .278, .556, .5, .722, .5, .5, .5)))
+WIDTH_FUDGE = 1.06
+
+
+def text_width(s: str, size: float) -> float:
+    """Rendered width of `s` at `size`px in the diagrams' sans stack, in px."""
+    return sum(_EM.get(c, .556) for c in s) * size * WIDTH_FUDGE
+
+
+def wrap(text: str, size: float, width: float) -> list[str]:
+    """Greedy line break at `width` px. A single word too wide to fit is left
+    alone rather than hyphenated - it is a symbol name, and a broken symbol
+    name is worse than a slightly wide line. The test asserts none exists."""
+    lines, cur = [], ""
+    for word in text.split():
+        trial = f"{cur} {word}".strip()
+        if cur and text_width(trial, size) > width:
+            lines.append(cur)
+            cur = word
+        else:
+            cur = trial
+    if cur:
+        lines.append(cur)
+    return lines
+
+
 def head(w: int, h: int) -> str:
     defs = "".join(
         f'<marker id="{k}" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" '
@@ -193,23 +242,29 @@ def journal() -> str:
     s.append(label(640, 120, "every decision, order, rejection, exit, tool call and config hash", size=14))
 
     columns = [
-        (50, ACCENT, "the browser", "Live journal viewer", "bot.wpmccormick.pw",
+        (ACCENT, "the browser", "Live journal viewer", "bot.wpmccormick.pw",
          ["journal_viewer.py, :8300 on the LAN", "-> cloudflared tunnel",
           "-> Cloudflare Access (email OTP)", "server-sent events, live follow",
           "read-only: no controls at all"]),
-        (360, EXT, "the dashboard", "Home Assistant", "MQTT auto-discovery",
+        (EXT, "the dashboard", "Home Assistant", "MQTT auto-discovery",
          ["journal.log() -> fire-and-forget", "equity, P&L, halt, last decision",
           "kill switch + knobs, per-account", "sections layout: phone-friendly",
           "phone: problems only, never fills"]),
-        (670, GATE, "the inbox", "Hourly email", "mail_report.py",
+        (GATE, "the inbox", "Hourly email", "mail_report.py",
          ["trades with the model's full reason", "CSVs attached, host local time",
           "silent when nothing traded", "one final send after the close"]),
-        (980, MODEL, "the loop", "eod_review.py", "the daily change",
+        (MODEL, "the loop", "eod_review.py", "the daily change",
          ["round trips from Alpaca's fills", "rejections grouped by rule",
           "Brier score on the priors", "critique by a model that did not trade"]),
     ]
-    cw, top = 250, 200
-    for x, color, kicker, name, sub, bullets in columns:
+    # 250px cards clipped five of these labels in the export. Widened to the
+    # full span - the gutters were more generous than four columns of prose
+    # need - and what still does not fit now wraps instead of drawing past the
+    # card edge. BULLET_W is the inner width the wrap solves against.
+    top, cw, pad, size = 200, 272, 15, 14.5
+    xs = [50, 353, 656, 959]
+    bullet_w = cw - 2 * pad
+    for x, (color, kicker, name, sub, bullets) in zip(xs, columns):
         s.append(f'<rect x="{x}" y="{top}" width="{cw}" height="330" rx="12" fill="{PANEL}" stroke="{color}"/>')
         s.append(f'<text class="dg-band" x="{x + cw/2}" y="{top + 30}" fill="{color}" '
                  f'text-anchor="middle">{esc(kicker.upper())}</text>')
@@ -217,8 +272,17 @@ def journal() -> str:
                  f'font-weight="700">{esc(name)}</text>')
         s.append(f'<text class="dg-sub" x="{x + cw/2}" y="{top + 92}" text-anchor="middle" '
                  f'fill="{color}">{esc(sub)}</text>')
-        for i, b in enumerate(bullets):
-            s.append(f'<text class="dg-lbl" x="{x + 16}" y="{top + 128 + i*34}" font-size="14.5">{esc("- " + b)}</text>')
+        # A wrapped bullet's continuation lines are indented under the text, not
+        # under the dash, so the list still reads as a list. Single-line bullets
+        # keep the 34px rhythm they had.
+        y = top + 128
+        for b in bullets:
+            lines = wrap("- " + b, size, bullet_w)
+            for j, ln in enumerate(lines):
+                s.append(f'<text class="dg-lbl" x="{x + pad + (10 if j else 0)}" y="{y}" '
+                         f'font-size="{size}">{esc(ln)}</text>')
+                y += 19
+            y += 15
         s.append(path([(640, 130), (640, 168), (x + cw / 2, 168), (x + cw / 2, top - 7)], "a", color))
 
     s.append(caption(W, 590, "One file, four windows. Three are read-only views for humans; "
@@ -236,7 +300,7 @@ def infra() -> str:
     s.append(box(28, 26, 352, 56, ["developer"], BORDER, sub="branch -> pull request"))
     s.append(band(28, 106, 352, 420, "GITHUB", EXT))
     s.append(path([(204, 82), (204, 99)], "a", DIM))
-    s.append(box(50, 150, 308, 76, ["CI - ubuntu-latest"], EXT, sub="ruff + 732 tests, no keys"))
+    s.append(box(50, 150, 308, 76, ["CI - ubuntu-latest"], EXT, sub="ruff + 765 tests, no keys"))
     s.append(box(50, 254, 308, 62, ["squash-merge to main"], BORDER))
     s.append(box(50, 344, 308, 96, ["freeze window"], GATE, sub="trading code, 08:20-15:15 CT", sw=2.5))
     s.append(label(204, 424, "hard fail - red X on main", color=STOP))

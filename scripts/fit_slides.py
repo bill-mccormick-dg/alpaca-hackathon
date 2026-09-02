@@ -53,15 +53,24 @@ DECK = ROOT / "submission/video/slides.html"
 CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
 
 PAGE_H = 720
-# Never fit to exactly the page height. The harness measures a screen layout and
-# the export is a print layout, and the two differ by sub-pixel amounts - font
-# hinting, fractional line heights, image rounding. Slide 13 measured exactly
-# 720px, passed the check, and still pushed its final clause onto the next page
-# in the PDF: "because a stalled bot's stale numbers look exactly like a quiet
-# market" was simply not in the artifact. One line of slack costs nothing and
-# removes a whole class of "measured fine, exported wrong".
+# The footer is NOT part of the flow: the deck's own script appends an
+# absolutely-positioned .pagefoot to every slide, at bottom:30px with a bar
+# about 21px tall at full type scale. It therefore contributes nothing to
+# scrollHeight, and content measured as "inside the 720px page" can still be
+# painted straight through it. That is exactly what shipped - slides 3 and 15
+# printed their closing line on top of "Autobelay - long premium, short leash",
+# and slide 17's cards ran under it, all three while this script reported a
+# comfortable fit. Content has to stop above the footer, not above the page.
+FOOTER_H = 30 + 21
+# Never fit to exactly the usable height either. The harness measures a screen
+# layout and the export is a print layout, and the two differ by sub-pixel
+# amounts - font hinting, fractional line heights, image rounding. Slide 13
+# measured exactly 720px, passed the check, and still pushed its final clause
+# onto the next page in the PDF: "because a stalled bot's stale numbers look
+# exactly like a quiet market" was simply not in the artifact. One line of slack
+# costs nothing and removes a whole class of "measured fine, exported wrong".
 FIT_MARGIN = 20
-USABLE_H = PAGE_H - FIT_MARGIN
+USABLE_H = PAGE_H - FOOTER_H - FIT_MARGIN
 START, END = "<!-- fit:auto -->", "<!-- /fit:auto -->"
 # Below this the type is too small to read from the back of a room; the script
 # reports it and stops rather than quietly shipping an unreadable slide, because
@@ -194,7 +203,7 @@ def main() -> int:
                   file=sys.stderr)
             return 1
         print(f"\n  all {len(heights)} slides fit the {USABLE_H}px usable box "
-              f"({PAGE_H}px page less a {FIT_MARGIN}px margin)")
+              f"({PAGE_H}px page less a {FOOTER_H}px footer and a {FIT_MARGIN}px margin)")
         return 0
 
     base = strip_block(original)

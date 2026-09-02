@@ -267,5 +267,73 @@ class DeckImagesResolveTest(unittest.TestCase):
             self.assertIn("alt=", tag, f"image without alt text: {tag[:60]}")
 
 
+class DiagramLabelsStayInsideTheirCardsTest(unittest.TestCase):
+    """SVG does not wrap text. A label longer than the box it was drawn into
+    simply paints past the edge - no error, no reflow, and invisible until
+    someone opens the exported PDF. Five labels on the journal diagram shipped
+    that way. scripts/render_diagrams.wrap() now breaks them; this asserts the
+    result, so a label lengthened later fails here instead of in the artifact."""
+
+    def setUp(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+        import render_diagrams
+
+        self.rd = render_diagrams
+        self.svg = render_diagrams.diagrams()["journal"]
+
+    def test_every_card_label_fits_the_card_it_is_drawn_in(self):
+        cards = [(float(x), float(w)) for x, w in
+                 re.findall(r'<rect x="([\d.]+)" y="200" width="(\d+)" height="330"', self.svg)]
+        self.assertEqual(len(cards), 4, "expected the four reader columns")
+
+        labels = re.findall(r'<text class="dg-lbl" x="([\d.]+)" y="[\d.]+" font-size="([\d.]+)">([^<]*)</text>',
+                            self.svg)
+        self.assertGreaterEqual(len(labels), 18, "the column bullets went missing")
+
+        for x, size, text in labels:
+            x, size = float(x), float(size)
+            # Measure what is drawn, not what is escaped: "&amp;" is five
+            # characters in the file and one glyph on the slide.
+            text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
+            card = next((c for c in cards if c[0] <= x < c[0] + c[1]), None)
+            self.assertIsNotNone(card, f"label outside every card: {text!r}")
+            right = x + self.rd.text_width(text, size)
+            limit = card[0] + card[1]
+            self.assertLessEqual(
+                round(right), round(limit),
+                f"{text!r} draws {round(right - limit)}px past its card edge",
+            )
+
+
+class TheFitterKnowsWhereTheFooterIsTest(unittest.TestCase):
+    """scripts/fit_slides.py reserves the footer band by arithmetic, because
+    the footer is position:absolute and contributes nothing to the height it
+    measures. That arithmetic is only right while the deck's own CSS agrees -
+    it did not, and slides 3, 15 and 17 printed content on top of the footer
+    while the fitter reported a comfortable fit."""
+
+    def setUp(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
+        import fit_slides
+
+        self.fs = fit_slides
+        self.deck = self.fs.DECK.read_text()
+
+    def test_the_reserved_band_matches_the_decks_own_footer_rule(self):
+        # The print rule is the one that matters: on screen .pagefoot is placed
+        # in vh, and in the export against the 720px @page in px.
+        offset = re.search(r"\.pagefoot \{[^}]*bottom:(\d+)px", self.deck)
+        self.assertIsNotNone(offset, "the deck's print .pagefoot no longer sets a px offset")
+
+        self.assertGreater(
+            self.fs.FOOTER_H, int(offset.group(1)),
+            "FOOTER_H must cover the footer's offset from the page bottom AND its own height",
+        )
+
+    def test_the_usable_box_stops_above_the_footer(self):
+        self.assertLess(self.fs.USABLE_H, self.fs.PAGE_H - self.fs.FOOTER_H + 1,
+                        "content is allowed to reach into the footer band")
+
+
 if __name__ == "__main__":
     unittest.main()
