@@ -90,18 +90,24 @@ strategy_notes: |
 # runtime-overridable (see bot/overrides.py) for intraday A/B without a
 # deploy; a change here in git is the durable version.
 #
-# K2.6 because it is what this account actually traded on day 1: a runtime
-# override moved it off K2-Instruct at 10:00 ET on 2026-08-31 and it made 32
-# of the day's 33 decisions on K2.6. That override expired at 16:00 ET, so
-# without this line the judged account would silently revert on day 2 to a
-# model with one cycle of live history - a change nobody decided. Pinning it
-# in git makes the durable version match what has been running. Note this is
-# NOT a claim that K2.6 beats K2-Instruct: no model comparison has ever been
-# run (see #165), and this is deliberately the conservative choice of
-# continuity over another unvalidated switch during the scoring week.
-model: moonshotai/Kimi-K2.6
+# Qwen3.8-Flash-Next since 2026-09-02: the operator's call, made from the
+# dashboard at ~01:28 ET and pinned here so Thursday - the final scoring
+# day - does not silently revert to a different model when the override
+# expires at 16:00 ET (the exact trap the previous K2.6 pin existed for).
+# Basis, recorded in #165: llm-stats has Qwen3.8-Flash-Next winning 7 of 8
+# shared benchmarks against K2.6 (notably reasoning and agents), it is ~5x
+# cheaper per model_prices, and it is the model the test-account challenger
+# has been running - so this promotes the A/B challenger's model to the
+# judged account. Verified same night: dry-run cycle on the official
+# account answered finish=stop in 156 completion tokens.
+model: Qwen/Qwen3.8-Flash-Next
 temperature: 0.2
-max_tokens: 800 # a JSON array of a few proposals, not prose
+# 1500 since 2026-09-02, up from 800 (same dashboard session as the model
+# switch). Headroom against finish_reason=length forfeiting a cycle now
+# that positions carry a longer prompt block; the observed answer is ~160
+# tokens, so this is insurance, not spend - completion tokens are billed
+# as used, not as budgeted.
+max_tokens: 1500
 request_timeout_sec: 60
 
 # Which model critiques the day in eod_review.py, in preference order. The
