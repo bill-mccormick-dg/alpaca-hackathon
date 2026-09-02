@@ -114,5 +114,17 @@ and deploys itself from a runner living on that same container.
   sanity check refuses to sync an incomplete checkout). The freeze is a hard
   failure rather than a skip: a red X on `main` is the signal that `main` and
   the trading host have diverged.
+- **Journal viewer**: [`journal_viewer.py`](https://github.com/bill-mccormick-dg/alpaca-hackathon/blob/main/journal_viewer.py)
+  is the journal's third consumer (after MQTT and the report scripts) - a
+  stdlib-only page streaming all three accounts' journals live, read-only by
+  construction: it opens the journal files and nothing else, loads no
+  credentials, and has no POST route. It binds a LAN port (`:8300`) on CT 108
+  and is published at **<https://bot.wpmccormick.pw>** through a Cloudflare
+  Tunnel with Access (email one-time PIN) in front. Same trust shape as the CI
+  runner: `cloudflared` connects *outbound*, so nothing inbound reaches the CT.
+  The systemd unit and tunnel live in the private `homenetwork` repo's
+  `alpaca-hackathon` / `cloudflared` roles; who may log in is Cloudflare
+  dashboard state, deliberately not IaC. Day-to-day usage is in
+  [Operations](operations.md#the-journal-in-a-browser).
 - **Local**: `docker compose` - the bot image (tests, dry runs, your own paper
   account) and this docs site.

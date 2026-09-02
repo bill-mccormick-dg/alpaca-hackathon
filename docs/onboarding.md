@@ -92,6 +92,7 @@ hour of the journal read cold.
 | understand one cycle end to end | [Architecture](architecture), then `run_cycle.py` top to bottom (~250 lines) |
 | change what the model is told | `strategy_notes` in `config.yaml`; `bot/decide.py::PROMPT_TEMPLATE` |
 | change a guardrail | `bot/risk.py::check_order` and its tests - the tests are the spec |
+| watch it live, from anywhere | [bot.wpmccormick.pw](https://bot.wpmccormick.pw) - one live cycle in the viewer beats reading the journal cold |
 | see what happened today | `status.py`, `logs/journal.jsonl`, `eod_review.py --no-model` |
 | try a different model | `override.py set model <id>` (expires 16:00 ET) or `config-test.yaml` |
 | add a research tool | `bot/research.py::TOOLS` + `to_mcp_call` - allowlist, read-only only |
