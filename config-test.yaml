@@ -131,7 +131,9 @@ model_params:
   chat_template_kwargs:
     enable_thinking: false
 temperature: 0.2
-max_tokens: 800 # a JSON array of a few proposals, not prose
+# 1500 since 2026-09-02, matching the official account (same dashboard
+# session) - headroom against finish_reason=length, not extra spend.
+max_tokens: 1500
 request_timeout_sec: 60
 
 # Transient model failures cost a whole cycle otherwise - the next attempt is
