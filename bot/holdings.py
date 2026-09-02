@@ -197,6 +197,64 @@ def entry_context(positions: list[dict], records: list[dict]) -> dict[str, dict 
     return out
 
 
+def recent_exits(underlyings, records: list[dict], today: str) -> dict[str, list[dict]]:
+    """Per underlying, today's closes in journal order: the model's own sells
+    (with the reason it gave), code exits (stop / take-profit / expiry, with
+    the rule), and flattens. Mirror of entry_context() for the other end of
+    a position (#222).
+
+    Exists because the prompt handed the model its ENTRY thesis (#173) and
+    nothing about its exits, so on 2026-09-02 it sold NVDA at 13:50 as
+    "intraday uptrend is gone, round-tripped the whole move" and bought NVDA
+    back at 14:00 as "strong intraday momentum" - three such ten-minute round
+    trips in one session, each paying the spread twice on opposite theses.
+    Not a guard: the model may re-enter. It must do so knowing what it said."""
+    wanted = set(underlyings or ())
+    out: dict[str, list[dict]] = {u: [] for u in wanted}
+    for r in records:
+        ts = str(r.get("ts") or "")
+        if not ts.startswith(today):
+            continue
+        ev = r.get("event")
+        if ev in ("flatten", "daily_loss_flatten"):
+            for sym in _flattened(r):
+                und = _underlying_of(sym)
+                if und in wanted:
+                    out[und].append({"ts": ts, "symbol": sym, "kind": ev, "reason": ""})
+            continue
+        if ev != "order_submitted" or r.get("side") != "sell":
+            continue
+        sym = r.get("symbol") or ""
+        und = _underlying_of(sym)
+        if und not in wanted:
+            continue
+        out[und].append({"ts": ts, "symbol": sym, "kind": "code_exit" if r.get("exit") else "model",
+                         "reason": str(r.get("reason") or "")})
+    return {u: v for u, v in out.items() if v}
+
+
+_KIND_LABEL = {"model": "you sold", "code_exit": "code exit", "flatten": "EOD flatten", "daily_loss_flatten": "daily-loss flatten"}
+
+
+def render_recent_exits_block(exits: dict[str, list[dict]]) -> str:
+    """The CLOSED TODAY prompt block, or "" when nothing closed. Reasons are
+    the model's own words, verbatim, because the point is that it reads
+    what it said."""
+    if not exits:
+        return ""
+    lines = [("CLOSED TODAY (your own exits this session - a re-entry on the same underlying must "
+              "name what has changed SINCE the close, not restate the entry case):")]
+    for und in sorted(exits):
+        for e in exits[und]:
+            label = _KIND_LABEL.get(e["kind"], e["kind"])
+            head = f"- {e['symbol']} {label} at {_hhmm(e['ts'])} ET"
+            if e["reason"]:
+                lines.append(f'{head}: "{e["reason"]}"')
+            else:
+                lines.append(head)
+    return "\n".join(lines) + "\n\n"
+
+
 def render_positions_block(positions: list[dict], open_orders: list[dict] | None, context: dict,
                            prior_now: dict | None, config: dict | None = None, today=None) -> str:
     """The prompt block. `positions` and `open_orders` are the snapshot's
