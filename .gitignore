@@ -12,3 +12,9 @@ docs-site/node_modules/
 docs-site/build/
 docs-site/.docusaurus/
 ansible/inventory.ini
+# Stand-ins uploaded to the lablab.ai form early so the submission can be
+# completed before the real artifacts exist. Both carry a visible
+# PLACEHOLDER band and are replaced before the deadline - they are build
+# output, not sources, so they stay out of the repo.
+submission/slides-placeholder.pdf
+submission/video/placeholder.*
