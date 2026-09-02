@@ -80,7 +80,12 @@ def strip_block(text: str) -> str:
     if START not in text:
         return text
     head, rest = text.split(START, 1)
-    return head + rest.split(END, 1)[1]
+    tail = rest.split(END, 1)[1]
+    # Rejoin on ONE newline. Keeping head's trailing newline and tail's leading
+    # one left a blank line behind on every run, and the block goes back in the
+    # same place - so the deck grew a line of whitespace each time it was
+    # re-fitted, which is meant to be before every export.
+    return head.rstrip("\n") + "\n" + tail.lstrip("\n")
 
 
 def build_block(scales: dict[int, float]) -> str:
