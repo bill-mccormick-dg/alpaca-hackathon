@@ -44,12 +44,15 @@ README = ROOT / "README.md"
 README_DIAGRAM = "runtime"
 
 # ---------------------------------------------------------------- design system
-BG, PANEL, BOX, BORDER = "#0f1720", "#141d28", "#1b2635", "#2b3a4a"
-FG, DIM = "#e6edf3", "#93a4b5"
-ACCENT = "#4fb39c"   # deterministic code, and anything that is a guarantee
-MODEL = "#a78bfa"    # the model, and the humans reading its output
-GATE = "#e3b341"     # the one gate, and the freeze
-STOP = "#d73a4a"     # refusals
+# Navy, to sit on the deck's gradient as a card rather than as a black hole
+# punched through it. The semantic assignments below are what matter and are
+# unchanged; only the surfaces moved.
+BG, PANEL, BOX, BORDER = "#0b1d33", "#12283f", "#17324c", "#31567a"
+FG, DIM = "#eaf3fd", "#a6c0dc"
+ACCENT = "#4fd1b0"   # deterministic code, and anything that is a guarantee
+MODEL = "#b191ff"    # the model, and the humans reading its output
+GATE = "#f0b429"     # the one gate, and the freeze
+STOP = "#ff6b6b"     # refusals
 EXT = "#5aa9e6"      # somebody else's service
 FONT = "Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif"
 MONO = "ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace"
@@ -68,14 +71,19 @@ def head(w: int, h: int) -> str:
     return f'''<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {w} {h}" width="{w}" height="{h}" role="img">
 <defs>{defs}</defs>
 <style>
-  .t {{ font-family: {FONT}; fill: {FG}; }}
-  .m {{ font-family: {MONO}; }}
-  .band {{ font-family: {FONT}; fill: {DIM}; font-size: 15px; letter-spacing: .14em; font-weight: 700; }}
-  .lbl {{ font-family: {FONT}; fill: {DIM}; font-size: 15px; }}
-  .sub {{ font-family: {MONO}; fill: {DIM}; font-size: 14px; }}
-  .cap {{ font-family: {FONT}; fill: {DIM}; font-size: 17px; }}
+  /* Every class here is prefixed, because these diagrams are INLINED into the
+     slide deck and an SVG's internal stylesheet is not scoped - it applies to
+     the whole host document. Unprefixed `.sub` and `.t` silently restyled the
+     deck's own subtitles in monospace, and only on the slides that happened to
+     come after a diagram in document order. */
+  .dg-t {{ font-family: {FONT}; fill: {FG}; }}
+  .dg-m {{ font-family: {MONO}; }}
+  .dg-band {{ font-family: {FONT}; fill: {DIM}; font-size: 15px; letter-spacing: .14em; font-weight: 700; }}
+  .dg-lbl {{ font-family: {FONT}; fill: {DIM}; font-size: 15px; }}
+  .dg-sub {{ font-family: {MONO}; fill: {DIM}; font-size: 14px; }}
+  .dg-cap {{ font-family: {FONT}; fill: {DIM}; font-size: 17px; }}
 </style>
-<rect width="{w}" height="{h}" fill="{BG}"/>
+<rect width="{w}" height="{h}" rx="22" fill="{BG}" stroke="{BORDER}" stroke-opacity=".55"/>
 '''
 
 
@@ -83,7 +91,7 @@ def band(x, y, w, h, text, color=BORDER, dash=None, anchor="start") -> str:
     d = f' stroke-dasharray="{dash}"' if dash else ""
     lx = x + 18 if anchor == "start" else x + w - 18
     return (f'<rect x="{x}" y="{y}" width="{w}" height="{h}" rx="14" fill="{PANEL}" stroke="{color}"{d}/>'
-            f'<text class="band" x="{lx}" y="{y + 26}" fill="{color}" text-anchor="{anchor}">{esc(text)}</text>')
+            f'<text class="dg-band" x="{lx}" y="{y + 26}" fill="{color}" text-anchor="{anchor}">{esc(text)}</text>')
 
 
 def box(x, y, w, h, lines, color=BORDER, fill=BOX, size=20, sub=None, mono=False, sw=1.5) -> str:
@@ -92,10 +100,10 @@ def box(x, y, w, h, lines, color=BORDER, fill=BOX, size=20, sub=None, mono=False
     lh = size + 6
     top = y + h / 2 - ((len(lines) + (1 if sub else 0)) * lh) / 2 + size - 2
     for i, ln in enumerate(lines):
-        out.append(f'<text class="{"t m" if mono else "t"}" x="{x + w/2}" y="{top + i*lh}" font-size="{size}" '
+        out.append(f'<text class="{"dg-t dg-m" if mono else "dg-t"}" x="{x + w/2}" y="{top + i*lh}" font-size="{size}" '
                    f'text-anchor="middle" font-weight="600">{esc(ln)}</text>')
     if sub:
-        out.append(f'<text class="sub" x="{x + w/2}" y="{top + len(lines)*lh}" text-anchor="middle">{esc(sub)}</text>')
+        out.append(f'<text class="dg-sub" x="{x + w/2}" y="{top + len(lines)*lh}" text-anchor="middle">{esc(sub)}</text>')
     return "".join(out)
 
 
@@ -109,11 +117,11 @@ def path(pts, marker="a", color=DIM, dash=None, width=2) -> str:
 def label(x, y, text, anchor="middle", color=None, size=None) -> str:
     c = f' fill="{color}"' if color else ""
     z = f' font-size="{size}"' if size else ""
-    return f'<text class="lbl" x="{x}" y="{y}" text-anchor="{anchor}"{c}{z}>{esc(text)}</text>'
+    return f'<text class="dg-lbl" x="{x}" y="{y}" text-anchor="{anchor}"{c}{z}>{esc(text)}</text>'
 
 
 def caption(w, y, text) -> str:
-    return f'<text class="cap" x="{w/2}" y="{y}" text-anchor="middle">{esc(text)}</text>'
+    return f'<text class="dg-cap" x="{w/2}" y="{y}" text-anchor="middle">{esc(text)}</text>'
 
 
 # ---------------------------------------------------------------- runtime
@@ -179,9 +187,9 @@ def journal() -> str:
     s = [head(W, H)]
     s.append(f'<rect x="330" y="34" width="620" height="96" rx="12" fill="{BOX}" '
              f'stroke="{ACCENT}" stroke-width="2.5"/>')
-    s.append('<text class="t m" x="640" y="72" font-size="22" text-anchor="middle" '
+    s.append('<text class="dg-t dg-m" x="640" y="72" font-size="22" text-anchor="middle" '
              'font-weight="700">journal.jsonl</text>')
-    s.append('<text class="sub" x="640" y="98" text-anchor="middle">one per account, append-only</text>')
+    s.append('<text class="dg-sub" x="640" y="98" text-anchor="middle">one per account, append-only</text>')
     s.append(label(640, 120, "every decision, order, rejection, exit, tool call and config hash", size=14))
 
     columns = [
@@ -203,14 +211,14 @@ def journal() -> str:
     cw, top = 250, 200
     for x, color, kicker, name, sub, bullets in columns:
         s.append(f'<rect x="{x}" y="{top}" width="{cw}" height="330" rx="12" fill="{PANEL}" stroke="{color}"/>')
-        s.append(f'<text class="band" x="{x + cw/2}" y="{top + 30}" fill="{color}" '
+        s.append(f'<text class="dg-band" x="{x + cw/2}" y="{top + 30}" fill="{color}" '
                  f'text-anchor="middle">{esc(kicker.upper())}</text>')
-        s.append(f'<text class="t" x="{x + cw/2}" y="{top + 66}" font-size="21" text-anchor="middle" '
+        s.append(f'<text class="dg-t" x="{x + cw/2}" y="{top + 66}" font-size="21" text-anchor="middle" '
                  f'font-weight="700">{esc(name)}</text>')
-        s.append(f'<text class="sub" x="{x + cw/2}" y="{top + 92}" text-anchor="middle" '
+        s.append(f'<text class="dg-sub" x="{x + cw/2}" y="{top + 92}" text-anchor="middle" '
                  f'fill="{color}">{esc(sub)}</text>')
         for i, b in enumerate(bullets):
-            s.append(f'<text class="lbl" x="{x + 16}" y="{top + 128 + i*34}" font-size="14.5">{esc("- " + b)}</text>')
+            s.append(f'<text class="dg-lbl" x="{x + 16}" y="{top + 128 + i*34}" font-size="14.5">{esc("- " + b)}</text>')
         s.append(path([(640, 130), (640, 168), (x + cw / 2, 168), (x + cw / 2, top - 7)], "a", color))
 
     s.append(caption(W, 590, "One file, four windows. Three are read-only views for humans; "

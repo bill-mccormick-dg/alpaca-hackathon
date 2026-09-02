@@ -21,7 +21,7 @@ judges.
 - [ ] Repo flipped to **public** (`gh repo edit bill-mccormick-dg/alpaca-hackathon --visibility public`) and `LICENSE` present
 - [ ] Video uploaded (MP4, ≤ 5:00, target 3–5 min), link opens **logged out**
 - [ ] Slides exported (PDF or Google Slides link, view access for anyone with the link)
-- [ ] Cover image uploaded (real screenshot, 1280×720 or larger)
+- [ ] Cover image uploaded (`submission/cover.png`, 1600×900)
 - [ ] Account ID below matches the official account exactly
 - [ ] Final `eod_review` numbers pasted into WRITEUP.md results section
 - [ ] Social post links collected (up to 5)
@@ -84,6 +84,6 @@ Everything is MIT licensed and original to the event; the hosting, deploy pipeli
 
 **Slide presentation**: (link — fill Thu)
 
-**Cover image**: `submission/cover.png` (fill Thu — a real `status.py` / equity-curve screenshot)
+**Cover image**: `submission/cover.png` — generated, 1600x900. `python scripts/make_cover.py --png`. A price series that runs up, rolls over, and stops dead on a line held by a rope; the dashed ghost below is where it was going. Drawn rather than screenshotted: a terminal is an unreadable grey rectangle at thumbnail size.
 
 **Social posts** (up to 5): see `social_posts.md`

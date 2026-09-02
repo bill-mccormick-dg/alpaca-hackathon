@@ -27,6 +27,8 @@ equity and a shared dollar axis would show `mixed`'s head start as performance.
 The closing dollar figures are in the key. Re-run it after Thursday's close;
 the script says so itself while the week is still partial.
 
+`../cover.png` is generated too — `python scripts/make_cover.py --png`.
+
 That leaves `ha-dashboard.png` as the only hand-captured image, and
 `tests/test_dashboard.py` can only tell you the file exists - whether it shows
 a day with real trades in it is on you.

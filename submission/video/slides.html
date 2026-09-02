@@ -4,130 +4,127 @@
 <meta charset="utf-8">
 <title>Autobelay - long premium, short leash</title>
 <style>
-  :root { --bg:#0f1720; --fg:#e6edf3; --accent:#4fb39c; --dim:#9fb0c0; --code:#182230; }
-  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg);
-    font: 28px/1.35 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
-  section { display:none; box-sizing:border-box; height:100vh; padding:6vh 8vw; }
+  /* Navy, cards, big titles, sparse copy. Everything is self-contained: no
+     font, image or script may come from a URL, because the deck exports to PDF
+     through headless Chrome and a resource that fails to load exports as a
+     blank slide - visible only in the artifact that goes to judges. The
+     background chart is an inline data: URI for that reason. */
+  :root {
+    --bg1:#0c2340; --bg2:#06121f; --fg:#eaf3fd; --dim:#a8c2de;
+    --accent:#5aa9e6; --teal:#4fd1b0; --warn:#f0b429;
+    --line:rgba(150,195,240,.24); --card:rgba(90,150,220,.06); --code:#0b1d33;
+  }
+  html,body { margin:0; height:100%; background:var(--bg2); color:var(--fg);
+    font: 28px/1.4 -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; }
+  section { display:none; box-sizing:border-box; height:100vh; padding:7vh 7vw 9vh;
+    background:
+      radial-gradient(110% 75% at 18% -10%, rgba(40,105,180,.38), transparent 62%),
+      linear-gradient(158deg, var(--bg1) 0%, var(--bg2) 78%),
+      url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1280 720' preserveAspectRatio='none'%3E%3Cg fill='%23ffffff' fill-opacity='.028'%3E%3Crect x='60' y='560' width='14' height='90'/%3E%3Crect x='110' y='520' width='14' height='130'/%3E%3Crect x='160' y='585' width='14' height='65'/%3E%3Crect x='210' y='500' width='14' height='150'/%3E%3Crect x='260' y='545' width='14' height='105'/%3E%3Crect x='310' y='470' width='14' height='180'/%3E%3Crect x='360' y='510' width='14' height='140'/%3E%3Crect x='410' y='430' width='14' height='220'/%3E%3Crect x='460' y='495' width='14' height='155'/%3E%3Crect x='510' y='405' width='14' height='245'/%3E%3Crect x='560' y='455' width='14' height='195'/%3E%3Crect x='610' y='380' width='14' height='270'/%3E%3Crect x='660' y='430' width='14' height='220'/%3E%3Crect x='710' y='345' width='14' height='305'/%3E%3Crect x='760' y='400' width='14' height='250'/%3E%3Crect x='810' y='320' width='14' height='330'/%3E%3Crect x='860' y='375' width='14' height='275'/%3E%3Crect x='910' y='290' width='14' height='360'/%3E%3Crect x='960' y='340' width='14' height='310'/%3E%3Crect x='1010' y='255' width='14' height='395'/%3E%3Crect x='1060' y='305' width='14' height='345'/%3E%3Crect x='1110' y='230' width='14' height='420'/%3E%3Crect x='1160' y='280' width='14' height='370'/%3E%3Crect x='1210' y='205' width='14' height='445'/%3E%3C/g%3E%3Cpath d='M40 600 L150 545 L260 570 L370 490 L480 520 L590 425 L700 465 L810 355 L920 400 L1030 285 L1140 330 L1250 235' fill='none' stroke='%235aa9e6' stroke-opacity='.10' stroke-width='3'/%3E%3C/svg%3E");
+    background-size:cover, cover, 100% 100%; background-position:center; }
   section.active { display:flex; flex-direction:column; justify-content:center; }
-  h1 { font-size:2.4em; margin:0 0 .3em; letter-spacing:-.01em; }
-  h2 { font-size:1.6em; margin:0 0 .6em; color:var(--accent); }
-  p, li { max-width: 32em; }
-  .lead { font-size:1.15em; color:var(--dim); }
-  .big { font-size:1.35em; }
+
+  h1 { font-size:3.2em; font-weight:800; margin:0; letter-spacing:-.025em; line-height:1.05; }
+  h2 { font-size:1.95em; font-weight:800; margin:0 0 .55em; letter-spacing:-.02em; line-height:1.1; }
+  .tag { font-size:1.15em; color:var(--accent); margin:.25em 0 0; font-weight:600; }
+  .sub { font-size:.82em; color:var(--dim); max-width:34em; margin:.2em 0 0; }
+  .meta { font-size:.6em; color:var(--dim); margin-top:2.2em; line-height:1.7; }
+  .big { font-size:1.15em; max-width:24em; margin:0; }
+  b, strong { color:#fff; }
+
+  /* Two cards side by side is the workhorse layout. One card spans. */
+  .cards { display:grid; grid-template-columns:1fr 1fr; gap:1em; margin-top:.7em; }
+  .cards.one { grid-template-columns:1fr; }
+  .cards.three { grid-template-columns:1fr 1fr 1fr; }
+  .card { border:1px solid var(--line); background:var(--card); border-radius:20px;
+    padding:1.05em 1.15em; }
+  .card p { margin:0; font-size:.7em; color:var(--dim); line-height:1.5; }
+  .card p + p { margin-top:.5em; }
+  .k { display:flex; align-items:center; gap:.55em; margin:0 0 .5em;
+    font-size:.55em; font-weight:800; letter-spacing:.15em; text-transform:uppercase;
+    color:var(--accent); }
+  .k::before { content:""; flex:0 0 auto; width:.62em; height:.62em; border-radius:50%;
+    background:currentColor; box-shadow:0 0 0 .24em rgba(90,169,230,.16); }
+  .k.t { color:var(--teal); } .k.t::before { box-shadow:0 0 0 .24em rgba(79,209,176,.16); }
+  .k.w { color:var(--warn); } .k.w::before { box-shadow:0 0 0 .24em rgba(240,180,41,.16); }
+
   code, pre { font-family: ui-monospace, "SF Mono", Menlo, monospace; background:var(--code);
-    border-radius:8px; padding:.1em .4em; font-size:.8em; }
-  pre { padding:.8em 1em; overflow:auto; }
-  table { border-collapse:collapse; font-size:.8em; margin-top:.5em; }
-  td, th { border-bottom:1px solid #2a3644; padding:.35em .8em; text-align:left; vertical-align:top; }
-  th { color:var(--accent); font-weight:600; }
-  .flow { display:flex; flex-wrap:wrap; gap:.5em; align-items:center; font-size:.85em; }
-  .flow span { background:var(--code); padding:.4em .7em; border-radius:8px; }
-  .flow span.code { outline:2px solid var(--accent); }
+    border:1px solid var(--line); border-radius:12px; padding:.08em .38em; font-size:.72em; }
+  pre { padding:.85em 1.1em; overflow:auto; line-height:1.5; }
+  table { border-collapse:collapse; font-size:.68em; width:100%; margin-top:.3em; }
+  td, th { border-bottom:1px solid rgba(150,195,240,.14); padding:.5em .7em; text-align:left;
+    vertical-align:top; color:var(--dim); }
+  th { color:var(--accent); font-weight:700; white-space:nowrap; }
+  tr:last-child td, tr:last-child th { border-bottom:none; }
+  .flow { display:flex; flex-wrap:wrap; gap:.45em; align-items:center; font-size:.66em; }
+  .flow span { border:1px solid var(--line); background:var(--card); padding:.5em .8em;
+    border-radius:999px; color:var(--dim); }
   .flow em { color:var(--accent); font-style:normal; }
-  .foot { position:fixed; bottom:2vh; right:3vw; color:var(--dim); font-size:.5em; }
-  .fill { color:#e3b341; }
-  /* A screenshot must never make a slide overflow: the print stylesheet sets
-     overflow:hidden, so an over-tall slide is silently clipped in the PDF. */
-  section img { max-width:100%; max-height:46vh; height:auto; border-radius:8px;
-    border:1px solid #2a3644; align-self:flex-start; }
+  .fill { color:var(--warn); }
 
-  /* A slide is a flex column, and a <pre> carries overflow:auto - which makes
-     its automatic minimum size ZERO rather than its content height. So on a
-     slide taller than the viewport the code block is the only item that CAN
-     shrink (prose cannot), and it absorbs the whole overflow: the Greeks slide
-     rendered its JSON as a 20px sliver cut through the middle of the text.
-     Exactly the failure the infra diagram had at 1076x19px, same fix. Now the
-     slide overflows instead, which is visible and which the print fitter
-     scales away. Images are replaced elements with the same shrink behaviour. */
+  section img { max-width:100%; max-height:44vh; height:auto; border-radius:16px;
+    border:1px solid var(--line); align-self:flex-start; }
+  /* A <pre> carries overflow:auto, which makes its automatic minimum size ZERO
+     rather than its content height. A slide is a flex column, so on a slide
+     taller than the viewport the code block is the only item that CAN shrink
+     and it absorbs the whole overflow - it once rendered as a 20px sliver cut
+     through the middle of the text. Images are replaced elements and shrink
+     the same way. */
   section pre, section img { flex:0 0 auto; }
+  /* On screen a diagram takes the height the slide leaves it. The print rules
+     cap it in px against the 720px page, which on a taller viewport would
+     strand it in dead space. */
+  section svg { max-height:66vh; }
 
-  /* On screen a diagram should take whatever height the slide leaves it - the
-     print rules cap it in px against the 720px page, which on a taller
-     viewport strands it in dead space. Viewport units instead, so it grows
-     with the window. */
-  section svg { max-height:70vh; }
+  /* Injected into every slide by the script below, so it prints too. */
+  .pagefoot { position:absolute; left:7vw; right:7vw; bottom:3.6vh;
+    display:flex; align-items:center; font-size:.5em; color:var(--dim); }
+  .pagefoot .bar { width:4px; height:1.5em; border-radius:2px; background:var(--accent);
+    margin-right:.7em; }
+  .pagefoot .pg { margin-left:auto; letter-spacing:.06em; }
+  section { position:relative; }
 
-  /* Export to PDF: `print to PDF` in the browser, or headless Chrome -
-     see submission/README-export.md. Without this block the export is a
-     SINGLE page, because only the active slide is displayed. */
+  /* Export to PDF: headless Chrome, see submission/README-export.md. Without
+     this block the export is a SINGLE page, because only the active slide is
+     displayed. */
   @media print {
-    /* Page box in px, and every print dimension in px too. vh is the trap:
-       on screen it resolves against the viewport (513-633px headless), in
-       print against this 720px page - so a screen measurement of "fits" said
-       nothing about the export, and 8 of 15 pages were silently losing text. */
+    /* Page box in px, and every print dimension in px too. vh is the trap: on
+       screen it resolves against the viewport, in print against this 720px
+       page - so a screen measurement of "fits" says nothing about the export. */
     @page { size: 1280px 720px; margin: 0; }
-    html, body { height:auto; background:var(--bg); }
+    html, body { height:auto; background:var(--bg2); }
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
     section, section.active {
       /* flex-start, NOT center. Centering an over-tall slide pushes its top
-         ABOVE the page box, where content is dropped without creating an
-         extra page - so a page-count check cannot see it. Anchored to the
-         top, overflow can only go downward, which does make an extra page
-         and is therefore detectable. */
+         ABOVE the page box, where content is dropped without creating an extra
+         page - so a page-count check cannot see it. Anchored to the top,
+         overflow can only go downward, which does make an extra page and is
+         therefore detectable. */
       display:flex !important; flex-direction:column; justify-content:flex-start;
-      width:1280px; min-height:720px; padding:43px 102px; box-sizing:border-box;
+      width:1280px; min-height:720px; padding:56px 96px 78px; box-sizing:border-box;
       break-after:page; page-break-after:always;
       /* NEVER overflow:hidden. Clipping destroys content with no signal; an
-         over-tall slide now spills onto an extra page instead, which the
-         page-count check in README-export.md catches every time. */
+         over-tall slide spills onto an extra page instead, which the page-count
+         check catches every time. */
       overflow:visible;
     }
     section:last-of-type { break-after:auto; page-break-after:auto; }
-    section img { max-height:400px; }
-    /* Diagrams are flex:0 0 auto so a text-heavy slide cannot crush them (the
-       infra diagram once printed 1076x19px). The cap lives here rather than
-       inline so scripts/fit_slides.py can scale it. */
-    section svg { max-height:560px; }
-    .foot { display:none; }
+    section img { max-height:360px; }
+    section svg { max-height:520px; }
+    .pagefoot { left:96px; right:96px; bottom:30px; }
     pre { overflow:visible; white-space:pre-wrap; }
   }
 </style>
 <!-- fit:auto -->
 <!-- generated by scripts/fit_slides.py - do not hand-edit -->
 <style>
-  section:nth-of-type(2) { font-size:0.854em; }
-  section:nth-of-type(3) { font-size:0.789em; }
-  section:nth-of-type(4) { font-size:0.735em; }
-  section:nth-of-type(5) { font-size:0.903em; }
-  section:nth-of-type(6) { font-size:0.720em; }
-  section:nth-of-type(7) { font-size:0.914em; }
-  section:nth-of-type(8) { font-size:0.907em; }
-  section:nth-of-type(9) { font-size:0.720em; }
-  section:nth-of-type(11) { font-size:0.827em; }
-  section:nth-of-type(12) { font-size:0.849em; }
-  section:nth-of-type(13) { font-size:0.901em; }
-  section:nth-of-type(15) { font-size:0.720em; }
-  section:nth-of-type(16) { font-size:0.730em; }
-  section:nth-of-type(17) { font-size:0.723em; }
+  section:nth-of-type(3) { font-size:0.867em; }
+  section:nth-of-type(16) { font-size:0.875em; }
   @media print {
-    section:nth-of-type(2) img { max-height:342px; }
-    section:nth-of-type(2) svg { max-height:478px; }
-    section:nth-of-type(3) img { max-height:316px; }
-    section:nth-of-type(3) svg { max-height:442px; }
-    section:nth-of-type(4) img { max-height:294px; }
-    section:nth-of-type(4) svg { max-height:412px; }
-    section:nth-of-type(5) img { max-height:361px; }
-    section:nth-of-type(5) svg { max-height:506px; }
-    section:nth-of-type(6) img { max-height:288px; }
-    section:nth-of-type(6) svg { max-height:403px; }
-    section:nth-of-type(7) img { max-height:366px; }
-    section:nth-of-type(7) svg { max-height:512px; }
-    section:nth-of-type(8) img { max-height:363px; }
-    section:nth-of-type(8) svg { max-height:508px; }
-    section:nth-of-type(9) img { max-height:288px; }
-    section:nth-of-type(9) svg { max-height:403px; }
-    section:nth-of-type(11) img { max-height:331px; }
-    section:nth-of-type(11) svg { max-height:463px; }
-    section:nth-of-type(12) img { max-height:340px; }
-    section:nth-of-type(12) svg { max-height:475px; }
-    section:nth-of-type(13) img { max-height:360px; }
-    section:nth-of-type(13) svg { max-height:505px; }
-    section:nth-of-type(15) img { max-height:288px; }
-    section:nth-of-type(15) svg { max-height:403px; }
-    section:nth-of-type(16) img { max-height:292px; }
-    section:nth-of-type(16) svg { max-height:409px; }
-    section:nth-of-type(17) img { max-height:289px; }
-    section:nth-of-type(17) svg { max-height:405px; }
+    section:nth-of-type(3) img { max-height:347px; }
+    section:nth-of-type(3) svg { max-height:486px; }
+    section:nth-of-type(16) img { max-height:350px; }
+    section:nth-of-type(16) svg { max-height:490px; }
   }
 </style>
 <!-- /fit:auto -->
@@ -135,281 +132,297 @@
 <body>
 
 <section class="active">
+  <p class="k t" style="font-size:.6em">Team RazorsEdge</p>
   <h1>Autobelay</h1>
-  <p class="big" style="color:var(--accent);margin-top:-.6em">long premium, short leash</p>
-  <p class="lead">An autonomous options agent on Alpaca's MCP server.<br>
-  Nobody holds the other end. The brake is code.</p>
-  <p class="lead">Team RazorsEdge - William P. McCormick / William C. McCormick<br>
-  account <code>PA3VS39Y5LE2</code> - MIT - Alpaca AI Trading Agents Hackathon, Aug 28 to Sep 4, 2026</p>
+  <p class="tag">long premium, short leash</p>
+  <p class="sub" style="margin-top:1.1em">An autonomous options agent on Alpaca's MCP server.
+  An auto belay catches a climber with nobody holding the other end. Here the brake is code.</p>
+  <p class="meta">William P. McCormick / William C. McCormick · account <code>PA3VS39Y5LE2</code> · MIT<br>
+  Alpaca AI Trading Agents Hackathon · Aug 28 – Sep 4, 2026</p>
 </section>
 
 <section>
   <h2>The thesis, in one sentence</h2>
-  <p class="big">Buy defined-risk, short-dated options premium on the most liquid names when an
-  open-source model can <em>name a reason</em>; deterministic code sizes every trade, stops it,
-  and closes it before expiry.</p>
-  <p class="big"><strong>The model never touches an order.</strong> Open model proposes; code disposes.</p>
-  <p class="lead">Why long premium: the worst case is known before entry, which keeps every guardrail
-  simple and absolute - and it matches what a language model is good at (a directional view from
-  evidence) rather than what it is bad at (managing a position minute to minute).</p>
+  <p class="big">Buy defined-risk, short-dated options premium when an open model can <b>name a
+  reason</b> — and let deterministic code size it, stop it, and close it.</p>
+  <div class="cards">
+    <div class="card">
+      <p class="k t">Defined risk</p>
+      <p>Long premium only. The worst case is the premium paid, known before entry — which is what
+      lets every guardrail be a flat number.</p>
+    </div>
+    <div class="card">
+      <p class="k">Division of labour</p>
+      <p>The model forms a directional view from evidence. It never touches an order. Open model
+      proposes; code disposes.</p>
+    </div>
+  </div>
 </section>
 
 <section>
   <h2>One cycle, every 10 minutes</h2>
   <!-- diagram:runtime -->
-<!-- generated by scripts/render_diagrams.py, source sha 0893808d29c4 - do not hand-edit -->
+<!-- generated by scripts/render_diagrams.py, source sha cd05f37917d5 - do not hand-edit -->
 <svg style="width:100%;height:auto;flex:0 0 auto" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 772" role="img">
-<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#93a4b5"/></marker><marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4fb39c"/></marker><marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d73a4a"/></marker><marker id="ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5aa9e6"/></marker><marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e3b341"/></marker></defs>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a6c0dc"/></marker><marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4fd1b0"/></marker><marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b191ff"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ff6b6b"/></marker><marker id="ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5aa9e6"/></marker><marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f0b429"/></marker></defs>
 <style>
-  .t { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #e6edf3; }
-  .m { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; }
-  .band { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #93a4b5; font-size: 15px; letter-spacing: .14em; font-weight: 700; }
-  .lbl { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #93a4b5; font-size: 15px; }
-  .sub { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; fill: #93a4b5; font-size: 14px; }
-  .cap { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #93a4b5; font-size: 17px; }
+  /* Every class here is prefixed, because these diagrams are INLINED into the
+     slide deck and an SVG's internal stylesheet is not scoped - it applies to
+     the whole host document. Unprefixed `.sub` and `.t` silently restyled the
+     deck's own subtitles in monospace, and only on the slides that happened to
+     come after a diagram in document order. */
+  .dg-t { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #eaf3fd; }
+  .dg-m { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; }
+  .dg-band { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #a6c0dc; font-size: 15px; letter-spacing: .14em; font-weight: 700; }
+  .dg-lbl { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #a6c0dc; font-size: 15px; }
+  .dg-sub { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; fill: #a6c0dc; font-size: 14px; }
+  .dg-cap { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #a6c0dc; font-size: 17px; }
 </style>
-<rect width="1280" height="772" fill="#0f1720"/>
-<rect x="28" y="36" width="1224" height="150" rx="14" fill="#141d28" stroke="#4fb39c"/><text class="band" x="46" y="62" fill="#4fb39c" text-anchor="start">DETERMINISTIC CODE</text><rect x="50" y="88" width="265" height="76" rx="10" fill="#1b2635" stroke="#4fb39c" stroke-width="1.5"/><text class="t" x="182.5" y="118.0" font-size="20" text-anchor="middle" font-weight="600">cron</text><text class="sub" x="182.5" y="144.0" text-anchor="middle">every 10 min, 08:00-14:50 CT</text><rect x="355" y="88" width="265" height="76" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t" x="487.5" y="118.0" font-size="20" text-anchor="middle" font-weight="600">gates</text><text class="sub" x="487.5" y="144.0" text-anchor="middle">halt - market - window - identity</text><rect x="660" y="88" width="265" height="76" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t" x="792.5" y="118.0" font-size="20" text-anchor="middle" font-weight="600">snapshot</text><text class="sub" x="792.5" y="144.0" text-anchor="middle">positions - chain - prior</text><rect x="965" y="88" width="265" height="76" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t" x="1097.5" y="118.0" font-size="20" text-anchor="middle" font-weight="600">exits due?</text><text class="sub" x="1097.5" y="144.0" text-anchor="middle">expiry - stop - take-profit</text><path d="M315,126.0 L348,126.0" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><path d="M620,126.0 L653,126.0" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><path d="M925,126.0 L958,126.0" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><rect x="28" y="246" width="900" height="150" rx="14" fill="#141d28" stroke="#a78bfa" stroke-dasharray="6 5"/><text class="band" x="910" y="272" fill="#a78bfa" text-anchor="end">THE MODEL - PROPOSES ONLY</text><rect x="70" y="298" width="380" height="76" rx="10" fill="#231c35" stroke="#a78bfa" stroke-width="1.5"/><text class="t m" x="260.0" y="328.0" font-size="20" text-anchor="middle" font-weight="600">bot/decide.py</text><text class="sub" x="260.0" y="354.0" text-anchor="middle">prompt + 4 read-only tools</text><rect x="540" y="298" width="330" height="76" rx="10" fill="#231c35" stroke="#a78bfa" stroke-width="1.5"/><text class="t" x="705.0" y="328.0" font-size="20" text-anchor="middle" font-weight="600">JSON proposals</text><text class="sub" x="705.0" y="354.0" text-anchor="middle">or [] - hold</text><path d="M450,336 L533,336" stroke="#a78bfa" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><rect x="985" y="298" width="240" height="76" rx="10" fill="#1b2635" stroke="#5aa9e6" stroke-width="1.5"/><text class="t" x="1105.0" y="328.0" font-size="20" text-anchor="middle" font-weight="600">Featherless.ai</text><text class="sub" x="1105.0" y="354.0" text-anchor="middle">open-weight model</text><path d="M934,320 L978,320" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#ax)" stroke-dasharray="5 4" stroke-linejoin="round"/><path d="M978,352 L934,352" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#ax)" stroke-dasharray="5 4" stroke-linejoin="round"/><path d="M1097.5,164 L1097.5,216 L200,216 L200,291" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><text class="lbl" x="214" y="208" text-anchor="start">nothing due -&gt; ask the model</text><rect x="28" y="470" width="1224" height="150" rx="14" fill="#141d28" stroke="#4fb39c"/><text class="band" x="1234" y="496" fill="#4fb39c" text-anchor="end">DETERMINISTIC CODE - THE ONLY ORDER PATH</text><rect x="70" y="522" width="380" height="76" rx="10" fill="#1b2635" stroke="#4fb39c" stroke-width="1.5"/><text class="t m" x="260.0" y="552.0" font-size="20" text-anchor="middle" font-weight="600">place_proposal()</text><text class="sub" x="260.0" y="578.0" text-anchor="middle">every write goes through here</text><rect x="540" y="522" width="330" height="76" rx="10" fill="#1b2635" stroke="#e3b341" stroke-width="2.5"/><text class="t m" x="705.0" y="552.0" font-size="20" text-anchor="middle" font-weight="600">check_order()</text><text class="sub" x="705.0" y="578.0" text-anchor="middle">rejects, never clamps</text><rect x="960" y="522" width="265" height="76" rx="10" fill="#1b2635" stroke="#5aa9e6" stroke-width="1.5"/><text class="t" x="1092.5" y="552.0" font-size="20" text-anchor="middle" font-weight="600">Alpaca MCP</text><text class="sub" x="1092.5" y="578.0" text-anchor="middle">paper account only</text><path d="M450,560 L533,560" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><path d="M870,560 L953,560" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><text class="lbl" x="911" y="548" text-anchor="middle">approved</text><path d="M705,374 L705,424 L270,424 L270,515" stroke="#a78bfa" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><path d="M1230,126.0 L1256,126.0 L1256,444 L350,444 L350,515" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><text class="lbl" x="1244" y="436" text-anchor="end">code's own exit sells - same gate</text><rect x="400" y="672" width="480" height="62" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t m" x="640.0" y="695.0" font-size="20" text-anchor="middle" font-weight="600">journal.jsonl</text><text class="sub" x="640.0" y="721.0" text-anchor="middle">one record per event</text><path d="M705,598 L705,665" stroke="#e3b341" stroke-width="2" fill="none" marker-end="url(#ay)" stroke-linejoin="round"/><path d="M1092,598 L1092,703 L887,703" stroke="#93a4b5" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M640,598 L640,640 L330,640 L330,703 L393,703" stroke="#d73a4a" stroke-width="2" fill="none" marker-end="url(#ar)" stroke-linejoin="round"/><text class="lbl" x="324" y="632" text-anchor="end" fill="#d73a4a">rejected, with the rule that said no</text><text class="cap" x="640.0" y="758" text-anchor="middle">Everything outside the dashed box is deterministic code - there is no path from the model to an order.</text></svg>
+<rect width="1280" height="772" rx="22" fill="#0b1d33" stroke="#31567a" stroke-opacity=".55"/>
+<rect x="28" y="36" width="1224" height="150" rx="14" fill="#12283f" stroke="#4fd1b0"/><text class="dg-band" x="46" y="62" fill="#4fd1b0" text-anchor="start">DETERMINISTIC CODE</text><rect x="50" y="88" width="265" height="76" rx="10" fill="#17324c" stroke="#4fd1b0" stroke-width="1.5"/><text class="dg-t" x="182.5" y="118.0" font-size="20" text-anchor="middle" font-weight="600">cron</text><text class="dg-sub" x="182.5" y="144.0" text-anchor="middle">every 10 min, 08:00-14:50 CT</text><rect x="355" y="88" width="265" height="76" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t" x="487.5" y="118.0" font-size="20" text-anchor="middle" font-weight="600">gates</text><text class="dg-sub" x="487.5" y="144.0" text-anchor="middle">halt - market - window - identity</text><rect x="660" y="88" width="265" height="76" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t" x="792.5" y="118.0" font-size="20" text-anchor="middle" font-weight="600">snapshot</text><text class="dg-sub" x="792.5" y="144.0" text-anchor="middle">positions - chain - prior</text><rect x="965" y="88" width="265" height="76" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t" x="1097.5" y="118.0" font-size="20" text-anchor="middle" font-weight="600">exits due?</text><text class="dg-sub" x="1097.5" y="144.0" text-anchor="middle">expiry - stop - take-profit</text><path d="M315,126.0 L348,126.0" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><path d="M620,126.0 L653,126.0" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><path d="M925,126.0 L958,126.0" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><rect x="28" y="246" width="900" height="150" rx="14" fill="#12283f" stroke="#b191ff" stroke-dasharray="6 5"/><text class="dg-band" x="910" y="272" fill="#b191ff" text-anchor="end">THE MODEL - PROPOSES ONLY</text><rect x="70" y="298" width="380" height="76" rx="10" fill="#231c35" stroke="#b191ff" stroke-width="1.5"/><text class="dg-t dg-m" x="260.0" y="328.0" font-size="20" text-anchor="middle" font-weight="600">bot/decide.py</text><text class="dg-sub" x="260.0" y="354.0" text-anchor="middle">prompt + 4 read-only tools</text><rect x="540" y="298" width="330" height="76" rx="10" fill="#231c35" stroke="#b191ff" stroke-width="1.5"/><text class="dg-t" x="705.0" y="328.0" font-size="20" text-anchor="middle" font-weight="600">JSON proposals</text><text class="dg-sub" x="705.0" y="354.0" text-anchor="middle">or [] - hold</text><path d="M450,336 L533,336" stroke="#b191ff" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><rect x="985" y="298" width="240" height="76" rx="10" fill="#17324c" stroke="#5aa9e6" stroke-width="1.5"/><text class="dg-t" x="1105.0" y="328.0" font-size="20" text-anchor="middle" font-weight="600">Featherless.ai</text><text class="dg-sub" x="1105.0" y="354.0" text-anchor="middle">open-weight model</text><path d="M934,320 L978,320" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#ax)" stroke-dasharray="5 4" stroke-linejoin="round"/><path d="M978,352 L934,352" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#ax)" stroke-dasharray="5 4" stroke-linejoin="round"/><path d="M1097.5,164 L1097.5,216 L200,216 L200,291" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><text class="dg-lbl" x="214" y="208" text-anchor="start">nothing due -&gt; ask the model</text><rect x="28" y="470" width="1224" height="150" rx="14" fill="#12283f" stroke="#4fd1b0"/><text class="dg-band" x="1234" y="496" fill="#4fd1b0" text-anchor="end">DETERMINISTIC CODE - THE ONLY ORDER PATH</text><rect x="70" y="522" width="380" height="76" rx="10" fill="#17324c" stroke="#4fd1b0" stroke-width="1.5"/><text class="dg-t dg-m" x="260.0" y="552.0" font-size="20" text-anchor="middle" font-weight="600">place_proposal()</text><text class="dg-sub" x="260.0" y="578.0" text-anchor="middle">every write goes through here</text><rect x="540" y="522" width="330" height="76" rx="10" fill="#17324c" stroke="#f0b429" stroke-width="2.5"/><text class="dg-t dg-m" x="705.0" y="552.0" font-size="20" text-anchor="middle" font-weight="600">check_order()</text><text class="dg-sub" x="705.0" y="578.0" text-anchor="middle">rejects, never clamps</text><rect x="960" y="522" width="265" height="76" rx="10" fill="#17324c" stroke="#5aa9e6" stroke-width="1.5"/><text class="dg-t" x="1092.5" y="552.0" font-size="20" text-anchor="middle" font-weight="600">Alpaca MCP</text><text class="dg-sub" x="1092.5" y="578.0" text-anchor="middle">paper account only</text><path d="M450,560 L533,560" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><path d="M870,560 L953,560" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><text class="dg-lbl" x="911" y="548" text-anchor="middle">approved</text><path d="M705,374 L705,424 L270,424 L270,515" stroke="#b191ff" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><path d="M1230,126.0 L1256,126.0 L1256,444 L350,444 L350,515" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><text class="dg-lbl" x="1244" y="436" text-anchor="end">code's own exit sells - same gate</text><rect x="400" y="672" width="480" height="62" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t dg-m" x="640.0" y="695.0" font-size="20" text-anchor="middle" font-weight="600">journal.jsonl</text><text class="dg-sub" x="640.0" y="721.0" text-anchor="middle">one record per event</text><path d="M705,598 L705,665" stroke="#f0b429" stroke-width="2" fill="none" marker-end="url(#ay)" stroke-linejoin="round"/><path d="M1092,598 L1092,703 L887,703" stroke="#a6c0dc" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M640,598 L640,640 L330,640 L330,703 L393,703" stroke="#ff6b6b" stroke-width="2" fill="none" marker-end="url(#ar)" stroke-linejoin="round"/><text class="dg-lbl" x="324" y="632" text-anchor="end" fill="#ff6b6b">rejected, with the rule that said no</text><text class="dg-cap" x="640.0" y="758" text-anchor="middle">Everything outside the dashed box is deterministic code - there is no path from the model to an order.</text></svg>
 <!-- /diagram:runtime -->
-  <p class="lead" style="margin-top:1em">The model occupies one dashed box and emits JSON. Every order - its proposals <em>and</em> code's own exit sells - goes through the same <code>check_order()</code>.</p>
+  <p class="sub" style="margin-top:.7em">The model gets one box. Its proposals and code's own exit
+  sells pass the same gate.</p>
 </section>
 
 <section>
-  <h2>Greeks: Alpaca's, with Black-Scholes as the backstop</h2>
-  <p>We spent three days believing the free feed carried no Greeks, and solved implied volatility
-  from each contract's price ourselves. <b>The belief was wrong.</b> Alpaca's option snapshot carries
-  IV and the full Greeks on most contracts - today, <b>5,721 of 6,114</b> in the fetched chain.</p>
-  <pre>{"symbol":"SPY260903P00760000","strike":760.0,"dte":2,"bid":2.20,"ask":2.21,
- "spread_pct":0.5,"iv":0.1368,"delta":-0.3992,"greeks_source":"alpaca"}</pre>
-  <p>So the agent uses Alpaca's, and <code>bot/greeks.py</code> - a bisection IV solve, robust far
-  from the money - is now the <em>backstop</em> for the ~6% too thin to price. Every contract carries
-  <code>greeks_source</code>, so the model knows which numbers are rough.</p>
-  <p class="lead">Worth having both: one vendor surface means a strike's put and call deltas agree,
-  where our own solve drifted about five delta points on NVDA. And a feed that goes quiet does not
-  take the whole menu with it.</p>
+  <h2>Greeks: Alpaca's, ours as the backstop</h2>
+  <p class="sub">We spent three days sure the free feed carried none. It was wrong.</p>
+  <div class="cards">
+    <div class="card">
+      <p class="k">From Alpaca</p>
+      <p>IV and the full Greeks on <b>5,721 of 6,114</b> contracts in today's chain — one vendor
+      surface, so a strike's put and call deltas agree.</p>
+    </div>
+    <div class="card">
+      <p class="k t">Black-Scholes backstop</p>
+      <p>A bisection IV solve covers the ~6% too thin to price. Every contract carries
+      <code>greeks_source</code>, so the model knows which numbers are rough.</p>
+    </div>
+  </div>
 </section>
 
 <section>
-  <h2>What the model is allowed to see</h2>
-  <p>One <code>get_option_chain</code> page is 500 contracts. On SPY, at $1 strikes with daily
-  expiries, 500 contracts is <b>three days</b> - so a config that said 2-45 DTE was quietly showing
-  the model a three-day window, and it reached off-menu for contracts it could not price.</p>
+  <h2>What the model may choose from</h2>
+  <p class="sub">One API page is 500 contracts. On SPY, that is three days.</p>
   <table>
     <tr><th></th><th>before</th><th>now</th></tr>
-    <tr><th>SPY chain fetched</th><td>500 contracts, 1 page, out to 3 DTE</td><td>2,912 contracts, 3 pages, out to 45 DTE</td></tr>
-    <tr><th>NVDA's 12-contract menu</th><td>all at one strike (K=220), six expiries</td><td>at-the-money <em>and</em> ~0.40 delta, three expiries, both sides</td></tr>
+    <tr><th>SPY chain</th><td>500 contracts, 1 page, to 3 DTE</td><td>2,912 contracts, 3 pages, to 45 DTE</td></tr>
+    <tr><th>NVDA menu</th><td>12 contracts, all one strike</td><td>at-the-money and ~0.40 delta, three expiries, both sides</td></tr>
   </table>
-  <p class="lead">Coverage is journaled every cycle, so "did the menu actually reach the window
-  today" is a question with an answer rather than an assumption. Pagination stops at a page cap and
-  says so - a truncated chain is loud, not silent.</p>
+  <p class="sub" style="margin-top:.7em">Coverage is journaled each cycle, so a truncated chain is
+  loud rather than silent.</p>
 </section>
 
 <section>
-  <h2>A second opinion from a prediction market</h2>
-  <p>Kalshi's daily index-close markets are a crowd-implied distribution of today's close - a
-  second, independent estimate to weigh against what the option chain implies. Handed to the model
-  as a <em>prior, not a signal</em>: no code acts on it, so it can only persuade.</p>
+  <h2>A second opinion</h2>
   <pre>SPY  prior close 7,712, median 7,688 (-0.31%); P(above) 0.293; volume 756  -&gt; shown
 QQQ  prior close 29,433, median 29,450 (+0.06%); P(above) 0.514; volume 45  -&gt; withheld</pre>
-  <p><b>The harder half is knowing when to ignore it.</b> One run, both outcomes. A barely-traded
-  market still quotes every bucket just as confidently, and nothing about the QQQ numbers looks
-  broken - that is the point. Two gates decide: minimum volume, and entropy over log(buckets).
-  Nobody had put money behind QQQ, so the model was told nothing rather than something unearned.</p>
-  <p class="lead">Withheld priors are journalled <em>with the reason</em>, so "no second opinion
-  today" is answerable rather than absent. Public API, no key, never traded.</p>
+  <div class="cards">
+    <div class="card">
+      <p class="k">Two crowds</p>
+      <p>Kalshi's index-close market and the option chain's own implied odds. A prior to weigh, not
+      a signal to copy — no code acts on it.</p>
+    </div>
+    <div class="card">
+      <p class="k w">Knowing when to ignore it</p>
+      <p>A barely-traded market quotes every bucket just as confidently. Volume and entropy gates
+      withheld QQQ, <b>with the reason</b>.</p>
+    </div>
+  </div>
 </section>
 
 <section>
-  <h2>...and then we grade it</h2>
-  <p>A prior nobody scores is decoration. Every night <code>eod_review.py</code> Brier-scores the
-  probabilities the model was actually handed against what the market did - <code>(p - outcome)&sup2;</code>,
-  where a coin flip scores <b>0.25</b>.</p>
+  <h2>…and then we grade it</h2>
+  <p class="sub">A prior nobody scores is decoration. Brier score, nightly, against what the market
+  actually did.</p>
   <table>
     <tr><th>Tue Sep 1, judged account</th><th>Brier</th><th></th></tr>
     <tr><td>Kalshi index-close market</td><td><b>0.004</b></td><td>confident, and right</td></tr>
-    <tr><td>The option chain's own odds</td><td><b>0.008</b></td><td>agreed, slightly less sharply</td></tr>
-    <tr><td>Priors the gate <em>withheld</em></td><td>0.006</td><td>shadow-graded: the gate was not discarding good information</td></tr>
+    <tr><td>The option chain's own odds</td><td><b>0.008</b></td><td>agreed, less sharply</td></tr>
+    <tr><td>Priors the gate <em>withheld</em></td><td>0.006</td><td>shadow-graded: the gate discarded nothing good</td></tr>
   </table>
-  <p class="lead">One day and a market with a clear direction - not a claim about edge. The point is
-  that the question is answerable at all: we grade the inputs, not just the model, so "was the
-  second opinion worth listening to" stops being a matter of taste. Separately, the model's own
-  citations of those numbers are checked against the prior it was given.</p>
+  <p class="sub" style="margin-top:.7em">A coin flip scores 0.25. One day, and a directional one —
+  the point is that the inputs are graded at all.</p>
 </section>
 
 <section>
-  <h2>The agent investigates before it acts</h2>
-  <pre>research: get_bars({'symbol': 'SPY', 'timeframe': '15Min'})        -> 3334 chars
-research: get_stock_snapshot({'symbol': 'NVDA'})                   -> 622 chars
-research: get_option_snapshot({'symbols': 'NVDA260902P00220000,...'}) -> 1339 chars
-research: get_news({'symbols': 'NVDA', 'limit': 5})                -> 1770 chars
-model output: [{"instrument":"option","symbol":"NVDA260902P00220000","side":"buy",
-  "qty":10,"order_type":"limit","limit_price":4.65,
-  "reason":"NVDA is in a clear intraday downtrend (225 -> 218.6); the 220 put with
-            4 DTE, delta -0.58, aligns with the bearish momentum"}]</pre>
-  <p class="lead">Four read-only tools mapped to Alpaca MCP calls, six calls max, every one journaled. Nothing that orders is reachable.</p>
+  <h2>It investigates before it acts</h2>
+  <pre>research: get_bars({'symbol': 'SPY', 'timeframe': '15Min'})   -&gt; 3334 chars
+research: get_news({'symbols': 'NVDA', 'limit': 5})           -&gt; 1770 chars
+model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
+  "reason":"NVDA in a clear intraday downtrend (225 -&gt; 218.6); the 220 put
+            with 4 DTE, delta -0.58, aligns with the bearish momentum"}]</pre>
+  <p class="sub" style="margin-top:.7em">Four read-only tools, six calls at most, every one
+  journaled. Nothing that places an order is reachable.</p>
 </section>
 
 <section>
   <h2>The leash</h2>
   <table>
-    <tr><th>Per proposal</th><td>whitelist - &le; $5,000 per position - &le; 4 positions - &le; 10 contracts/order - 2-45 DTE on entries - entries 09:45-15:15 ET</td></tr>
-    <tr><th>Per cycle, before the model</th><td>close on expiry day - stop-loss -40% - take-profit +60%</td></tr>
-    <tr><th>Resting orders</th><td>an unfilled buy counts as held, and the next cycle cancels it - the caps bound <em>committed</em> exposure, not just what filled</td></tr>
-    <tr><th>Per day</th><td>2% loss &rarr; flatten everything and halt - <code>HALT</code> file = global kill switch</td></tr>
-    <tr><th>End of day</th><td>close contracts expiring within a day; hold the rest under the stops (judged on Thursday's close)</td></tr>
+    <tr><th>Per proposal</th><td>whitelist · ≤ $5,000 per position · ≤ 4 positions · ≤ 10 contracts · 2–45 DTE on entries · entries 09:45–15:15 ET</td></tr>
+    <tr><th>Resting orders</th><td>an unfilled buy counts as held, and the next cycle cancels it</td></tr>
+    <tr><th>Before the model</th><td>close on expiry day · stop −40% · take-profit +60%</td></tr>
+    <tr><th>Per day</th><td>2% loss → flatten and halt · <code>HALT</code> file is a global kill switch</td></tr>
   </table>
-  <pre>REJECTED buy 12 SPY260904C00775000: qty 12 exceeds max_contracts_per_order 10</pre>
-  <p class="lead"><b>Stocks and options are both first-class.</b> Every limit above applies to either
-  one - the dollar cap counts <code>contracts x 100 x price</code> or share market value, and the
-  position count is combined. The model states which instrument it wants and why: options when the
-  edge is time-bounded, shares when volatility is expensive or the move is a slow grind.</p>
+  <pre style="margin-top:.8em">REJECTED buy 12 SPY260904C00775000: qty 12 exceeds max_contracts_per_order 10</pre>
 </section>
 
 <section>
-  <h2>Everything is journaled - and four things read it</h2>
+  <h2>Everything is journaled</h2>
   <!-- diagram:journal -->
-<!-- generated by scripts/render_diagrams.py, source sha b6c2ab716b36 - do not hand-edit -->
+<!-- generated by scripts/render_diagrams.py, source sha 49efb1067735 - do not hand-edit -->
 <svg style="width:100%;height:auto;flex:0 0 auto" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 620" role="img">
-<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#93a4b5"/></marker><marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4fb39c"/></marker><marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d73a4a"/></marker><marker id="ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5aa9e6"/></marker><marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e3b341"/></marker></defs>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a6c0dc"/></marker><marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4fd1b0"/></marker><marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b191ff"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ff6b6b"/></marker><marker id="ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5aa9e6"/></marker><marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f0b429"/></marker></defs>
 <style>
-  .t { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #e6edf3; }
-  .m { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; }
-  .band { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #93a4b5; font-size: 15px; letter-spacing: .14em; font-weight: 700; }
-  .lbl { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #93a4b5; font-size: 15px; }
-  .sub { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; fill: #93a4b5; font-size: 14px; }
-  .cap { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #93a4b5; font-size: 17px; }
+  /* Every class here is prefixed, because these diagrams are INLINED into the
+     slide deck and an SVG's internal stylesheet is not scoped - it applies to
+     the whole host document. Unprefixed `.sub` and `.t` silently restyled the
+     deck's own subtitles in monospace, and only on the slides that happened to
+     come after a diagram in document order. */
+  .dg-t { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #eaf3fd; }
+  .dg-m { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; }
+  .dg-band { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #a6c0dc; font-size: 15px; letter-spacing: .14em; font-weight: 700; }
+  .dg-lbl { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #a6c0dc; font-size: 15px; }
+  .dg-sub { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; fill: #a6c0dc; font-size: 14px; }
+  .dg-cap { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #a6c0dc; font-size: 17px; }
 </style>
-<rect width="1280" height="620" fill="#0f1720"/>
-<rect x="330" y="34" width="620" height="96" rx="12" fill="#1b2635" stroke="#4fb39c" stroke-width="2.5"/><text class="t m" x="640" y="72" font-size="22" text-anchor="middle" font-weight="700">journal.jsonl</text><text class="sub" x="640" y="98" text-anchor="middle">one per account, append-only</text><text class="lbl" x="640" y="120" text-anchor="middle" font-size="14">every decision, order, rejection, exit, tool call and config hash</text><rect x="50" y="200" width="250" height="330" rx="12" fill="#141d28" stroke="#4fb39c"/><text class="band" x="175.0" y="230" fill="#4fb39c" text-anchor="middle">THE BROWSER</text><text class="t" x="175.0" y="266" font-size="21" text-anchor="middle" font-weight="700">Live journal viewer</text><text class="sub" x="175.0" y="292" text-anchor="middle" fill="#4fb39c">bot.wpmccormick.pw</text><text class="lbl" x="66" y="328" font-size="14.5">- journal_viewer.py, :8300 on the LAN</text><text class="lbl" x="66" y="362" font-size="14.5">- -&gt; cloudflared tunnel</text><text class="lbl" x="66" y="396" font-size="14.5">- -&gt; Cloudflare Access (email OTP)</text><text class="lbl" x="66" y="430" font-size="14.5">- server-sent events, live follow</text><text class="lbl" x="66" y="464" font-size="14.5">- read-only: no controls at all</text><path d="M640,130 L640,168 L175.0,168 L175.0,193" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><rect x="360" y="200" width="250" height="330" rx="12" fill="#141d28" stroke="#5aa9e6"/><text class="band" x="485.0" y="230" fill="#5aa9e6" text-anchor="middle">THE DASHBOARD</text><text class="t" x="485.0" y="266" font-size="21" text-anchor="middle" font-weight="700">Home Assistant</text><text class="sub" x="485.0" y="292" text-anchor="middle" fill="#5aa9e6">MQTT auto-discovery</text><text class="lbl" x="376" y="328" font-size="14.5">- journal.log() -&gt; fire-and-forget</text><text class="lbl" x="376" y="362" font-size="14.5">- equity, P&amp;L, halt, last decision</text><text class="lbl" x="376" y="396" font-size="14.5">- operator view: kill switch + knobs</text><text class="lbl" x="376" y="430" font-size="14.5">- team view over Tailscale: read-only</text><text class="lbl" x="376" y="464" font-size="14.5">- phone: problems only, never fills</text><path d="M640,130 L640,168 L485.0,168 L485.0,193" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><rect x="670" y="200" width="250" height="330" rx="12" fill="#141d28" stroke="#e3b341"/><text class="band" x="795.0" y="230" fill="#e3b341" text-anchor="middle">THE INBOX</text><text class="t" x="795.0" y="266" font-size="21" text-anchor="middle" font-weight="700">Hourly email</text><text class="sub" x="795.0" y="292" text-anchor="middle" fill="#e3b341">mail_report.py</text><text class="lbl" x="686" y="328" font-size="14.5">- trades with the model's full reason</text><text class="lbl" x="686" y="362" font-size="14.5">- CSVs attached, host local time</text><text class="lbl" x="686" y="396" font-size="14.5">- silent when nothing traded</text><text class="lbl" x="686" y="430" font-size="14.5">- one final send after the close</text><path d="M640,130 L640,168 L795.0,168 L795.0,193" stroke="#e3b341" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><rect x="980" y="200" width="250" height="330" rx="12" fill="#141d28" stroke="#a78bfa"/><text class="band" x="1105.0" y="230" fill="#a78bfa" text-anchor="middle">THE LOOP</text><text class="t" x="1105.0" y="266" font-size="21" text-anchor="middle" font-weight="700">eod_review.py</text><text class="sub" x="1105.0" y="292" text-anchor="middle" fill="#a78bfa">the daily change</text><text class="lbl" x="996" y="328" font-size="14.5">- round trips from Alpaca's fills</text><text class="lbl" x="996" y="362" font-size="14.5">- rejections grouped by rule</text><text class="lbl" x="996" y="396" font-size="14.5">- Brier score on the priors</text><text class="lbl" x="996" y="430" font-size="14.5">- critique by a model that did not trade</text><path d="M640,130 L640,168 L1105.0,168 L1105.0,193" stroke="#a78bfa" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><text class="cap" x="640.0" y="590" text-anchor="middle">One file, four windows. Three are read-only views for humans; the fourth decides what changes tomorrow.</text></svg>
+<rect width="1280" height="620" rx="22" fill="#0b1d33" stroke="#31567a" stroke-opacity=".55"/>
+<rect x="330" y="34" width="620" height="96" rx="12" fill="#17324c" stroke="#4fd1b0" stroke-width="2.5"/><text class="dg-t dg-m" x="640" y="72" font-size="22" text-anchor="middle" font-weight="700">journal.jsonl</text><text class="dg-sub" x="640" y="98" text-anchor="middle">one per account, append-only</text><text class="dg-lbl" x="640" y="120" text-anchor="middle" font-size="14">every decision, order, rejection, exit, tool call and config hash</text><rect x="50" y="200" width="250" height="330" rx="12" fill="#12283f" stroke="#4fd1b0"/><text class="dg-band" x="175.0" y="230" fill="#4fd1b0" text-anchor="middle">THE BROWSER</text><text class="dg-t" x="175.0" y="266" font-size="21" text-anchor="middle" font-weight="700">Live journal viewer</text><text class="dg-sub" x="175.0" y="292" text-anchor="middle" fill="#4fd1b0">bot.wpmccormick.pw</text><text class="dg-lbl" x="66" y="328" font-size="14.5">- journal_viewer.py, :8300 on the LAN</text><text class="dg-lbl" x="66" y="362" font-size="14.5">- -&gt; cloudflared tunnel</text><text class="dg-lbl" x="66" y="396" font-size="14.5">- -&gt; Cloudflare Access (email OTP)</text><text class="dg-lbl" x="66" y="430" font-size="14.5">- server-sent events, live follow</text><text class="dg-lbl" x="66" y="464" font-size="14.5">- read-only: no controls at all</text><path d="M640,130 L640,168 L175.0,168 L175.0,193" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><rect x="360" y="200" width="250" height="330" rx="12" fill="#12283f" stroke="#5aa9e6"/><text class="dg-band" x="485.0" y="230" fill="#5aa9e6" text-anchor="middle">THE DASHBOARD</text><text class="dg-t" x="485.0" y="266" font-size="21" text-anchor="middle" font-weight="700">Home Assistant</text><text class="dg-sub" x="485.0" y="292" text-anchor="middle" fill="#5aa9e6">MQTT auto-discovery</text><text class="dg-lbl" x="376" y="328" font-size="14.5">- journal.log() -&gt; fire-and-forget</text><text class="dg-lbl" x="376" y="362" font-size="14.5">- equity, P&amp;L, halt, last decision</text><text class="dg-lbl" x="376" y="396" font-size="14.5">- operator view: kill switch + knobs</text><text class="dg-lbl" x="376" y="430" font-size="14.5">- team view over Tailscale: read-only</text><text class="dg-lbl" x="376" y="464" font-size="14.5">- phone: problems only, never fills</text><path d="M640,130 L640,168 L485.0,168 L485.0,193" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><rect x="670" y="200" width="250" height="330" rx="12" fill="#12283f" stroke="#f0b429"/><text class="dg-band" x="795.0" y="230" fill="#f0b429" text-anchor="middle">THE INBOX</text><text class="dg-t" x="795.0" y="266" font-size="21" text-anchor="middle" font-weight="700">Hourly email</text><text class="dg-sub" x="795.0" y="292" text-anchor="middle" fill="#f0b429">mail_report.py</text><text class="dg-lbl" x="686" y="328" font-size="14.5">- trades with the model's full reason</text><text class="dg-lbl" x="686" y="362" font-size="14.5">- CSVs attached, host local time</text><text class="dg-lbl" x="686" y="396" font-size="14.5">- silent when nothing traded</text><text class="dg-lbl" x="686" y="430" font-size="14.5">- one final send after the close</text><path d="M640,130 L640,168 L795.0,168 L795.0,193" stroke="#f0b429" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><rect x="980" y="200" width="250" height="330" rx="12" fill="#12283f" stroke="#b191ff"/><text class="dg-band" x="1105.0" y="230" fill="#b191ff" text-anchor="middle">THE LOOP</text><text class="dg-t" x="1105.0" y="266" font-size="21" text-anchor="middle" font-weight="700">eod_review.py</text><text class="dg-sub" x="1105.0" y="292" text-anchor="middle" fill="#b191ff">the daily change</text><text class="dg-lbl" x="996" y="328" font-size="14.5">- round trips from Alpaca's fills</text><text class="dg-lbl" x="996" y="362" font-size="14.5">- rejections grouped by rule</text><text class="dg-lbl" x="996" y="396" font-size="14.5">- Brier score on the priors</text><text class="dg-lbl" x="996" y="430" font-size="14.5">- critique by a model that did not trade</text><path d="M640,130 L640,168 L1105.0,168 L1105.0,193" stroke="#b191ff" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><text class="dg-cap" x="640.0" y="590" text-anchor="middle">One file, four windows. Three are read-only views for humans; the fourth decides what changes tomorrow.</text></svg>
 <!-- /diagram:journal -->
 </section>
 
 <section>
   <h2>Watching it think, from anywhere</h2>
-  <p>The journal, streamed to a browser over server-sent events. LAN-bound, published by a
-  Cloudflare tunnel behind Access with an email one-time PIN - no VPN, no account, nothing to
-  install: <b>bot.wpmccormick.pw</b>. Live follow, per-account filters, replay by date.</p>
-  <p><b>It found four bugs in two days.</b> None was a failing test - in each the code did exactly
-  what it had been told:</p>
+  <p class="sub"><b>bot.wpmccormick.pw</b> — the journal streamed to a browser, published through a
+  Cloudflare tunnel. No VPN, nothing to install. It found four bugs in two days; none was a failing
+  test.</p>
   <table>
-    <tr><th>#174</th><td>the feed cut the model's reasoning mid-word at 220 characters</td></tr>
-    <tr><th>#170</th><td>closing a +$1,340 winner, the model named a <em>neighbouring strike</em>, three cycles running</td></tr>
-    <tr><th>#171</th><td>an unfilled limit sat invisible; ten minutes on, the same thesis was bought again next door</td></tr>
-    <tr><th>#173</th><td>a ten-minute-old position proposed for exit on a "weakening thesis" - every number it cited had moved <em>in its favour</em></td></tr>
+    <tr><th>#174</th><td>the feed cut the model's reasoning mid-word</td></tr>
+    <tr><th>#170</th><td>closing a +$1,340 winner, it named a <em>neighbouring strike</em>, three cycles running</td></tr>
+    <tr><th>#171</th><td>an unfilled limit sat invisible; the same thesis was bought again next door</td></tr>
+    <tr><th>#173</th><td>a ten-minute-old position proposed for exit — every number it cited had moved <em>in its favour</em></td></tr>
   </table>
-  <p class="lead">All four fixed and deployed. A test asserts what you already thought of; reading
-  the reasoning live is how you find the rest.</p>
 </section>
 
 <section>
-  <h2>It runs on our own hardware, not a laptop</h2>
-  <p class="lead">A squash-merge is live in about a minute - <b>113 deploys this week</b>.</p>
+  <h2>Our own hardware, not a laptop</h2>
   <!-- diagram:infra -->
-<!-- generated by scripts/render_diagrams.py, source sha f774f481b9c3 - do not hand-edit -->
+<!-- generated by scripts/render_diagrams.py, source sha 2cc728d47bc5 - do not hand-edit -->
 <svg style="width:100%;height:auto;flex:0 0 auto" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 812" role="img">
-<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#93a4b5"/></marker><marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4fb39c"/></marker><marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a78bfa"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#d73a4a"/></marker><marker id="ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5aa9e6"/></marker><marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#e3b341"/></marker></defs>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#a6c0dc"/></marker><marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4fd1b0"/></marker><marker id="am" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#b191ff"/></marker><marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#ff6b6b"/></marker><marker id="ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#5aa9e6"/></marker><marker id="ay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#f0b429"/></marker></defs>
 <style>
-  .t { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #e6edf3; }
-  .m { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; }
-  .band { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #93a4b5; font-size: 15px; letter-spacing: .14em; font-weight: 700; }
-  .lbl { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #93a4b5; font-size: 15px; }
-  .sub { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; fill: #93a4b5; font-size: 14px; }
-  .cap { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #93a4b5; font-size: 17px; }
+  /* Every class here is prefixed, because these diagrams are INLINED into the
+     slide deck and an SVG's internal stylesheet is not scoped - it applies to
+     the whole host document. Unprefixed `.sub` and `.t` silently restyled the
+     deck's own subtitles in monospace, and only on the slides that happened to
+     come after a diagram in document order. */
+  .dg-t { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #eaf3fd; }
+  .dg-m { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; }
+  .dg-band { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #a6c0dc; font-size: 15px; letter-spacing: .14em; font-weight: 700; }
+  .dg-lbl { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #a6c0dc; font-size: 15px; }
+  .dg-sub { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; fill: #a6c0dc; font-size: 14px; }
+  .dg-cap { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #a6c0dc; font-size: 17px; }
 </style>
-<rect width="1280" height="812" fill="#0f1720"/>
-<rect x="28" y="26" width="352" height="56" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t" x="204.0" y="46.0" font-size="20" text-anchor="middle" font-weight="600">developer</text><text class="sub" x="204.0" y="72.0" text-anchor="middle">branch -&gt; pull request</text><rect x="28" y="106" width="352" height="420" rx="14" fill="#141d28" stroke="#5aa9e6"/><text class="band" x="46" y="132" fill="#5aa9e6" text-anchor="start">GITHUB</text><path d="M204,82 L204,99" stroke="#93a4b5" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><rect x="50" y="150" width="308" height="76" rx="10" fill="#1b2635" stroke="#5aa9e6" stroke-width="1.5"/><text class="t" x="204.0" y="180.0" font-size="20" text-anchor="middle" font-weight="600">CI - ubuntu-latest</text><text class="sub" x="204.0" y="206.0" text-anchor="middle">ruff + 732 tests, no keys</text><rect x="50" y="254" width="308" height="62" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t" x="204.0" y="290.0" font-size="20" text-anchor="middle" font-weight="600">squash-merge to main</text><rect x="50" y="344" width="308" height="96" rx="10" fill="#1b2635" stroke="#e3b341" stroke-width="2.5"/><text class="t" x="204.0" y="384.0" font-size="20" text-anchor="middle" font-weight="600">freeze window</text><text class="sub" x="204.0" y="410.0" text-anchor="middle">trading code, 08:20-15:15 CT</text><text class="lbl" x="204" y="424" text-anchor="middle" fill="#d73a4a">hard fail - red X on main</text><rect x="50" y="462" width="308" height="48" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t" x="204.0" y="488.5" font-size="15" text-anchor="middle" font-weight="600">docs, tests, ansible: no deploy</text><path d="M204,226 L204,247" stroke="#93a4b5" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M204,316 L204,337" stroke="#93a4b5" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M358,285 L392,285 L392,486 L365,486" stroke="#93a4b5" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><rect x="430" y="106" width="470" height="620" rx="14" fill="#141d28" stroke="#4fb39c"/><text class="band" x="448" y="132" fill="#4fb39c" text-anchor="start">CT 108 - PROXMOX LXC</text><rect x="452" y="150" width="426" height="76" rx="10" fill="#1b2635" stroke="#4fb39c" stroke-width="1.5"/><text class="t" x="665.0" y="180.0" font-size="20" text-anchor="middle" font-weight="600">self-hosted runner</text><text class="sub" x="665.0" y="206.0" text-anchor="middle">outbound only - no inbound port</text><rect x="452" y="260" width="426" height="82" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t m" x="665.0" y="293.0" font-size="20" text-anchor="middle" font-weight="600">/opt/alpaca-hackathon</text><text class="sub" x="665.0" y="319.0" text-anchor="middle">rsync --delete, then restart the bridge</text><path d="M665,226 L665,253" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><path d="M358,392 L410,392 L410,188 L445,188" stroke="#4fb39c" stroke-width="2.5" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><text class="lbl" x="393" y="252" text-anchor="start" fill="#4fb39c" font-size="13">deploy</text><rect x="452" y="372" width="205" height="74" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t" x="554.5" y="401.0" font-size="18" text-anchor="middle" font-weight="600">cron</text><text class="sub" x="554.5" y="425.0" text-anchor="middle">cycles - flatten</text><rect x="673" y="372" width="205" height="74" rx="10" fill="#1b2635" stroke="#4fb39c" stroke-width="1.5"/><text class="t" x="775.5" y="401.0" font-size="18" text-anchor="middle" font-weight="600">credentials</text><text class="sub" x="775.5" y="425.0" text-anchor="middle">0600, root only</text><rect x="452" y="474" width="205" height="74" rx="10" fill="#1b2635" stroke="#e3b341" stroke-width="1.5"/><text class="t" x="554.5" y="503.0" font-size="18" text-anchor="middle" font-weight="600">mqtt_bridge</text><text class="sub" x="554.5" y="527.0" text-anchor="middle">the one inbound</text><rect x="673" y="474" width="205" height="74" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t" x="775.5" y="503.0" font-size="18" text-anchor="middle" font-weight="600">journal_viewer</text><text class="sub" x="775.5" y="527.0" text-anchor="middle">:8300, LAN only</text><rect x="452" y="576" width="426" height="62" rx="10" fill="#1b2635" stroke="#2b3a4a" stroke-width="1.5"/><text class="t m" x="665.0" y="599.0" font-size="18" text-anchor="middle" font-weight="600">logs/journal*.jsonl</text><text class="sub" x="665.0" y="623.0" text-anchor="middle">never leaves the box unencrypted</text><path d="M554,342 L554,365" stroke="#93a4b5" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M775,342 L775,365" stroke="#93a4b5" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M554,548 L554,569" stroke="#93a4b5" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M775,569 L775,548" stroke="#93a4b5" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><text class="lbl" x="664" y="672" text-anchor="middle" font-size="14">the judged account resolves only from this box</text><text class="lbl" x="664" y="700" text-anchor="middle" font-size="14">- never from a laptop, never from CI</text><rect x="946" y="106" width="306" height="236" rx="14" fill="#141d28" stroke="#5aa9e6"/><text class="band" x="964" y="132" fill="#5aa9e6" text-anchor="start">MARKET + MODEL</text><rect x="966" y="150" width="266" height="52" rx="10" fill="#1b2635" stroke="#5aa9e6" stroke-width="1.5"/><text class="t" x="1099.0" y="180.0" font-size="18" text-anchor="middle" font-weight="600">Alpaca MCP</text><rect x="966" y="214" width="266" height="52" rx="10" fill="#1b2635" stroke="#5aa9e6" stroke-width="1.5"/><text class="t" x="1099.0" y="244.0" font-size="18" text-anchor="middle" font-weight="600">Featherless.ai</text><rect x="966" y="278" width="266" height="52" rx="10" fill="#1b2635" stroke="#5aa9e6" stroke-width="1.5"/><text class="t" x="1099.0" y="308.0" font-size="18" text-anchor="middle" font-weight="600">Kalshi - prior only</text><path d="M886,301 L920,301 L920,176 L959,176" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#ax)" stroke-dasharray="5 4" stroke-linejoin="round"/><path d="M886,301 L920,301 L920,240 L959,240" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#ax)" stroke-dasharray="5 4" stroke-linejoin="round"/><path d="M886,301 L920,301 L920,304 L959,304" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#ax)" stroke-dasharray="5 4" stroke-linejoin="round"/><rect x="946" y="372" width="306" height="354" rx="14" fill="#141d28" stroke="#a78bfa"/><text class="band" x="964" y="398" fill="#a78bfa" text-anchor="start">THE PEOPLE WHO WATCH IT</text><rect x="966" y="416" width="266" height="76" rx="10" fill="#1b2635" stroke="#a78bfa" stroke-width="1.5"/><text class="t" x="1099.0" y="446.0" font-size="18" text-anchor="middle" font-weight="600">Cloudflare Access</text><text class="sub" x="1099.0" y="470.0" text-anchor="middle">tunnel + email OTP</text><rect x="966" y="508" width="266" height="62" rx="10" fill="#1b2635" stroke="#a78bfa" stroke-width="1.5"/><text class="t" x="1099.0" y="531.0" font-size="18" text-anchor="middle" font-weight="600">any browser</text><text class="sub" x="1099.0" y="555.0" text-anchor="middle">team, judges</text><rect x="966" y="586" width="266" height="62" rx="10" fill="#1b2635" stroke="#a78bfa" stroke-width="1.5"/><text class="t" x="1099.0" y="609.0" font-size="18" text-anchor="middle" font-weight="600">Home Assistant</text><text class="sub" x="1099.0" y="633.0" text-anchor="middle">dashboards, push</text><rect x="966" y="664" width="266" height="52" rx="10" fill="#1b2635" stroke="#a78bfa" stroke-width="1.5"/><text class="t" x="1099.0" y="682.0" font-size="18" text-anchor="middle" font-weight="600">email</text><text class="sub" x="1099.0" y="706.0" text-anchor="middle">hourly + EOD</text><path d="M886,511 L930,511 L930,454 L959,454" stroke="#a78bfa" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><path d="M1099,492 L1099,501" stroke="#a78bfa" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><path d="M886,607 L930,607 L930,617 L959,617" stroke="#a78bfa" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><path d="M886,607 L930,607 L930,690 L959,690" stroke="#a78bfa" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><rect x="28" y="560" width="352" height="88" rx="10" fill="#1b2635" stroke="#4fb39c" stroke-width="1.5"/><text class="t" x="204.0" y="596.0" font-size="20" text-anchor="middle" font-weight="600">Ansible</text><text class="sub" x="204.0" y="622.0" text-anchor="middle">from a workstation, never CI</text><rect x="28" y="668" width="352" height="58" rx="10" fill="#1b2635" stroke="#4fb39c" stroke-width="1.5"/><text class="t" x="204.0" y="700.5" font-size="17" text-anchor="middle" font-weight="600">homenetwork ansible-vault</text><path d="M204,668 L204,652" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><path d="M380,604 L423,604" stroke="#4fb39c" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><text class="cap" x="640.0" y="794" text-anchor="middle">A merge deploys in about a minute. Nothing reaches the container inbound except the tunnel and the broker.</text></svg>
+<rect width="1280" height="812" rx="22" fill="#0b1d33" stroke="#31567a" stroke-opacity=".55"/>
+<rect x="28" y="26" width="352" height="56" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t" x="204.0" y="46.0" font-size="20" text-anchor="middle" font-weight="600">developer</text><text class="dg-sub" x="204.0" y="72.0" text-anchor="middle">branch -&gt; pull request</text><rect x="28" y="106" width="352" height="420" rx="14" fill="#12283f" stroke="#5aa9e6"/><text class="dg-band" x="46" y="132" fill="#5aa9e6" text-anchor="start">GITHUB</text><path d="M204,82 L204,99" stroke="#a6c0dc" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><rect x="50" y="150" width="308" height="76" rx="10" fill="#17324c" stroke="#5aa9e6" stroke-width="1.5"/><text class="dg-t" x="204.0" y="180.0" font-size="20" text-anchor="middle" font-weight="600">CI - ubuntu-latest</text><text class="dg-sub" x="204.0" y="206.0" text-anchor="middle">ruff + 732 tests, no keys</text><rect x="50" y="254" width="308" height="62" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t" x="204.0" y="290.0" font-size="20" text-anchor="middle" font-weight="600">squash-merge to main</text><rect x="50" y="344" width="308" height="96" rx="10" fill="#17324c" stroke="#f0b429" stroke-width="2.5"/><text class="dg-t" x="204.0" y="384.0" font-size="20" text-anchor="middle" font-weight="600">freeze window</text><text class="dg-sub" x="204.0" y="410.0" text-anchor="middle">trading code, 08:20-15:15 CT</text><text class="dg-lbl" x="204" y="424" text-anchor="middle" fill="#ff6b6b">hard fail - red X on main</text><rect x="50" y="462" width="308" height="48" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t" x="204.0" y="488.5" font-size="15" text-anchor="middle" font-weight="600">docs, tests, ansible: no deploy</text><path d="M204,226 L204,247" stroke="#a6c0dc" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M204,316 L204,337" stroke="#a6c0dc" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M358,285 L392,285 L392,486 L365,486" stroke="#a6c0dc" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><rect x="430" y="106" width="470" height="620" rx="14" fill="#12283f" stroke="#4fd1b0"/><text class="dg-band" x="448" y="132" fill="#4fd1b0" text-anchor="start">CT 108 - PROXMOX LXC</text><rect x="452" y="150" width="426" height="76" rx="10" fill="#17324c" stroke="#4fd1b0" stroke-width="1.5"/><text class="dg-t" x="665.0" y="180.0" font-size="20" text-anchor="middle" font-weight="600">self-hosted runner</text><text class="dg-sub" x="665.0" y="206.0" text-anchor="middle">outbound only - no inbound port</text><rect x="452" y="260" width="426" height="82" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t dg-m" x="665.0" y="293.0" font-size="20" text-anchor="middle" font-weight="600">/opt/alpaca-hackathon</text><text class="dg-sub" x="665.0" y="319.0" text-anchor="middle">rsync --delete, then restart the bridge</text><path d="M665,226 L665,253" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><path d="M358,392 L410,392 L410,188 L445,188" stroke="#4fd1b0" stroke-width="2.5" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><text class="dg-lbl" x="393" y="252" text-anchor="start" fill="#4fd1b0" font-size="13">deploy</text><rect x="452" y="372" width="205" height="74" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t" x="554.5" y="401.0" font-size="18" text-anchor="middle" font-weight="600">cron</text><text class="dg-sub" x="554.5" y="425.0" text-anchor="middle">cycles - flatten</text><rect x="673" y="372" width="205" height="74" rx="10" fill="#17324c" stroke="#4fd1b0" stroke-width="1.5"/><text class="dg-t" x="775.5" y="401.0" font-size="18" text-anchor="middle" font-weight="600">credentials</text><text class="dg-sub" x="775.5" y="425.0" text-anchor="middle">0600, root only</text><rect x="452" y="474" width="205" height="74" rx="10" fill="#17324c" stroke="#f0b429" stroke-width="1.5"/><text class="dg-t" x="554.5" y="503.0" font-size="18" text-anchor="middle" font-weight="600">mqtt_bridge</text><text class="dg-sub" x="554.5" y="527.0" text-anchor="middle">the one inbound</text><rect x="673" y="474" width="205" height="74" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t" x="775.5" y="503.0" font-size="18" text-anchor="middle" font-weight="600">journal_viewer</text><text class="dg-sub" x="775.5" y="527.0" text-anchor="middle">:8300, LAN only</text><rect x="452" y="576" width="426" height="62" rx="10" fill="#17324c" stroke="#31567a" stroke-width="1.5"/><text class="dg-t dg-m" x="665.0" y="599.0" font-size="18" text-anchor="middle" font-weight="600">logs/journal*.jsonl</text><text class="dg-sub" x="665.0" y="623.0" text-anchor="middle">never leaves the box unencrypted</text><path d="M554,342 L554,365" stroke="#a6c0dc" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M775,342 L775,365" stroke="#a6c0dc" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M554,548 L554,569" stroke="#a6c0dc" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><path d="M775,569 L775,548" stroke="#a6c0dc" stroke-width="2" fill="none" marker-end="url(#a)" stroke-linejoin="round"/><text class="dg-lbl" x="664" y="672" text-anchor="middle" font-size="14">the judged account resolves only from this box</text><text class="dg-lbl" x="664" y="700" text-anchor="middle" font-size="14">- never from a laptop, never from CI</text><rect x="946" y="106" width="306" height="236" rx="14" fill="#12283f" stroke="#5aa9e6"/><text class="dg-band" x="964" y="132" fill="#5aa9e6" text-anchor="start">MARKET + MODEL</text><rect x="966" y="150" width="266" height="52" rx="10" fill="#17324c" stroke="#5aa9e6" stroke-width="1.5"/><text class="dg-t" x="1099.0" y="180.0" font-size="18" text-anchor="middle" font-weight="600">Alpaca MCP</text><rect x="966" y="214" width="266" height="52" rx="10" fill="#17324c" stroke="#5aa9e6" stroke-width="1.5"/><text class="dg-t" x="1099.0" y="244.0" font-size="18" text-anchor="middle" font-weight="600">Featherless.ai</text><rect x="966" y="278" width="266" height="52" rx="10" fill="#17324c" stroke="#5aa9e6" stroke-width="1.5"/><text class="dg-t" x="1099.0" y="308.0" font-size="18" text-anchor="middle" font-weight="600">Kalshi - prior only</text><path d="M886,301 L920,301 L920,176 L959,176" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#ax)" stroke-dasharray="5 4" stroke-linejoin="round"/><path d="M886,301 L920,301 L920,240 L959,240" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#ax)" stroke-dasharray="5 4" stroke-linejoin="round"/><path d="M886,301 L920,301 L920,304 L959,304" stroke="#5aa9e6" stroke-width="2" fill="none" marker-end="url(#ax)" stroke-dasharray="5 4" stroke-linejoin="round"/><rect x="946" y="372" width="306" height="354" rx="14" fill="#12283f" stroke="#b191ff"/><text class="dg-band" x="964" y="398" fill="#b191ff" text-anchor="start">THE PEOPLE WHO WATCH IT</text><rect x="966" y="416" width="266" height="76" rx="10" fill="#17324c" stroke="#b191ff" stroke-width="1.5"/><text class="dg-t" x="1099.0" y="446.0" font-size="18" text-anchor="middle" font-weight="600">Cloudflare Access</text><text class="dg-sub" x="1099.0" y="470.0" text-anchor="middle">tunnel + email OTP</text><rect x="966" y="508" width="266" height="62" rx="10" fill="#17324c" stroke="#b191ff" stroke-width="1.5"/><text class="dg-t" x="1099.0" y="531.0" font-size="18" text-anchor="middle" font-weight="600">any browser</text><text class="dg-sub" x="1099.0" y="555.0" text-anchor="middle">team, judges</text><rect x="966" y="586" width="266" height="62" rx="10" fill="#17324c" stroke="#b191ff" stroke-width="1.5"/><text class="dg-t" x="1099.0" y="609.0" font-size="18" text-anchor="middle" font-weight="600">Home Assistant</text><text class="dg-sub" x="1099.0" y="633.0" text-anchor="middle">dashboards, push</text><rect x="966" y="664" width="266" height="52" rx="10" fill="#17324c" stroke="#b191ff" stroke-width="1.5"/><text class="dg-t" x="1099.0" y="682.0" font-size="18" text-anchor="middle" font-weight="600">email</text><text class="dg-sub" x="1099.0" y="706.0" text-anchor="middle">hourly + EOD</text><path d="M886,511 L930,511 L930,454 L959,454" stroke="#b191ff" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><path d="M1099,492 L1099,501" stroke="#b191ff" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><path d="M886,607 L930,607 L930,617 L959,617" stroke="#b191ff" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><path d="M886,607 L930,607 L930,690 L959,690" stroke="#b191ff" stroke-width="2" fill="none" marker-end="url(#am)" stroke-linejoin="round"/><rect x="28" y="560" width="352" height="88" rx="10" fill="#17324c" stroke="#4fd1b0" stroke-width="1.5"/><text class="dg-t" x="204.0" y="596.0" font-size="20" text-anchor="middle" font-weight="600">Ansible</text><text class="dg-sub" x="204.0" y="622.0" text-anchor="middle">from a workstation, never CI</text><rect x="28" y="668" width="352" height="58" rx="10" fill="#17324c" stroke="#4fd1b0" stroke-width="1.5"/><text class="dg-t" x="204.0" y="700.5" font-size="17" text-anchor="middle" font-weight="600">homenetwork ansible-vault</text><path d="M204,668 L204,652" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><path d="M380,604 L423,604" stroke="#4fd1b0" stroke-width="2" fill="none" marker-end="url(#ag)" stroke-linejoin="round"/><text class="dg-cap" x="640.0" y="794" text-anchor="middle">A merge deploys in about a minute. Nothing reaches the container inbound except the tunnel and the broker.</text></svg>
 <!-- /diagram:infra -->
 </section>
 
 <section>
-  <h2>Built to be changed while it is running</h2>
-  <p>A four-day agent is mostly an <em>iteration speed</em> problem: the constraint is not writing
-  the strategy, it is changing it without breaking a live account.</p>
+  <h2>Built to be changed while it runs</h2>
   <table>
-    <tr><th>732 tests, 2s</th><td>every one runs with <b>no API keys and no network</b> - clone
-      and get a green suite before you have credentials</td></tr>
-    <tr><th>Only Docker needed</th><td><code>docker compose run --rm bot</code> - tests, a full
-      dry-run cycle, the docs site</td></tr>
-    <tr><th>Rehearse any time</th><td><code>--dry-run</code> prints orders instead of sending;
-      <code>--force</code> skips the market gates - a whole cycle is testable at 2am Sunday</td></tr>
-    <tr><th>Strategy changes without a deploy</th><td><code>override.py</code> - allowlisted knobs,
-      hard risk caps stay git-only, all of it expires at the close</td></tr>
+    <tr><th>735 tests, 2s</th><td>every one runs with <b>no API keys and no network</b></td></tr>
+    <tr><th>Only Docker needed</th><td>tests, a full dry-run cycle, the docs site</td></tr>
+    <tr><th>Rehearse any time</th><td><code>--dry-run</code> prints orders instead of sending; <code>--force</code> skips the market gates</td></tr>
+    <tr><th>No deploy needed</th><td><code>override.py</code> — allowlisted knobs, hard caps stay git-only, all of it expires at the close</td></tr>
   </table>
-  <p class="lead">Dozens of those tests exist because something broke - a report that published on one
-  of four cycle paths, a test that passed only on a laptop. Each incident ends as a test, so the
-  suite is a list of things that can no longer happen quietly.</p>
+  <p class="sub" style="margin-top:.7em">Dozens of those tests exist because something broke. Each
+  incident ends as a test.</p>
 </section>
 
 <section>
   <h2>The daily loop</h2>
   <div class="flow">
-    <span>16:05 <code>eod_review</code></span><em>&rarr;</em>
-    <span>read: round trips, exit mix, rejections by rule, a second model's read</span><em>&rarr;</em>
-    <span>one change</span><em>&rarr;</em>
-    <span><code>override.py</code> (expires at close) or config PR</span><em>&rarr;</em>
-    <span>CI &rarr; self-hosted runner deploys before the open</span>
+    <span>16:05 <code>eod_review</code></span><em>→</em>
+    <span>round trips · rejections by rule · Brier</span><em>→</em>
+    <span>a second model's read</span><em>→</em>
+    <span>one change</span><em>→</em>
+    <span>override or config PR</span><em>→</em>
+    <span>deployed before the open</span>
   </div>
-  <p class="lead" style="margin-top:1em">Two more paper accounts run variant configs against the same live market - the only backtest available in four days. 132 PRs, 732 tests, 113 automatic deploys - in seven days.</p>
+  <p class="sub" style="margin-top:1em">The critique comes from a model that did <em>not</em> trade
+  the day. 132 PRs, 113 deploys, in seven days.</p>
 </section>
 
 <section>
-  <h2>The experiment farm - real A/B, not a backtest</h2>
-  <p>Four days isn't enough for a backtest, and the free feed carries no historical options data
-  anyway. So the A/B runs <em>live</em>: three paper accounts on the same box, same ten-minute
-  cadence, same market, different configs - a real experiment rather than a replay.</p>
-  <pre># on the trading host, right now - every 10 min, 08:00-14:50 CT
-run_cycle.py --account official
+  <h2>Real A/B, not a backtest</h2>
+  <pre>run_cycle.py --account official
 run_cycle.py --account test  --config config-test.yaml
 run_cycle.py --account mixed --config config-variants/mixed.yaml</pre>
-  <p>Each is one deliberate change. <code>test</code> swaps the model and enables research tools
-  and learning; <code>mixed</code> differs by exactly <em>one key</em> - stock and options as
-  peers, not options-first - so "which instrument should this agent reach for" is answered by
-  P&amp;L rather than by us.</p>
-  <p class="lead"><b>The same thing runs on a laptop.</b> <code>docker compose</code> brings up
-  the bot, the variant farm and the docs site self-contained - no host, no Proxmox, none of our
-  keys. It is how the project is developed, and it would serve just as well to run it.</p>
-</section>
-
-<section>
-  <h2>Home Assistant, over MQTT - fully decoupled</h2>
-  <div class="flow">
-    <span class="code">journal.log()</span><em>&rarr;</em>
-    <span>MQTT (fire-and-forget)</span><em>&rarr;</em>
-    <span>HA auto-discovery</span>
+  <div class="cards">
+    <div class="card">
+      <p class="k">Three live accounts</p>
+      <p>Same box, same ten-minute cadence, same market. Four days is no backtest, and the free feed
+      has no historical options data.</p>
+    </div>
+    <div class="card">
+      <p class="k t">One deliberate difference each</p>
+      <p><code>test</code> swaps the model and enables research and learning. <code>mixed</code>
+      differs by exactly one key. The winner is promoted by pull request.</p>
+    </div>
   </div>
+</section>
+
+<section>
+  <h2>One feed, three audiences</h2>
   <img src="../images/ha-dashboard.png" alt="The operational Home Assistant dashboard: equity, day P&amp;L, positions, halt state, last decision and today's trades, for all three accounts">
-  <p>One feed, three audiences. <strong>Operator:</strong> kill switch and knobs.
-  <strong>Team:</strong> a read-only copy over Tailscale - HA has no per-entity permissions, so
-  the separation has to <em>be</em> the dashboard. <strong>Phone:</strong> problems only.</p>
-  <p class="lead">A fill sends <em>no</em> alert, on purpose: a channel that buzzes on routine
-  trades gets muted, and the halt alert with it. What buzzes is <em>silence</em> - no cycle for 25
-  minutes, the one failure a dashboard cannot show.</p>
+  <div class="cards three" style="margin-top:.8em">
+    <div class="card"><p class="k">Operator</p><p>Kill switch and knobs.</p></div>
+    <div class="card"><p class="k t">Team</p><p>A read-only dashboard — Home Assistant has no per-entity permissions, so the separation has to <em>be</em> the dashboard.</p></div>
+    <div class="card"><p class="k w">Phone</p><p>Problems only. A fill sends nothing; <em>silence</em> does — no cycle for 25 minutes.</p></div>
+  </div>
 </section>
 
 <section>
-  <h2>Results <span class="fill">(fill Thu Sep 3 after the close)</span></h2>
+  <h2>Results <span class="fill" style="font-size:.6em">(fill Thu Sep 3)</span></h2>
   <img src="../images/equity-curve.svg" alt="Percent change from each account's open on 31 August: the judged account, the challenger and the mixed-instrument variant, one point per session close">
-  <p class="big">Equity Mon open &rarr; Thu close: <span class="fill">$___ &rarr; $___ (__%)</span></p>
-  <p>Round trips: <span class="fill">__</span> - exits: <span class="fill">__ stop / __ take-profit / __ expiry / __ model</span></p>
-  <p>Official vs challenger vs mixed: <span class="fill">__</span></p>
-  <p class="lead">What didn't work: <span class="fill">__</span></p>
+  <p class="sub" style="margin-top:.7em">Judged account Mon open → Thu close:
+  <span class="fill">$___ → $___ (__%)</span> · <span class="fill">__</span> round trips ·
+  what didn't work: <span class="fill">__</span></p>
 </section>
 
 <section>
-  <h2>What's next, and thanks</h2>
-  <ul>
-    <li>Promote what the challenger proved: research tools, prediction-market prior, learning loop</li>
-    <li>Multi-leg spreads once the gates cover assignment risk</li>
-    <li>Home Assistant over MQTT: the light that goes red when the leash pulls</li>
-  </ul>
-  <p class="lead">github.com/bill-mccormick-dg/alpaca-hackathon - MIT<br>Thanks: Alpaca, lablab.ai, Featherless AI</p>
+  <h2>What's next</h2>
+  <div class="cards">
+    <div class="card">
+      <p class="k">Promote what the challengers proved</p>
+      <p>Research tools, the prediction-market prior, the learning loop.</p>
+    </div>
+    <div class="card">
+      <p class="k t">Multi-leg spreads</p>
+      <p>Once the gates cover assignment risk.</p>
+    </div>
+  </div>
+  <p class="sub" style="margin-top:1.4em">github.com/bill-mccormick-dg/alpaca-hackathon · MIT<br>
+  Thanks to Alpaca, lablab.ai and Featherless AI.</p>
 </section>
 
-<div class="foot" id="foot"></div>
 <script>
-  const s = [...document.querySelectorAll('section')]; let i = 0;
-  const show = n => { s[i].classList.remove('active'); i = (n + s.length) % s.length; s[i].classList.add('active');
-    document.getElementById('foot').textContent = (i+1) + ' / ' + s.length; };
+  const s = [...document.querySelectorAll('section')];
+  // The footer is injected rather than written into every slide: it must print
+  // (position:fixed does not repeat reliably per page in Chrome's PDF export),
+  // and eighteen hand-copied footers drift the moment one is edited.
+  s.forEach((sec, n) => {
+    const f = document.createElement('div');
+    f.className = 'pagefoot';
+    f.innerHTML = '<span class="bar"></span>Autobelay <b style="margin-left:.4em">long premium, short leash</b>'
+      + '<span class="pg">page ' + String(n + 1).padStart(3, '0') + '</span>';
+    sec.appendChild(f);
+  });
+  let i = 0;
+  const show = n => { s[i].classList.remove('active'); i = (n + s.length) % s.length;
+    s[i].classList.add('active'); };
   show(0);
   addEventListener('keydown', e => { if (['ArrowRight',' ','PageDown'].includes(e.key)) show(i+1);
     if (['ArrowLeft','PageUp'].includes(e.key)) show(i-1); if (e.key === 'Home') show(0); });
