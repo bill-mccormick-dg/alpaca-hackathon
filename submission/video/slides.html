@@ -76,6 +76,20 @@
      strand it in dead space. */
   section svg { max-height:66vh; }
 
+  /* Art beside words - the layout the whole deck leans on. */
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:1.4em; align-items:center;
+    margin-top:.55em; }
+  .split.wide { grid-template-columns:1.15fr .85fr; }
+  .stack { display:grid; gap:.85em; }
+  .spot { width:100%; height:auto; max-height:40vh; border:1px solid var(--line);
+    background:var(--card); border-radius:20px; padding:.5em; box-sizing:border-box;
+    align-self:center; }
+  /* Centred, not stretched: the crop is 2.4:1, so at full slide width it would
+     want 560px of height the title slide does not have. Height-limited and
+     centred reads as deliberate; stretched-and-shrunk reads as a mistake. */
+  .hero { width:auto; height:auto; max-height:38vh; max-width:100%; border:none;
+    border-radius:20px; margin:1.1em auto 0; align-self:center; }
+
   /* Injected into every slide by the script below, so it prints too. */
   .pagefoot { position:absolute; left:7vw; right:7vw; bottom:3.6vh;
     display:flex; align-items:center; font-size:.5em; color:var(--dim); }
@@ -135,26 +149,23 @@
   <p class="k t" style="font-size:.6em">Team RazorsEdge</p>
   <h1>Autobelay</h1>
   <p class="tag">long premium, short leash</p>
-  <p class="sub" style="margin-top:1.1em">An autonomous options agent on Alpaca's MCP server.
-  An auto belay catches a climber with nobody holding the other end. Here the brake is code.</p>
-  <p class="meta">William P. McCormick / William C. McCormick · account <code>PA3VS39Y5LE2</code> · MIT<br>
+  <img class="hero" src="../images/hero.svg" alt="A rising price series rolls over and falls, and is stopped on a line held by a rope anchored above it; a dashed ghost shows where it was going">
+  <p class="meta" style="margin-top:1.4em">An auto belay catches a climber with nobody holding the
+  other end. Here the brake is code.<br><br>William P. McCormick / William C. McCormick · account <code>PA3VS39Y5LE2</code> · MIT<br>
   Alpaca AI Trading Agents Hackathon · Aug 28 – Sep 4, 2026</p>
 </section>
 
 <section>
   <h2>The thesis, in one sentence</h2>
-  <p class="big">Buy defined-risk, short-dated options premium when an open model can <b>name a
-  reason</b> — and let deterministic code size it, stop it, and close it.</p>
-  <div class="cards">
-    <div class="card">
-      <p class="k t">Defined risk</p>
-      <p>Long premium only. The worst case is the premium paid, known before entry — which is what
-      lets every guardrail be a flat number.</p>
-    </div>
+  <p class="sub">Buy defined-risk, short-dated options premium when an open model can
+  <b>name a reason</b> — and let deterministic code size it, stop it, and close it.</p>
+  <div class="split">
+    <img class="spot" src="../images/spot-payoff.svg" alt="Payoff of a long option: a flat maximum loss below the strike, then profit rising without limit above it">
     <div class="card">
       <p class="k">Division of labour</p>
-      <p>The model forms a directional view from evidence. It never touches an order. Open model
-      proposes; code disposes.</p>
+      <p>Long premium only, so the worst case is known before entry — which is what lets every
+      guardrail be a flat number.</p>
+      <p>The model forms a view. It never touches an order.</p>
     </div>
   </div>
 </section>
@@ -188,16 +199,18 @@
 <section>
   <h2>Greeks: Alpaca's, ours as the backstop</h2>
   <p class="sub">We spent three days sure the free feed carried none. It was wrong.</p>
-  <div class="cards">
-    <div class="card">
-      <p class="k">From Alpaca</p>
-      <p>IV and the full Greeks on <b>5,721 of 6,114</b> contracts in today's chain — one vendor
-      surface, so a strike's put and call deltas agree.</p>
-    </div>
-    <div class="card">
-      <p class="k t">Black-Scholes backstop</p>
-      <p>A bisection IV solve covers the ~6% too thin to price. Every contract carries
-      <code>greeks_source</code>, so the model knows which numbers are rough.</p>
+  <div class="split">
+    <img class="spot" src="../images/spot-delta.svg" alt="Delta across strikes: an S-curve, with the at-the-money point at 0.50 and the chosen out-of-the-money point near 0.40">
+    <div class="stack">
+      <div class="card">
+        <p class="k">From Alpaca</p>
+        <p><b>5,721 of 6,114</b> contracts in today's chain — one vendor surface, so a strike's put
+        and call deltas agree.</p>
+      </div>
+      <div class="card">
+        <p class="k t">Black-Scholes backstop</p>
+        <p>Covers the ~6% too thin to price. Each contract carries <code>greeks_source</code>.</p>
+      </div>
     </div>
   </div>
 </section>
@@ -205,45 +218,51 @@
 <section>
   <h2>What the model may choose from</h2>
   <p class="sub">One API page is 500 contracts. On SPY, that is three days.</p>
-  <table>
-    <tr><th></th><th>before</th><th>now</th></tr>
-    <tr><th>SPY chain</th><td>500 contracts, 1 page, to 3 DTE</td><td>2,912 contracts, 3 pages, to 45 DTE</td></tr>
-    <tr><th>NVDA menu</th><td>12 contracts, all one strike</td><td>at-the-money and ~0.40 delta, three expiries, both sides</td></tr>
-  </table>
-  <p class="sub" style="margin-top:.7em">Coverage is journaled each cycle, so a truncated chain is
-  loud rather than silent.</p>
+  <div class="split">
+    <img class="spot" src="../images/spot-grid.svg" alt="A strike-by-expiry grid: one API page reached only the nearest expiries; the menu now spans three expiries and both sides of the money">
+    <div class="stack">
+      <div class="card">
+        <p class="k">Before</p>
+        <p>500 contracts, one page, out to 3 DTE. NVDA's twelve were all one strike.</p>
+      </div>
+      <div class="card">
+        <p class="k w">Now</p>
+        <p>2,912 contracts, three pages, out to 45. At-the-money <em>and</em> ~0.40 delta, three
+        expiries, both sides — journaled every cycle.</p>
+      </div>
+    </div>
+  </div>
 </section>
 
 <section>
   <h2>A second opinion</h2>
-  <pre>SPY  prior close 7,712, median 7,688 (-0.31%); P(above) 0.293; volume 756  -&gt; shown
-QQQ  prior close 29,433, median 29,450 (+0.06%); P(above) 0.514; volume 45  -&gt; withheld</pre>
-  <div class="cards">
-    <div class="card">
-      <p class="k">Two crowds</p>
-      <p>Kalshi's index-close market and the option chain's own implied odds. A prior to weigh, not
-      a signal to copy — no code acts on it.</p>
-    </div>
+  <p class="sub">Kalshi's index-close market and the chain's own implied odds. A prior to weigh,
+  not a signal to copy — no code acts on it.</p>
+  <div class="split">
+    <img class="spot" src="../images/spot-prior.svg" alt="Two implied distributions: a well-traded one that is shown to the model, and a flat, barely-traded one that is withheld">
     <div class="card">
       <p class="k w">Knowing when to ignore it</p>
-      <p>A barely-traded market quotes every bucket just as confidently. Volume and entropy gates
-      withheld QQQ, <b>with the reason</b>.</p>
+      <p>A barely-traded market quotes every bucket just as confidently, and nothing about its
+      numbers looks broken. That is the point.</p>
+      <p>Volume and entropy gates withheld QQQ — <b>with the reason</b>, so "no second opinion
+      today" is answerable rather than absent.</p>
     </div>
   </div>
 </section>
 
 <section>
   <h2>…and then we grade it</h2>
-  <p class="sub">A prior nobody scores is decoration. Brier score, nightly, against what the market
-  actually did.</p>
-  <table>
-    <tr><th>Tue Sep 1, judged account</th><th>Brier</th><th></th></tr>
-    <tr><td>Kalshi index-close market</td><td><b>0.004</b></td><td>confident, and right</td></tr>
-    <tr><td>The option chain's own odds</td><td><b>0.008</b></td><td>agreed, less sharply</td></tr>
-    <tr><td>Priors the gate <em>withheld</em></td><td>0.006</td><td>shadow-graded: the gate discarded nothing good</td></tr>
-  </table>
-  <p class="sub" style="margin-top:.7em">A coin flip scores 0.25. One day, and a directional one —
-  the point is that the inputs are graded at all.</p>
+  <p class="sub">A prior nobody scores is decoration. Brier score, nightly, against what the
+  market actually did.</p>
+  <div class="split">
+    <img class="spot" src="../images/spot-brier.svg" alt="A Brier score scale from zero to a quarter: the day's priors sit near zero, far from the coin-flip mark at 0.25">
+    <div class="card">
+      <p class="k t">Tue Sep 1, judged account</p>
+      <p>Kalshi <b>0.004</b>, the chain <b>0.008</b>. Priors the gate withheld score 0.006 — shadow-graded,
+      so we know it discarded nothing good.</p>
+      <p>One day, and a directional one. The point is that the inputs are graded at all.</p>
+    </div>
+  </div>
 </section>
 
 <section>
@@ -259,13 +278,20 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
 
 <section>
   <h2>The leash</h2>
-  <table>
-    <tr><th>Per proposal</th><td>whitelist · ≤ $5,000 per position · ≤ 4 positions · ≤ 10 contracts · 2–45 DTE on entries · entries 09:45–15:15 ET</td></tr>
-    <tr><th>Resting orders</th><td>an unfilled buy counts as held, and the next cycle cancels it</td></tr>
-    <tr><th>Before the model</th><td>close on expiry day · stop −40% · take-profit +60%</td></tr>
-    <tr><th>Per day</th><td>2% loss → flatten and halt · <code>HALT</code> file is a global kill switch</td></tr>
-  </table>
-  <pre style="margin-top:.8em">REJECTED buy 12 SPY260904C00775000: qty 12 exceeds max_contracts_per_order 10</pre>
+  <div class="split wide">
+    <div class="stack">
+      <div class="card">
+        <p class="k">Per proposal</p>
+        <p>whitelist · ≤ $5,000 per position · ≤ 4 positions · ≤ 10 contracts · 2–45 DTE on
+        entries · entries 09:45–15:15 ET · a resting buy counts as held</p>
+      </div>
+      <div class="card">
+        <p class="k w">Per day</p>
+        <p>2% loss → flatten and halt. A <code>HALT</code> file is a global kill switch.</p>
+      </div>
+    </div>
+    <img class="spot" src="../images/spot-leash.svg" alt="A position's price path between a take-profit band above and a stop-loss band below, closed by code when it touches one">
+  </div>
 </section>
 
 <section>
@@ -357,19 +383,16 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
 
 <section>
   <h2>Real A/B, not a backtest</h2>
-  <pre>run_cycle.py --account official
-run_cycle.py --account test  --config config-test.yaml
-run_cycle.py --account mixed --config config-variants/mixed.yaml</pre>
-  <div class="cards">
+  <p class="sub">Four days is no backtest, and the free feed has no historical options data. So
+  the experiment runs live.</p>
+  <div class="split">
+    <img class="spot" src="../images/spot-farm.svg" alt="Three account equity lines leaving a common start and diverging over four sessions">
     <div class="card">
       <p class="k">Three live accounts</p>
-      <p>Same box, same ten-minute cadence, same market. Four days is no backtest, and the free feed
-      has no historical options data.</p>
-    </div>
-    <div class="card">
-      <p class="k t">One deliberate difference each</p>
-      <p><code>test</code> swaps the model and enables research and learning. <code>mixed</code>
-      differs by exactly one key. The winner is promoted by pull request.</p>
+      <p>Same box, same ten-minute cadence, same market — one deliberate difference each.
+      <code>test</code> swaps the model and enables research and learning; <code>mixed</code>
+      differs by exactly one key.</p>
+      <p>The winner is promoted into the official config by pull request.</p>
     </div>
   </div>
 </section>

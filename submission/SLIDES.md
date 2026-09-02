@@ -62,7 +62,9 @@ Numbers that go stale, and where they appear:
 Then, in order:
 
 ```sh
-python scripts/render_diagrams.py     # if any diagram changed
+python scripts/make_spots.py          # if a slide illustration changed
+python scripts/make_cover.py --png    # if the cover or its hero crop changed
+python scripts/render_diagrams.py     # if any architecture diagram changed
 python scripts/fit_slides.py          # a slide that no longer fits loses content silently
 python -m unittest discover -s tests  # image refs and diagram hashes
 ```
