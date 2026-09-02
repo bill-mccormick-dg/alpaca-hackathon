@@ -142,18 +142,19 @@ def sell(reason, symbol=SPY_PUT, underlying="SPY", side="sell"):
     return Proposal(instrument="option", symbol=symbol, side=side, qty=10, underlying=underlying, reason=reason)
 
 
+EXIT_CONFIG = {"eod_close_dte": 1, "expiry_close_dte": 0}
+EXIT_DTES = {SPY_PUT: 7}
+EXIT_SPOT_REF = {"SPY": (761.28, 766.87)}  # spot BELOW prior close
+
+
 class ExitClaimsTest(unittest.TestCase):
     """#188 (godmagick's find): the 2026-09-01 SPY put exit, replayed. All
     four of that trade's reasons carried a forced-close/backstop claim at 7
     DTE, and the filled one claimed the market "held above prior close"
     while SPY sat 0.73% below it."""
 
-    CONFIG = {"eod_close_dte": 1, "expiry_close_dte": 0}
-    DTES = {SPY_PUT: 7}
-    SPOT_REF = {"SPY": (761.28, 766.87)}  # spot BELOW prior close
-
     def audit(self, *proposals):
-        return citations.audit_exit_claims(list(proposals), self.DTES, self.SPOT_REF, self.CONFIG)
+        return citations.audit_exit_claims(list(proposals), EXIT_DTES, EXIT_SPOT_REF, EXIT_CONFIG)
 
     def test_the_four_real_reasons_are_all_flagged_as_fabricated_urgency(self):
         reasons = [
@@ -177,7 +178,7 @@ class ExitClaimsTest(unittest.TestCase):
 
     def test_a_genuinely_expiring_contract_may_cite_the_backstop(self):
         flags = citations.audit_exit_claims([sell("backstop closes this today")],
-                                            {SPY_PUT: 1}, self.SPOT_REF, self.CONFIG)
+                                            {SPY_PUT: 1}, EXIT_SPOT_REF, EXIT_CONFIG)
         self.assertEqual([f for f in flags if f["kind"] == "fabricated_urgency"], [])
 
     def test_buys_are_never_urgency_flagged(self):
@@ -185,7 +186,7 @@ class ExitClaimsTest(unittest.TestCase):
         self.assertEqual([f for f in self.audit(p) if f["kind"] == "fabricated_urgency"], [])
 
     def test_unknown_dte_or_spot_is_not_guessed_at(self):
-        flags = citations.audit_exit_claims([sell("cut loss before forced close")], {}, {}, self.CONFIG)
+        flags = citations.audit_exit_claims([sell("cut loss before forced close")], {}, {}, EXIT_CONFIG)
         self.assertEqual(flags, [])
 
     def test_describe_exit_claims_names_the_quoted_phrase_and_the_fact(self):
