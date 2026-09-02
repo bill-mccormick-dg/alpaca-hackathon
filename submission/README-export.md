@@ -79,7 +79,7 @@ cannot be silently forgotten.
 
 ## Before the final export
 
-Refresh the counts on slides 13-15 — the test count appears twice (in the infra
+Refresh the counts on slides 14-16 — the test count appears twice (in the infra
 diagram, so via `scripts/render_diagrams.py`, and in the table on 14), and the PR
 and deploy counts on 15. They moved a lot in the last days:
 
