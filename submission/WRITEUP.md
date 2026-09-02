@@ -1,6 +1,8 @@
-# AI Day Trader - Long Premium, Short Leash — one-page write-up
+# Autobelay — one-page write-up
 
-**Team:** Bill McCormick (+1) · **Account:** `PA3VS39Y5LE2` ($100,000 paper) ·
+*long premium, short leash*
+
+**Team:** Razors Edge — Bill McCormick (+1) · **Account:** `PA3VS39Y5LE2` ($100,000 paper) ·
 **Repo:** github.com/bill-mccormick-dg/alpaca-hackathon (MIT) · **Stack:** Alpaca
 MCP server, Featherless.ai (Kimi-K2 / Qwen3.8), Python
 

@@ -4,7 +4,11 @@ slug: /
 title: Start here
 ---
 
-# AI Day Trader - Long Premium, Short Leash
+# Autobelay
+
+**long premium, short leash** - an autonomous options agent on Alpaca's MCP server.
+An auto belay is the device that catches a climber with nobody holding the other
+end. Here the brake is deterministic code, and the model never touches an order.
 
 An autonomous options agent on Alpaca's MCP server, built for the lablab.ai x
 Alpaca AI Trading Agents Hackathon (Aug 28 - Sep 4, 2026). An open-source

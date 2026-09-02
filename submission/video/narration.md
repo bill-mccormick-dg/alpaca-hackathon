@@ -1,18 +1,22 @@
 # Narration — second cut (target 4:40, hard cap 5:00)
 
 Read at a natural pace. Each block names the footage it sits over: **slide N**
-is `slides.html` (arrow keys), **shot N** is the caption `demo.sh` prints, and
-**browser** is one of the three windows `demo.sh` stops and asks for.
+is the deck, **shot N** is the caption `demo.sh` prints, and **browser** is a
+web page.
 
-Have open before you start: the deck, a terminal on CT 108, the live viewer,
-both Home Assistant dashboards, and the repo's Actions tab.
+You do not have to arrange any of it. `bash submission/video/record.sh` walks
+this order for you - ssh for the terminal shots, Chrome for the slides and the
+pages - and waits on each one until you switch away, so the pauses are however
+long your narration is. Run `record.sh --check` first.
 
 ---
 
 **[0:00 — slide 1, title — 8s]**
-AI Day Trader: Long Premium, Short Leash. An autonomous options agent on
-Alpaca's MCP server, built this week for the Alpaca AI Trading Agents
-Hackathon.
+Autobelay: long premium, short leash. An autonomous options agent on Alpaca's
+MCP server, built this week for the Alpaca AI Trading Agents Hackathon. An auto
+belay is the device in a climbing gym that catches you with nobody holding the
+other end. Here the brake is deterministic code, and the model never touches an
+order.
 
 **[0:08 — slide 2, thesis — 17s]**
 One sentence: buy defined-risk, short-dated options premium on the most liquid

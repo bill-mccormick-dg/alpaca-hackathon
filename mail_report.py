@@ -224,12 +224,12 @@ def subject_line(s: dict, now: datetime) -> str:
         except (TypeError, ValueError):
             pnl = ""
     flag = f" [HALTED: {s['halt']}]" if s["halted"] else ""
-    return f"AI Day Trader — {s['account']} — {now:%H:%M %Z} — {_money(s['equity'])}{pnl}{flag}"
+    return f"Autobelay — {s['account']} — {now:%H:%M %Z} — {_money(s['equity'])}{pnl}{flag}"
 
 
 def body_text(s: dict, now: datetime) -> str:
     lines = [
-        f"AI Day Trader — account: {s['account']}",
+        f"Autobelay — account: {s['account']}",
         f"As of {now:%Y-%m-%d %H:%M %Z}",
         "",
         f"  Equity          {_money(s['equity'])}",

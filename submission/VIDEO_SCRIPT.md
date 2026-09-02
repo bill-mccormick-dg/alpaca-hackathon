@@ -1,4 +1,4 @@
-# Video script - AI Day Trader: Long Premium, Short Leash
+# Video script - Autobelay
 
 **Word-for-word narration is [`video/narration.md`](video/narration.md)**; the
 terminal half is [`video/demo.sh`](video/demo.sh), which prints a caption before
@@ -8,17 +8,37 @@ each command and pauses for you. This file is the shot list and the checklist.
 plus voice. Terminal font >= 16 pt, dark theme, window ~1600x900.
 **Every shot is the real system running** - no generated imagery, no mockups.
 
-## Before you press record
+## One command drives the whole take
 
-Have these open, each on its own desktop or window:
+```sh
+bash submission/video/record.sh --check    # nothing recorded: is everything ready?
+bash submission/video/record.sh            # the take
+```
 
-| Window | What |
-|---|---|
-| Deck | `video/slides.html` in a browser, full screen, arrow keys |
-| Terminal | `ssh` to CT 108, `cd /opt/alpaca-hackathon`, 16pt+ |
-| Viewer | https://bot.wpmccormick.pw - log in first, the OTP takes a minute |
-| Home Assistant | the operator dashboard, and the read-only team dashboard |
-| GitHub | the repo's Actions tab, deploy workflow |
+`record.sh` runs on your Mac and alternates the two halves in narration order:
+it `ssh`es to CT 108 for each terminal shot, and drives Chrome for each slide
+and each web page. Three scripts, so each does one thing:
+
+| Script | Runs on | Does |
+|---|---|---|
+| `record.sh` | Mac | the running order, and the pacing |
+| `demo.sh` | CT 108 | the seven terminal shots (`demo.sh 2` runs just one) |
+| `browser.sh` | Mac | one Chrome window, five tabs, and the slide keystrokes |
+
+**How the pacing works**, because it is the only unusual part. A terminal step
+waits for Enter in your terminal. A browser step puts Chrome in front and then
+waits for you to switch *back*. So you talk for exactly as long as you want
+over either one and nothing advances until you move; the switch itself is the
+cut. Fluffed a line? `record.sh --from 9` picks up at any step, and
+`--list` prints the order.
+
+`--check` verifies the host, the journal, Accessibility permission, Chrome's
+AppleScript JavaScript switch, and - the one that actually bites - whether the
+viewer's Cloudflare session has expired. Its email one-time PIN is slow on
+camera and the session only lasts six hours, so find out before you record, not
+during. It also opens the Chrome window: **drag that onto the display you are
+recording and leave it there.** Chrome opens new windows on whichever display
+it last used, and no amount of AppleScript reliably moves them.
 
 Then rehearse once, without touching the test account's positions:
 
@@ -52,9 +72,13 @@ if a block runs short; neither is in the narration's timing.
 
 ## Capture checklist
 
+- [ ] `record.sh --check` clean, and the Chrome window on the recording display
 - [ ] Rehearse the command sequence (`PAUSE=0 SKIP_HALT=1`)
 - [ ] Log into the viewer *before* recording - the email OTP is slow on camera
 - [ ] Collapse the Home Assistant sidebar (it lists the rest of the home network)
+- [ ] Chrome: View > Developer > Allow JavaScript from Apple Events, so the
+      Home Assistant shots fit the whole dashboard in frame by themselves
+- [ ] Don't click inside the deck while narrating - it advances on any click
 - [ ] QuickTime/OBS 1080p; mic level check; notifications off
 - [ ] Export H.264/AAC MP4; check length <= 5:00
 - [ ] Upload YouTube (unlisted); test the link logged out; paste into METADATA.md

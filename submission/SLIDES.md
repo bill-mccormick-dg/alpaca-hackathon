@@ -1,4 +1,4 @@
-# Slide deck outline - AI Day Trader: Long Premium, Short Leash
+# Slide deck outline - Autobelay
 
 **The deck itself is [`video/slides.html`](video/slides.html)** - open it in a browser and
 export to PDF (see [README-export.md](README-export.md)), or paste into Google Slides,
