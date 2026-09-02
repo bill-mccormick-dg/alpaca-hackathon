@@ -27,11 +27,23 @@ position against its own confabulation. Pairing the reason with the
 journaled prior turns "has my thesis weakened?" into a comparison against
 numbers we control.
 
+Each position also states its code exits and the first date an expiry rule
+can touch it (#188, found by godmagick reading the fills): on 2026-09-01
+the judged account sold a 7-DTE SPY put at -12% across four attempts whose
+reasons all cited expiry pressure that did not exist - "forced expiry
+sale", "forced close tomorrow", "backstop forces exit" - when with
+expiry_close_dte=0 / eod_close_dte=1 no code path would have touched the
+contract for six more days. The prompt warned about buying NEAR the
+backstop and the model generalized that into ambient expiry anxiety at any
+DTE. The treatment is the same as for the priors: state the fact per
+position, so "the forced close approaches" has a printed date to be wrong
+against.
+
 Pure functions; run_cycle.py reads the journal and passes records in.
 """
 
 from dataclasses import replace
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from bot.models import Position, Proposal
 from bot.occ import parse_occ_symbol
@@ -109,6 +121,33 @@ def _flattened(record: dict) -> set[str]:
     return out
 
 
+def code_exit_line(symbol: str, instrument: str, config: dict | None, today) -> str | None:
+    """The code exits that own this position, with the first date an expiry
+    rule can act, so expiry pressure is a printed fact rather than a feeling
+    (#188). None when config or today is absent (older callers, tests)."""
+    if not config or today is None:
+        return None
+    stop = float(config.get("stop_loss_pct", 40))
+    tp = float(config.get("take_profit_pct", 60))
+    head = f"code exits: stop-loss -{stop:.0f}% / take-profit +{tp:.0f}% of entry"
+    if instrument != "option":
+        return head + "; shares have no expiry, so no DTE rule applies"
+    try:
+        occ = parse_occ_symbol(symbol)
+    except ValueError:
+        return head
+    dte = (occ.expiration - today).days
+    expiry_close = int(config.get("expiry_close_dte", 0))
+    eod = int(config.get("eod_close_dte", 1))
+    if dte <= expiry_close:
+        return head + f", and code closes this contract TODAY ({dte} DTE)"
+    if dte <= eod:
+        return head + f", and the end-of-day backstop closes this contract TODAY ({dte} DTE)"
+    first = occ.expiration - timedelta(days=max(eod, expiry_close))
+    return (head + f"; NO expiry-driven exit before {first.isoformat()} ({dte} DTE today) - until "
+            'then DTE, theta, or a "forced close" are not exit reasons')
+
+
 def entry_context(positions: list[dict], records: list[dict]) -> dict[str, dict | None]:
     """Per held symbol: when and why it was opened and the prior in force
     then, or None when the journal has no opener for it.
@@ -159,10 +198,11 @@ def entry_context(positions: list[dict], records: list[dict]) -> dict[str, dict 
 
 
 def render_positions_block(positions: list[dict], open_orders: list[dict] | None, context: dict,
-                           prior_now: dict | None) -> str:
+                           prior_now: dict | None, config: dict | None = None, today=None) -> str:
     """The prompt block. `positions` and `open_orders` are the snapshot's
     lists; `context` is entry_context(); `prior_now` is journal-shaped
-    (predictions.journal_fields of this cycle's snapshot)."""
+    (predictions.journal_fields of this cycle's snapshot). `config` and
+    `today` enable the per-position code-exits line (#188)."""
     lines = []
     if not positions:
         lines.append("POSITIONS YOU HOLD: none - any sell would be a naked short and is refused.")
@@ -173,9 +213,12 @@ def render_positions_block(positions: list[dict], open_orders: list[dict] | None
             entry, cur = p.get("avg_entry_price"), p.get("current_price")
             move = f", {((cur / entry) - 1) * 100:+.1f}% vs entry" if entry and cur else ""
             head = f"- {sym} x{float(p.get('qty') or 0):.0f} @ {entry if entry is not None else '?'}{move}"
+            exits = code_exit_line(sym, p.get("instrument") or "option", config, today)
             ctx = context.get(sym)
             if not ctx:
                 lines.append(f"{head}; {NO_THESIS}")
+                if exits:
+                    lines.append(f"    {exits}")
                 continue
             adds = ctx.get("adds") or 0
             added = f" (+{adds} add{'s' if adds != 1 else ''} since)" if adds else ""
@@ -186,6 +229,8 @@ def render_positions_block(positions: list[dict], open_orders: list[dict] | None
             if then or now:
                 lines.append(f"    prior at entry: {_fmt_prior(then)}")
                 lines.append(f"    prior now:      {_fmt_prior(now)}")
+            if exits:
+                lines.append(f"    {exits}")
     if open_orders is None:
         lines.append("RESTING ORDERS: unknown this cycle (the open-order lookup failed) - "
                      "a buy you sent last cycle may still be working; do not send it again.")

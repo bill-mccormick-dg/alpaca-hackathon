@@ -1,6 +1,7 @@
 """bot/holdings.py - what the model knows about its own positions (#170, #173)."""
 
 import unittest
+from datetime import date
 
 from bot import holdings
 from bot.models import Position, Proposal
@@ -118,6 +119,44 @@ class RenderPositionsBlockTest(unittest.TestCase):
         block = holdings.render_positions_block([nvda], [], ctx, {"QQQ": PRIOR_1220})
         self.assertIn("opened 10:00 ET (+2 adds since)", block)
         self.assertNotIn("prior", block)
+
+    def test_the_code_exits_line_names_the_first_expiry_action_date(self):
+        """#188 (godmagick's find): the judged account sold a 7-DTE put on a
+        "forced close" that was six days away. The block now prints the date
+        an expiry rule can first touch each position, so invented urgency has
+        a printed fact to be wrong against."""
+        config = {"stop_loss_pct": 40, "take_profit_pct": 60, "expiry_close_dte": 0, "eod_close_dte": 1}
+        # SPY_PUT expires 2026-09-08; from Sep 1 that is 7 DTE, and with the
+        # backstop at 1 DTE nothing code-driven can fire before Sep 7.
+        spy = position(SPY_PUT, qty=10, entry=4.57, current=3.95)
+        block = holdings.render_positions_block([spy], [], {SPY_PUT: None}, {},
+                                                config, date(2026, 9, 1))
+        self.assertIn("code exits: stop-loss -40% / take-profit +60% of entry", block)
+        self.assertIn("NO expiry-driven exit before 2026-09-07 (7 DTE today)", block)
+        self.assertIn('"forced close" are not exit reasons', block)
+
+    def test_the_code_exits_line_says_today_when_the_backstop_really_fires(self):
+        config = {"stop_loss_pct": 40, "take_profit_pct": 60, "expiry_close_dte": 0, "eod_close_dte": 1}
+        qqq = position()  # QQQ_PUT expires 2026-09-03
+        backstop_day = holdings.render_positions_block([qqq], [], {QQQ_PUT: None}, {},
+                                                       config, date(2026, 9, 2))
+        self.assertIn("the end-of-day backstop closes this contract TODAY (1 DTE)", backstop_day)
+        expiry_day = holdings.render_positions_block([qqq], [], {QQQ_PUT: None}, {},
+                                                     config, date(2026, 9, 3))
+        self.assertIn("code closes this contract TODAY (0 DTE)", expiry_day)
+
+    def test_stock_gets_the_exits_line_without_an_expiry_clause(self):
+        config = {"stop_loss_pct": 40, "take_profit_pct": 60}
+        shares = {"symbol": "SPY", "instrument": "stock", "qty": 6.0, "market_value": 4600,
+                  "underlying": "SPY", "avg_entry_price": 766.0, "current_price": 767.0}
+        block = holdings.render_positions_block([shares], [], {"SPY": None}, {},
+                                                config, date(2026, 9, 1))
+        self.assertIn("shares have no expiry, so no DTE rule applies", block)
+        self.assertNotIn("DTE today", block)
+
+    def test_without_config_the_block_renders_as_before(self):
+        block = holdings.render_positions_block([position()], [], {QQQ_PUT: None}, {})
+        self.assertNotIn("code exits", block)
 
     def test_resting_orders_render_and_an_unknown_lookup_is_said(self):
         order = {"id": "abc", "symbol": "QQQ260903P00709000", "side": "buy", "qty": 4.0, "limit_price": 3.56,

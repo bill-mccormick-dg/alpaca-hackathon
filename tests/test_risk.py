@@ -517,3 +517,16 @@ class EarlyExitBlockTest(unittest.TestCase):
 
     def test_unparseable_entry_ts_fails_open(self):
         self.assertIsNone(risk.early_exit_block(self._sell(), self._pos(), "garbage", {}, self.NOW))
+
+    def test_a_repeat_block_names_the_count(self):
+        """#188: the same exit was refused three cycles running with an
+        identical message, then filled the moment the leash expired. The
+        rejection detail reaches the next cycle's learning block, so the
+        repeat count is how the guard tells the model it is churning."""
+        block = risk.early_exit_block(self._sell(), self._pos(),
+                                      "2026-08-31T11:50:00-04:00", {}, self.NOW, blocked_before=2)
+        self.assertIn("already been refused 2 time(s) today", block)
+        self.assertIn("churn, not a thesis change", block)
+        first = risk.early_exit_block(self._sell(), self._pos(),
+                                      "2026-08-31T11:50:00-04:00", {}, self.NOW)
+        self.assertNotIn("already been refused", first)

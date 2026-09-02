@@ -135,5 +135,65 @@ class AuditTest(unittest.TestCase):
         self.assertEqual(citations.describe(None), "prior citations: nothing to audit")
 
 
+SPY_PUT = "SPY260908P00760000"
+
+
+def sell(reason, symbol=SPY_PUT, underlying="SPY", side="sell"):
+    return Proposal(instrument="option", symbol=symbol, side=side, qty=10, underlying=underlying, reason=reason)
+
+
+EXIT_CONFIG = {"eod_close_dte": 1, "expiry_close_dte": 0}
+EXIT_DTES = {SPY_PUT: 7}
+EXIT_SPOT_REF = {"SPY": (761.28, 766.87)}  # spot BELOW prior close
+
+
+class ExitClaimsTest(unittest.TestCase):
+    """#188 (godmagick's find): the 2026-09-01 SPY put exit, replayed. All
+    four of that trade's reasons carried a forced-close/backstop claim at 7
+    DTE, and the filled one claimed the market "held above prior close"
+    while SPY sat 0.73% below it."""
+
+    def audit(self, *proposals):
+        return citations.audit_exit_claims(list(proposals), EXIT_DTES, EXIT_SPOT_REF, EXIT_CONFIG)
+
+    def test_the_four_real_reasons_are_all_flagged_as_fabricated_urgency(self):
+        reasons = [
+            "closing to cut loss before forced expiry sale and free slot for better setup",
+            "taking loss now frees capital and avoids theta decay on a losing thesis",
+            "cut loss before forced close tomorrow and free slot for better setup",
+            "forced close approaches with 7 DTE remaining - cut loss before backstop forces exit",
+        ]
+        flags = [f for r in reasons for f in self.audit(sell(r)) if f["kind"] == "fabricated_urgency"]
+        # The second reason cites only theta - arguable rhetoric, deliberately unflagged.
+        self.assertEqual(len(flags), 3)
+        self.assertIn("7 DTE - no code exit for 6 more day(s)", flags[0]["fact"])
+
+    def test_the_filled_exits_direction_claim_is_flagged(self):
+        flags = self.audit(sell("thesis failed as market held above prior close despite bearishness"))
+        self.assertEqual([f["kind"] for f in flags], ["wrong_direction"])
+        self.assertIn("SPY 761.28 is below prior close 766.87", flags[0]["fact"])
+
+    def test_a_true_direction_claim_is_not_flagged(self):
+        self.assertEqual(self.audit(sell("SPY stayed below prior close all afternoon")), [])
+
+    def test_a_genuinely_expiring_contract_may_cite_the_backstop(self):
+        flags = citations.audit_exit_claims([sell("backstop closes this today")],
+                                            {SPY_PUT: 1}, EXIT_SPOT_REF, EXIT_CONFIG)
+        self.assertEqual([f for f in flags if f["kind"] == "fabricated_urgency"], [])
+
+    def test_buys_are_never_urgency_flagged(self):
+        p = sell("7-DTE put gives room for thesis to play out before forced close", side="buy")
+        self.assertEqual([f for f in self.audit(p) if f["kind"] == "fabricated_urgency"], [])
+
+    def test_unknown_dte_or_spot_is_not_guessed_at(self):
+        flags = citations.audit_exit_claims([sell("cut loss before forced close")], {}, {}, EXIT_CONFIG)
+        self.assertEqual(flags, [])
+
+    def test_describe_exit_claims_names_the_quoted_phrase_and_the_fact(self):
+        line = citations.describe_exit_claims(self.audit(sell("exit before backstop forces sale")))
+        self.assertIn("exit claims contradicted by the account: 1", line)
+        self.assertIn("backstop", line)
+
+
 if __name__ == "__main__":
     unittest.main()

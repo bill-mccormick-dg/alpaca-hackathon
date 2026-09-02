@@ -59,7 +59,12 @@ the gate discarded good information, not what the model leaned on. The audit's \
 the prior it was actually given, and "citations_misattributed" counts another underlying's figure \
 quoted as this one's ("citation_examples" shows each, with the real value): \
 the reason strings are rhetoric, not evidence - judge every decision on the journalled prior, \
-never on the figure the model quoted, and say so when a trade rested on an invented number.
+never on the figure the model quoted, and say so when a trade rested on an invented number. \
+"exit_claim_examples" lists sell reasons whose stated facts the account contradicts: a \
+"fabricated_urgency" flag is an exit justified by a forced close or backstop that was days \
+away, and a "wrong_direction" flag claims the underlying was above/below its prior close when \
+the tape says the opposite - treat any flagged exit as unjustified unless the journalled \
+numbers independently support it.
 
 Write plain text for the operator - no markdown headings, no JSON:
 1. 3-6 sentences on what actually happened and why, in plain language. Be specific: name the \

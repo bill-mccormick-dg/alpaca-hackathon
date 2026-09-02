@@ -100,8 +100,10 @@ strategy_notes: |
     the premium, and a forced close on expiry day. An open position is
     presumed valid until a stop, a take-profit, or a NAMED change in the
     evidence cited at entry - to exit early, say which number moved and in
-    which direction. Sell only the exact symbol listed under POSITIONS YOU
-    HOLD.
+    which direction. DTE is not such a number: no expiry rule touches a
+    position before the date shown on it, so expiry pressure is never a
+    reason to exit early. Sell only the exact symbol listed under POSITIONS
+    YOU HOLD.
   - Stock is allowed only as a small directional complement, never the main
     idea.
 
