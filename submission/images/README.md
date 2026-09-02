@@ -6,6 +6,7 @@ the file at the same path, re-export the PDF, and nothing else changes.
 | File | Slide | What it should show |
 |---|---|---|
 | `ha-dashboard.png` | Home Assistant | the operational dashboard with all three accounts populated |
+| `viewer.png` | Watching it think | a band of the live journal viewer: an order with the model's full stated reason, then the priors and cycle lines under it |
 | `equity-curve.svg` | Results | **generated** - `python scripts/equity_curve.py` |
 
 `ha-dashboard.png` is a **real capture** (2026-08-30, pre-open): all three
@@ -45,7 +46,16 @@ is not scoped, so inlining one leaks its class names into the host document —
 which is exactly how the architecture diagrams once restyled the deck's own
 subtitles in monospace.
 
-That leaves `ha-dashboard.png` as the only hand-captured image, and
+`viewer.png` is a **real capture** of https://bot.wpmccormick.pw, cropped to a
+250px band. Two things about the crop are deliberate. The top 50px of the
+original hold a screen-recorder badge sitting over the viewer's own header, so
+they are gone. And the band's top and bottom edges are *faded* rather than cut:
+a feed is mid-scroll wherever you crop it, and a hard edge through half a line
+reads as a broken screenshot where a fade reads as a stream. Recapture it the
+same way with the recorder overlay turned off if you want the account filters
+and the replay picker in frame too.
+
+That leaves `ha-dashboard.png` and `viewer.png` as the only hand-captured images, and
 `tests/test_dashboard.py` can only tell you the file exists - whether it shows
 a day with real trades in it is on you.
 
