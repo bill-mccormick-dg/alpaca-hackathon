@@ -75,6 +75,17 @@ research_contracts_per_underlying: 12
 # verbatim). This is the highest-leverage end-of-day knob: change the
 # thesis or its tactics here, no code change. Keep it short and factual -
 # the hard limits above are enforced in code regardless of what this says.
+# The prompt template's default instrument framing says options-first with
+# stock as a supporting act - the official account's policy, and for two
+# days it silently overrode this variant's entire experiment: 70 decisions,
+# zero that even mentioned stock, because the template outranked the notes
+# (#211). Neutral here; the notes below carry the actual selection criteria.
+instrument_note: >-
+  This account trades options and stock as peers - the strategy notes below
+  say how to choose between them per idea. The wider challenge requires
+  options to be used, and the option-menu data below supports that; stock
+  is a first-class choice, not a fallback.
+
 strategy_notes: |
   THESIS: Trade the most liquid names on evidence you can name, choosing the
   instrument that fits the thesis - options when the edge is time-bounded and

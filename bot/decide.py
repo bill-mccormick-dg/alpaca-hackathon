@@ -21,6 +21,14 @@ from bot.models import Proposal
 from bot.occ import parse_occ_symbol
 from bot.risk import EASTERN
 
+# The default instrument framing - the hackathon requires options, and on
+# the official account stock is a supporting act. A variant whose experiment
+# IS instrument choice overrides `instrument_note` in its config (#211).
+DEFAULT_INSTRUMENT_NOTE = (
+    "Options trading is the core of this challenge - your strategy must use it, not just stock. "
+    "Stock trades are allowed but should support your options thesis rather than replace it."
+)
+
 PROMPT_TEMPLATE = """You are the decision engine of an autonomous PAPER-trading agent on \
 Alpaca, built for a hackathon options-trading challenge. You run periodically during US \
 market hours and decide what, if anything, to do this cycle. Doing nothing is a perfectly \
@@ -31,8 +39,7 @@ you already hold. Never propose selling a symbol you do not hold - that would be
 short, which this account cannot do. Whole-number quantities only (shares or option \
 contracts). Market or limit orders only.
 
-Options trading is the core of this challenge - your strategy must use it, not just stock. \
-Stock trades are allowed but should support your options thesis rather than replace it.
+{instrument_note}
 
 Hard limits (enforced downstream in code; a violating proposal is rejected outright and \
 never adjusted for you, so propose within them): max ${max_position_usd:.0f} total notional \
@@ -248,6 +255,15 @@ def build_prompt(
         expiry_close_dte=int(config.get("expiry_close_dte", 0)),
         eod_close_dte=int(config.get("eod_close_dte", 1)),
         contracts_per_underlying=int(config.get("research_contracts_per_underlying", 12)),
+        # Configurable because the old hardcoded text ("stock trades ...
+        # should support your options thesis rather than replace it") was the
+        # OFFICIAL account's policy baked into every account's prompt - and it
+        # silently overrode the mixed variant's whole experiment: 70 decisions
+        # over two days never so much as mentioned stock, because the template
+        # said options-first before the notes could say "choose per idea"
+        # (#211). The default keeps the official behaviour verbatim; mixed
+        # sets instrument_note to a neutral sentence.
+        instrument_note=str(config.get("instrument_note") or DEFAULT_INSTRUMENT_NOTE).strip(),
         strategy_notes=str(config.get("strategy_notes") or "(none)").strip(),
         snapshot=json.dumps(payload, separators=(",", ":")),
     )
