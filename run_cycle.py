@@ -107,13 +107,19 @@ def holdings_block(snap: dict, prior: dict | None, config: dict | None = None, t
     positions = account.get("positions") or []
     open_orders = account.get("open_orders", [])
     context: dict = {}
-    if positions:
-        try:
-            history = journal.read_events("all", events=("order_submitted", "predictions", "flatten", "daily_loss_flatten"))
+    closed = ""
+    try:
+        history = journal.read_events("all", events=("order_submitted", "predictions", "flatten", "daily_loss_flatten"))
+        if positions:
             context = holdings.entry_context(positions, history)
-        except Exception as exc:  # noqa: BLE001 - context is advisory; the list of holdings is not
-            journal.log("error", where="holdings", detail=describe_error(exc))
-    return holdings.render_positions_block(positions, open_orders, context, prior, config, today)
+        # What it said when it CLOSED something today (#222) - read even when
+        # flat, because flat-after-a-sell is exactly when a re-entry happens.
+        if today is not None:
+            closed = holdings.render_recent_exits_block(
+                holdings.recent_exits((config or {}).get("underlyings") or (), history, today.isoformat()))
+    except Exception as exc:  # noqa: BLE001 - context is advisory; the list of holdings is not
+        journal.log("error", where="holdings", detail=describe_error(exc))
+    return holdings.render_positions_block(positions, open_orders, context, prior, config, today) + closed
 
 
 def account_from_snapshot(snap: dict) -> AccountState:

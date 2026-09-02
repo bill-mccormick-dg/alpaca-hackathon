@@ -171,6 +171,54 @@ class RenderPositionsBlockTest(unittest.TestCase):
 HELD = {SPY_PUT: Position(symbol=SPY_PUT, instrument="option", qty=10, market_value=4990, underlying="SPY")}
 
 
+class RecentExitsTest(unittest.TestCase):
+    """CLOSED TODAY (#222): the model reads what it said when it exited, so a
+    ten-minute re-entry on the same underlying has to name what changed."""
+
+    UNDERLYINGS = ("SPY", "QQQ", "NVDA")
+
+    def test_a_model_sell_is_listed_under_its_underlying_with_its_own_words(self):
+        records = [
+            rec("13:50:17", "order_submitted", side="sell", qty=10, symbol="NVDA260909C00227500",
+                reason="NVDA's intraday uptrend is gone (opened 218.79, high 227.95, now 225.05)"),
+        ]
+        out = holdings.recent_exits(self.UNDERLYINGS, records, DAY)
+        self.assertEqual(list(out), ["NVDA"])
+        self.assertEqual(out["NVDA"][0]["kind"], "model")
+        self.assertIn("uptrend is gone", out["NVDA"][0]["reason"])
+
+    def test_code_exits_and_flattens_are_listed_but_labelled_as_not_the_models_words(self):
+        records = [
+            rec("11:20:00", "order_submitted", side="sell", qty=4, symbol=QQQ_PUT, exit=True, reason="take_profit (+61%)"),
+            rec("14:50:00", "daily_loss_flatten", attempted=[SPY_PUT], closed=[{"symbol": SPY_PUT, "status": 200}]),
+        ]
+        out = holdings.recent_exits(self.UNDERLYINGS, records, DAY)
+        self.assertEqual(out["QQQ"][0]["kind"], "code_exit")
+        self.assertEqual(out["SPY"][0]["kind"], "daily_loss_flatten")
+        self.assertEqual(out["SPY"][0]["reason"], "")
+
+    def test_only_today_and_only_whitelisted_underlyings(self):
+        records = [
+            {"ts": "2026-08-31T13:00:00-04:00", "event": "order_submitted", "side": "sell", "qty": 1,
+             "symbol": QQQ_PUT, "reason": "yesterday"},
+            rec("13:00:00", "order_submitted", side="sell", qty=1, symbol="AMD", reason="not whitelisted"),
+            rec("13:10:00", "order_submitted", side="buy", qty=1, symbol=QQQ_PUT, reason="a buy, not an exit"),
+        ]
+        self.assertEqual(holdings.recent_exits(self.UNDERLYINGS, records, DAY), {})
+
+    def test_render_is_empty_when_nothing_closed_and_states_the_rule_when_something_did(self):
+        self.assertEqual(holdings.render_recent_exits_block({}), "")
+        block = holdings.render_recent_exits_block({"NVDA": [
+            {"ts": f"{DAY}T13:50:17-04:00", "symbol": "NVDA260909C00227500", "kind": "model", "reason": "uptrend is gone"},
+            {"ts": f"{DAY}T14:50:00-04:00", "symbol": "NVDA260916C00230000", "kind": "flatten", "reason": ""},
+        ]})
+        self.assertTrue(block.startswith("CLOSED TODAY"))
+        self.assertIn("name what has changed SINCE the close", block)
+        self.assertIn('NVDA260909C00227500 you sold at 13:50 ET: "uptrend is gone"', block)
+        self.assertIn("NVDA260916C00230000 EOD flatten at 14:50 ET", block)
+        self.assertTrue(block.endswith("\n\n"))
+
+
 class ResolveSellTest(unittest.TestCase):
 
     def _sell(self, symbol, side="sell", instrument="option"):

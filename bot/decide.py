@@ -85,7 +85,10 @@ Each position carries the reason you gave when you opened it and the prediction-
 that moment, next to the prior now. Judge whether a thesis has changed by comparing those two \
 priors and today's price action against the stated reason - not by re-deriving a view from \
 scratch every cycle. RESTING ORDERS are buys you already sent that have not filled: they count \
-against your caps, and sending the same idea again doubles the position when both fill.
+against your caps, and sending the same idea again doubles the position when both fill. \
+CLOSED TODAY, when present, is what you said when you exited a position this session. You may \
+re-enter an underlying you closed, but a re-entry must name what has changed since that exit - \
+the same tape that was "reversed" ten minutes ago is not now "strong momentum" without a reason.
 
 STRATEGY (from config.yaml - the thesis you are executing; the hard limits above still win):
 {strategy_notes}
