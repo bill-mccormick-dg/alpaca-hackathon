@@ -4,10 +4,23 @@ Read at a natural pace. Each block names the footage it sits over: **slide N**
 is the deck, **shot N** is the caption `demo.sh` prints, and **browser** is a
 web page.
 
-You do not have to arrange any of it. `bash submission/video/record.sh` walks
-this order for you - ssh for the terminal shots, Chrome for the slides and the
-pages - and waits on each one until you switch away, so the pauses are however
-long your narration is. Run `record.sh --check` first.
+**Record one file per block**, into `submission/video/narration/`, named `01`
+through `13` in the order below - `01.mp3`, `02.mp3`, and so on. Any format
+ffmpeg reads. `assemble.py` then cuts the picture to fit each one, so a fluffed
+line costs you that block and nothing else, and the seconds in the headings
+below stop mattering: they are the estimate, your recording is the truth. (They
+are a loose estimate. Read aloud, block 1 is nearer 17 seconds than 8.)
+
+Block 11 covers two pictures - the end-of-day digest, then the deploy history
+underneath its last sentences. `cuts.txt` splits it 72/28; nothing to do while
+reading, just don't pause between "writes the critique" and "Then it ships
+itself".
+
+The alternative is to perform the whole thing in one pass:
+`bash submission/video/record.sh` walks this order for you - ssh for the
+terminal shots, Chrome for the slides and the pages - and waits on each one
+until you switch away, so the pauses are however long your narration is. Run
+`record.sh --check` first. It needs the market open and a clean run to work.
 
 ---
 
@@ -42,21 +55,23 @@ proposes goes to the gate.
 is the densest thing in the video)*
 This is one cycle from the judged account — the inputs, and what came of them.
 
-Top: the option chain it was actually given. Twenty-nine hundred SPY contracts
-across three API pages, out to forty-five days. That matters because one page
-is five hundred contracts, and on SPY, at dollar strikes with daily expiries,
-five hundred contracts is *three days*. For two days our config said forty-five
-and the model was quietly seeing three, and reaching off-menu for contracts it
-could not price. Now it paginates until the window is covered, and journals the
-coverage so the question has an answer.
+Top: the option chain it was actually given. Twenty-five hundred SPY contracts
+across three API pages, out to forty-four days — because one page is five
+hundred contracts, and on SPY, at dollar strikes with daily expiries, that is
+*three days*. For two days the model was quietly seeing three, and reaching
+off-menu for contracts it could not price. Now it paginates until the window is
+covered, and journals the coverage.
 
 Middle: the second opinion. Kalshi's index-close market and the option chain's
 own implied odds — two independent crowds on the same question. Note the
 withheld line: that market had barely traded, so the model was told nothing
 rather than something unearned.
 
-Bottom: the decision, and the order — with the reason it gave, quoting those
-same numbers back.
+Bottom: the decision, and the reason it gave — quoting those same numbers back.
+And *quoting* is checked, not assumed: every figure in that reason is matched
+against the prior the model was actually shown, and the count of unsupported
+ones is on this screen. We audit the model's prose, not just its trades — and it
+has caught fabricated numbers on the judged account.
 
 **[2:05 — slide, Greeks — 18s]**
 About those contracts. We spent three days believing Alpaca's free feed carried
@@ -76,6 +91,11 @@ the inputs, not just the model.
 The leash. One command closes everything — cancelled, settled, closed, verified
 against the broker — and writes a halt file. The next cycle refuses to run until
 a human deletes it.
+
+That is the autonomy position, stated rather than left to be guessed at: the
+trading is autonomous, the risk envelope is deliberately not. Overrides expire
+at the close, and nothing reachable at runtime can widen what this bot is
+allowed to lose.
 
 **[3:05 — browser: the live viewer — 40s]** *(director: `bot.wpmccormick.pw`;
 show a cycle arriving, then a blocked line, then the date picker)*
@@ -121,8 +141,12 @@ MIT licensed, in the repo. Thanks to Alpaca, lablab.ai and Featherless.
 
 ## If it runs long
 
-In order, the first things to cut: the Greeks slide to one sentence (−10s), the
-pagination detail in shot 2
-down to "one page is three days on SPY; now it paginates" (−15s). Do not cut the
-four bugs — it is the only part of the video that shows the *loop* working
-rather than the system running.
+In order, the first things to cut: the Greeks slide to one sentence (−10s), then
+the pagination detail in shot 2 down to "one page is three days on SPY; now it
+paginates" (−8s; it has already been trimmed once).
+
+Do not cut the four bugs — it is the only part of the video that shows the
+*loop* working rather than the system running. Do not cut the prose audit in
+shot 2 or the autonomy sentence in shot 4 either: #202's whole argument is that
+those two are invisible in a repo skim, so if they are not said out loud here
+they are not scored at all.
