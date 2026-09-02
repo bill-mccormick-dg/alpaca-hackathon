@@ -45,8 +45,8 @@ STEPS=(
   "web|ha-team|Home Assistant: the read-only team dashboard"
   "shot|5 7|the end-of-day digest, then what is actually deployed"
   "web|actions|the deploy history, green all week and one red X"
-  "deck|17|results"
-  "deck|18|thanks"
+  "deck|18|results"
+  "deck|19|thanks"
 )
 
 bar() { printf '\n\033[1;35m== %02d/%02d  %s\033[0m\n' "$1" "${#STEPS[@]}" "$2"; }

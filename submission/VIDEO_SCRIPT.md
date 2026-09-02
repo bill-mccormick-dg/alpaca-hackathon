@@ -70,6 +70,16 @@ cycle and shot 2 has a fresh one to show.
 Shots 3 and 6 (`status.py`, `override.py`) are in `demo.sh` and are good filler
 if a block runs short; neither is in the narration's timing.
 
+**Slide 15, "Choosing the model, honestly", is deliberately deck-only.** The
+narration's last block already ends at 4:58 against a 5:00 cap, so a new beat
+does not fit; the model-selection argument is made in the deck and the
+write-up instead, and `narration.md` names what to cut first if it runs long. If a
+block does run short, it goes between the kill switch and the viewer, in one
+sentence: *"Featherless lists twenty-one thousand models; the gate that
+discriminates is not a benchmark score, it is whether the model does what the
+prompt says - and we have one rejection that clears every other gate and fails
+that one."*
+
 ## Capture checklist
 
 - [ ] `record.sh --check` clean, and the Chrome window on the recording display

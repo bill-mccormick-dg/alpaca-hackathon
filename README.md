@@ -76,9 +76,17 @@ differ here, both hackathon requirements:
   supplies IV and Greeks for most contracts; `bot/greeks.py` derives them via
   Black-Scholes only for the ones it does not price, and the prompt says which
   is which.
-- **[Featherless.ai](https://featherless.ai)** (OpenAI-compatible, tool-calling
-  confirmed on `moonshotai/Kimi-K2-Instruct` and the Qwen 3 family) instead of
-  the Claude CLI.
+- **[Featherless.ai](https://featherless.ai)** (OpenAI-compatible) instead of
+  the Claude CLI — an open-source model is a hackathon requirement. The judged
+  account trades on `moonshotai/Kimi-K2.6`, the two challengers on
+  `Qwen/Qwen3.8-Flash-Next` and `moonshotai/Kimi-K2-Instruct`, and the daily
+  critique comes from whichever of those did *not* trade that account. The
+  gates a model has to clear — tool calling, context, instruction adherence,
+  a thinking-mode toggle, cost — and an honest account of how the incumbent
+  actually got the seat are in
+  [Why these models](docs/strategy.md#why-these-models);
+  `python scripts/verify_models.py --all-configs --rejected` re-checks every
+  mechanical claim against the live catalog.
 
 Paper-only throughout — no live-trading code path exists.
 
