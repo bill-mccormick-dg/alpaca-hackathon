@@ -70,7 +70,7 @@ def candles():
     return bars, width, y
 
 
-def cover() -> str:
+def cover(with_text: bool = True) -> str:
     bars, cw, y = candles()
     s = [(f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" '
           f'role="img" aria-label="A rising price series rolls over and falls, and is stopped on a '
@@ -160,6 +160,17 @@ def cover() -> str:
     s.append(f'<text class="a" x="112" y="{cy + 46:.0f}" font-size="26" style="fill:{GATE}">'
              f'check_order() - the fall stops here</text>')
 
+    # The deck reuses this art on its title slide, where the wordmark is already
+    # set in HTML - so the illustration has to stand on its own without it.
+    if not with_text:
+        s.append("</svg>")
+        # width/height have to move with the viewBox. Cropping one and not the
+        # other leaves the intrinsic aspect at 16:9, and the art renders
+        # letterboxed inside it - a small picture in a big empty box.
+        return "".join(s).replace(
+            f'viewBox="0 0 {W} {H}" width="{W}" height="{H}"',
+            'viewBox="40 150 1520 640" width="1520" height="640"', 1)
+
     # wordmark
     s.append('<text class="h" x="110" y="188" font-size="112" letter-spacing="-3">Autobelay</text>')
     s.append('<text class="a" x="116" y="244" font-size="38">long premium, short leash</text>')
@@ -184,6 +195,9 @@ def main() -> int:
 
     OUT.write_text(cover())
     print(f"{OUT.relative_to(ROOT)}  {W}x{H}")
+    hero = ROOT / "submission/images/hero.svg"
+    hero.write_text(cover(with_text=False))
+    print(f"{hero.relative_to(ROOT)}  the same art, cropped, for the deck's title slide")
     if args.png:
         png = OUT.with_suffix(".png")
         subprocess.run([CHROME, "--headless=new", "--disable-gpu", "--hide-scrollbars",

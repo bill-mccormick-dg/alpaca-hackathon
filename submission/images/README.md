@@ -27,7 +27,23 @@ equity and a shared dollar axis would show `mixed`'s head start as performance.
 The closing dollar figures are in the key. Re-run it after Thursday's close;
 the script says so itself while the week is still partial.
 
-`../cover.png` is generated too — `python scripts/make_cover.py --png`.
+Generated too, and none of it hand-drawn:
+
+| What | Command |
+|---|---|
+| `../cover.png` + `hero.svg` | `python scripts/make_cover.py --png` |
+| `spot-*.svg` (7 slide illustrations) | `python scripts/make_spots.py` |
+| `equity-curve.svg` | `python scripts/equity_curve.py` |
+
+The spots are not decoration: each carries the fact its slide is about. The
+payoff diagram *is* the defined-risk argument, the strike grid *is* what
+changed about the menu, the Brier scale *is* the claim about the prior. Slides
+that already have an architecture diagram or a real chart get no spot.
+
+They are referenced with `<img>`, never inlined. An SVG's internal `<style>`
+is not scoped, so inlining one leaks its class names into the host document —
+which is exactly how the architecture diagrams once restyled the deck's own
+subtitles in monospace.
 
 That leaves `ha-dashboard.png` as the only hand-captured image, and
 `tests/test_dashboard.py` can only tell you the file exists - whether it shows
