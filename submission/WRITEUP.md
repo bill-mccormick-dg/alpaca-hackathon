@@ -60,7 +60,12 @@ research loop had been hanging up on a model still willing to work.
 **The guardrails do not trust the model's arithmetic, and we check it.** Each
 cycle the model is handed a prediction-market prior (Kalshi's index-close
 market and the option chain's own implied odds). Every percentage it then cites
-in a stated reason is checked against the numbers it was actually shown, the
+in a stated reason is checked against the numbers it was actually shown — on
+the judged account, where research tools are off. With them on, a quoted figure
+may legitimately have come from a tool result rather than the prompt, so the
+audit records the cycle as skipped rather than guessing, and the digest counts
+those. That is a real limit, not a footnote: the more agentic the
+configuration, the less of its arithmetic we can mechanically verify. The
 count rides on the `decision` journal event, and the end-of-day digest lists
 any quote that matches nothing (or that belongs to a different underlying) with
 the real value beside it; the reviewer model is told to judge decisions on the
