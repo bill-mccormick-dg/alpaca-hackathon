@@ -611,6 +611,47 @@ class ResearchLoopTest(unittest.IsolatedAsyncioTestCase):
         await decide.decide(_snapshot(), self._cfg(), client, TODAY, mcp=None)
         self.assertNotIn("tools", client.calls[0][1])
 
+    async def test_narrated_research_is_nudged_instead_of_forfeiting_the_cycle(self):
+        """The #206 failure: the model DESCRIBES a tool call rather than making
+        one, so there is no tool_call and no JSON array. Without the nudge the
+        caller can only raise, and the cycle is lost until the next cron slot."""
+        narration = _answer("Let me check the intraday trend on the indices first.")
+        client = ScriptedClient([narration, _answer("[]")])
+        d = await decide.decide(_snapshot(), self._cfg(), client, TODAY, mcp=FakeMCP())
+
+        self.assertEqual(d.proposals, [])
+        self.assertEqual(len(client.calls), 2)
+        messages, kwargs = client.calls[1]
+        self.assertEqual(messages[-2]["content"], "Let me check the intraday trend on the indices first.")
+        self.assertEqual(messages[-1]["role"], "user")
+        self.assertIn("neither a tool call nor an answer", messages[-1]["content"])
+        # Tools stay offered: it said it wanted to research, so let it.
+        self.assertIn("tools", kwargs)
+        journaled = [json.loads(line) for line in self.journal_path.read_text().splitlines()]
+        self.assertEqual([r["event"] for r in journaled], ["decide_nudge"])
+
+    async def test_the_nudge_is_bounded_and_a_second_narration_still_raises(self):
+        """One nudge, not an argument. Each one is another model call inside a
+        cycle that has to finish well inside the 10-minute cadence."""
+        client = ScriptedClient([_answer("first I will look at bars"), _answer("still thinking about it")])
+        with self.assertRaises(ValueError):
+            await decide.decide(_snapshot(), self._cfg(), client, TODAY, mcp=FakeMCP())
+        self.assertEqual(len(client.calls), 2)
+
+    async def test_prose_wrapping_a_real_answer_is_not_nudged(self):
+        """The parser already tolerates an array wrapped in prose, so that is a
+        successful answer - nudging it would waste a call and a cycle's time."""
+        client = ScriptedClient([_answer('Here is my call: [] - nothing worth doing.')])
+        d = await decide.decide(_snapshot(), self._cfg(), client, TODAY, mcp=FakeMCP())
+        self.assertEqual(d.proposals, [])
+        self.assertEqual(len(client.calls), 1)
+
+    async def test_nudging_can_be_turned_off(self):
+        client = ScriptedClient([_answer("let me look into it")])
+        with self.assertRaises(ValueError):
+            await decide.decide(_snapshot(), self._cfg(research_max_nudges=0), client, TODAY, mcp=FakeMCP())
+        self.assertEqual(len(client.calls), 1)
+
     async def test_tool_call_is_executed_fed_back_and_journaled(self):
         client = ScriptedClient([_tool_call_response("get_bars", {"symbol": "SPY", "timeframe": "15Min"}), _answer("[]")])
         mcp = FakeMCP()

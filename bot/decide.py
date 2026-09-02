@@ -29,6 +29,15 @@ DEFAULT_INSTRUMENT_NOTE = (
     "Stock trades are allowed but should support your options thesis rather than replace it."
 )
 
+# Sent when the model returns neither a tool call nor a JSON array - see
+# _chat_with_research. Names both legal moves, because the failure is a model
+# describing a tool call rather than making one.
+ANSWER_OR_CALL = (
+    "That was neither a tool call nor an answer. Either CALL a tool now, or reply with "
+    "ONLY the JSON array of proposals (use [] to do nothing). Do not describe what you "
+    "intend to do."
+)
+
 PROMPT_TEMPLATE = """You are the decision engine of an autonomous PAPER-trading agent on \
 Alpaca, built for a hackathon options-trading challenge. You run periodically during US \
 market hours and decide what, if anything, to do this cycle. Doing nothing is a perfectly \
@@ -269,11 +278,14 @@ def build_prompt(
     )
 
 
+def _find_json_array(text: str):
+    return re.search(r"\[.*\]", (text or "").strip(), re.DOTALL)
+
+
 def _extract_json_array(text: str) -> list:
-    text = text.strip()
-    m = re.search(r"\[.*\]", text, re.DOTALL)
+    m = _find_json_array(text)
     if not m:
-        raise ValueError(f"no JSON array in model output: {text[:200]!r}")
+        raise ValueError(f"no JSON array in model output: {text.strip()[:200]!r}")
     return json.loads(m.group(0))
 
 
@@ -370,6 +382,11 @@ async def _chat_with_research(client: FeatherlessClient, mcp, config: dict, prom
     messages = [{"role": "user", "content": prompt}]
     kwargs = _sampling_kwargs(config)
     budget = int(config.get("research_max_tool_calls", 6))
+    # Bounded like everything else in this loop: each nudge is another model
+    # call, and the whole cycle has to finish well inside the 10-minute cron
+    # cadence. One is enough to convert a forfeit into an answer; it is not a
+    # licence to argue with the model until it complies.
+    nudges_left = int(config.get("research_max_nudges", 1))
     made: list[dict] = []
     total_usage: dict = {}
 
@@ -387,6 +404,24 @@ async def _chat_with_research(client: FeatherlessClient, mcp, config: dict, prom
         message = (response.get("choices") or [{}])[0].get("message") or {}
         calls = message.get("tool_calls") or []
         if not calls or tools_left <= 0:
+            # A model can return neither a tool call nor an answer: it
+            # NARRATES the research it is about to do ("let me check the
+            # intraday trend...") and stops. The caller can only raise on
+            # that, so the cycle is forfeited - and the next attempt is the
+            # next cron slot. Kimi-K3 did it on 1 of its first 2 live cycles
+            # (#206, 2026-09-02 09:50 ET, three retries all prose).
+            #
+            # Nudge it once, exactly as the budget-exhausted branch below
+            # already does, before treating prose as a final answer. Tools
+            # stay on the table while budget remains, because a model that
+            # said it wanted to research should be allowed to.
+            if nudges_left > 0 and not _find_json_array(message.get("content") or ""):
+                nudges_left -= 1
+                journal.log("decide_nudge", model=client.model,
+                            content_head=(message.get("content") or "")[:200])
+                messages.append({"role": "assistant", "content": message.get("content") or ""})
+                messages.append({"role": "user", "content": ANSWER_OR_CALL})
+                continue
             if total_usage:
                 response["usage"] = total_usage
             return response, made, total_usage
