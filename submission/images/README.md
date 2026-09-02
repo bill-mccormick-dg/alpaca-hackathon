@@ -5,46 +5,47 @@ the file at the same path, re-export the PDF, and nothing else changes.
 
 | File | Slide | What it should show |
 |---|---|---|
-| `ha-dashboard.png` | *(source, not on a slide)* | the Official column of the operational dashboard: state, day-P&L graph, controls |
-| `ha-dashboard-state.png` | Home Assistant, over MQTT | **derived** - the state card of that capture, cropped (see below) |
+| `ha-dashboard.png` | Home Assistant, over MQTT | the operational dashboard, whole and uncropped — sidebar, Official and Test columns, state, day-P&L graph, controls |
 | `viewer.png` | Watching it think | a band of the live journal viewer: an order with the model's full stated reason, then the priors and cycle lines under it |
 | `equity-curve.svg` | Results | **generated** - `python scripts/equity_curve.py` |
 
-`ha-dashboard.png` is a **real capture** (2026-09-02, mid-session, zoom 1.0):
-the Official column, with equity 99,552.71, a day P&L of -655.10 that the graph
-under it actually traces, two open positions and `hold` as the last decision.
-The sidebar is cropped off, not hidden after the fact — Home Assistant's sidebar
-lists the rest of the home network, which does not belong in a public repo.
+`ha-dashboard.png` is a **real capture** (2026-09-02, mid-session, zoom 1.0,
+1143x1068) used exactly as it was taken: equity 99,552.71, a day P&L of -655.10
+that the graph under it actually traces, two open positions and `hold` as the
+last decision. Home Assistant's own sidebar is in frame; it lists panel names
+only, and the operator's call was to keep the screenshot whole rather than trim
+it into something that no longer looks like the app it is.
 
 It supersedes a 2026-08-30 pre-open capture that showed all three accounts and
 nothing happening: flat graphs, zero positions, `hold` everywhere. One account
 mid-session is better evidence than three accounts doing nothing, and the
 three-account story is already carried by the variants and results slides.
 
-## Why the slide shows one card and not the whole dashboard (#230)
+## How the slide uses it (#230)
 
-The old capture was unreadable on the slide, and two scalings compounded to make
-it so. It was taken at `zoom = 0.62` so that the state rows, the graphs and the
-controls would fit in one frame; the slide then caps images by *height*, because
-the page box is only 720px, and rendered its 1400x784 at 550x308 — another 39%.
-Dashboard body text landed near 5px. It read as a texture that says "there is a
-dashboard" rather than as a dashboard. Half the slide width sat empty beside it,
-because a height-limited image gains nothing from width.
+The old capture was unreadable, and two scalings compounded to make it so. It
+was taken at `zoom = 0.62` so that the state rows, the graphs and the controls
+would fit one frame; the slide then caps images by *height*, because the page box
+is only 720px, and rendered its 1400x784 at 550x308 — another 39%. Dashboard body
+text landed near 5px. It read as a texture that says "there is a dashboard"
+rather than as a dashboard.
 
-So the deck now shows the state card at **1:1**, beside the cards rather than
-above them:
+So the screenshot is no longer a figure on the slide — it **is** the slide.
+`section.shot > img.bleed` positions it absolutely at full page height, bleeding
+past the section padding, and the feature list floats over it on the right. Three
+consequences worth knowing before editing that slide:
 
-```sh
-ffmpeg -y -i submission/images/ha-dashboard.png -vf "crop=502:424:43:64" \
-  submission/images/ha-dashboard-state.png
-```
+- The image contributes nothing to `scrollHeight`, so `fit_slides.py` measures
+  the text column alone. The picture can never push the slide over the page.
+- `.scrim` fades the image into the deck's background from 42% of the page
+  across, which is exactly where the Official column ends. Move that stop left
+  and it starts dimming the numbers that are the point of the screenshot.
+- The fade stops are `rgba(6,18,31,0)`, not `transparent`. `transparent` is
+  `rgba(0,0,0,0)`, and interpolating to it greys the middle of the gradient.
 
-The crop keeps the `Official` column heading, which is the only thing naming the
-account, and stops at the bottom of the state card. Its 502x424 is pinned in an
-inline `max-height` on the `<img>`, which beats both the print block's 360px cap
-and anything `fit_slides.py` generates — shrinking this image is the bug, so the
-fitter is left only the type to scale. Re-run the crop after replacing the source
-capture, and re-check the box if the recapture is at a different zoom.
+A recapture is a drop-in as long as the Official column still ends near 70% of
+the image's width. If it does not, move the scrim's stops with it and read
+page 12 back at full size.
 
 `equity-curve.svg` is **generated from `logs/equity.jsonl`**, so it is never a
 placeholder and never hand-drawn:
@@ -100,36 +101,35 @@ real trades with the model's reasoning, and three variants diverging.
 
 ## Capturing
 
-Open the dashboard in a browser and screenshot the **panel, not the window** —
-Home Assistant's sidebar lists the rest of the home network, which does not
-belong in a submission or in a repo that goes public.
+Open the dashboard in a browser and screenshot Home Assistant, not the whole
+desktop. The sidebar may stay: it carries panel names only. What must not is
+anything below it that names a device, an address or a person — check the frame
+before committing, because this repo goes public.
 
 ```sh
-# macOS: cmd-shift-4, then drag over the dashboard panel; then crop the
-# sidebar and the neighbouring columns off, keeping the Official column:
-ffmpeg -y -i ~/Desktop/Screenshot*.png -vf "crop=545:1016:251:0,format=rgb24" \
+# macOS: cmd-shift-4, then drag over the dashboard. Only the colour space is
+# touched on the way in - no scaling, no crop:
+ffmpeg -y -i ~/Desktop/Screenshot*.png -vf format=rgb24 \
   submission/images/ha-dashboard.png
 ```
 
 Capture at **zoom 1.0 and do not downscale**. The temptation is to zoom out so
 that every account, graph and control fits one frame, and then to shrink the
 result "so the PDF stays small" — that is exactly what produced the unreadable
-slide in #230, twice over. A screenshot that will be shown at 1:1 has to be
-captured at 1:1. Crop to the part the slide needs instead of scaling the whole.
+slide in #230, twice over. A screenshot that will be shown near 1:1 has to be
+captured at 1:1; the slide crops by *framing*, not by resampling.
 
 Crop, never composite. Cutting one rectangle out of one capture is honest;
 stitching separate screenshots into a dashboard that was never on screen at once
 is not.
 
-A Retina capture is 2x, so a 2x screenshot of a 500px card is 1000px of source
-for a 500px slot — that is worth keeping, and it is not what makes the PDF big.
-A full-screen 4K capture is; crop it down before committing.
+A Retina capture is 2x, and for an image the slide shows near 1:1 that extra
+resolution is worth keeping — it is not what makes the PDF big. A full-screen 4K
+capture is; frame it on the dashboard before committing.
 
 ## After replacing
 
 ```sh
-ffmpeg -y -i submission/images/ha-dashboard.png \
-  -vf "crop=502:424:43:64" submission/images/ha-dashboard-state.png
 python -m unittest discover -s tests      # image references still resolve
 python scripts/fit_slides.py              # re-fit: an image changes slide height
 # then re-export - see ../README-export.md
