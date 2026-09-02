@@ -95,12 +95,20 @@ def build_block(scales: dict[int, float]) -> str:
         # The screenshot slides are dominated by a fixed-height image, so scaling
         # only the type asymptotes above 720px and never converges. Scale the
         # image on the same slide by the same factor.
-        rules = "".join(
-            f"  section:nth-of-type({n}) {{ font-size:{s:.3f}em; }}\n"
-            f"  section:nth-of-type({n}) img {{ max-height:{IMG_MAX * s:.0f}px; }}\n"
-            f"  section:nth-of-type({n}) svg {{ max-height:{SVG_MAX * s:.0f}px; }}\n"
+        rules = "".join(f"  section:nth-of-type({n}) {{ font-size:{s:.3f}em; }}\n"
+                        for n, s in sorted(scales.items()))
+        # The image and diagram caps are PRINT-ONLY, deliberately. They are
+        # pixel values solved against the 720px page box, and applying them on
+        # screen shrank the runtime diagram to 442px inside an 862px viewport -
+        # a small picture marooned in dead space. On screen the deck's own
+        # viewport-relative caps do this job and let a diagram grow with the
+        # window. The font scale, by contrast, belongs in both.
+        caps = "".join(
+            f"    section:nth-of-type({n}) img {{ max-height:{IMG_MAX * s:.0f}px; }}\n"
+            f"    section:nth-of-type({n}) svg {{ max-height:{SVG_MAX * s:.0f}px; }}\n"
             for n, s in sorted(scales.items())
         )
+        rules += f"  @media print {{\n{caps}  }}\n"
     # NOT wrapped in @media print. These were, and the consequence was that the
     # PDF fitted while the browser did not - the deck is presented from a
     # browser too, during the video, and there a scaled-down slide rendered at
