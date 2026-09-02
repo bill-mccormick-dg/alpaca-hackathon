@@ -39,9 +39,10 @@ LABELS = {"official": "official (judged)", "test": "test (challenger)", "mixed":
 
 # Categorical, fixed order, validated for dark mode against this surface with
 # the dataviz skill's checker (lightness band, chroma, CVD separation, normal-
-# vision separation, contrast - all pass at surface #0f1720). Do not brighten
-# these to match the diagrams' palette: the lighter steps fail CVD separation
-# between the teal and the purple.
+# vision separation, contrast - all pass at the deck's navy, #0b1d33, and
+# re-checked when the surface moved there). Do not brighten these to match the
+# diagrams' palette: the lighter steps fail CVD separation between the teal and
+# the purple.
 SERIES = [("official", "#31a58e"), ("test", "#8a6ff0"), ("mixed", "#bd7c2a")]
 
 W, H = 1280, 560
@@ -102,7 +103,7 @@ def render(data: dict[str, list[dict]], days: list[str]) -> str:
     s = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {W} {H}" width="{W}" height="{H}" role="img">',
          (f'<style>.t{{font-family:{FONT};fill:{FG}}}.d{{font-family:{FONT};fill:{DIM}}}'
           f'.m{{font-family:{MONO};fill:{DIM}}}</style>'),
-         f'<rect width="{W}" height="{H}" fill="{BG}"/>']
+         f'<rect width="{W}" height="{H}" rx="22" fill="{BG}" stroke="{BORDER}" stroke-opacity=".55"/>']
 
     # grid + y axis
     for t in ticks:
