@@ -80,6 +80,8 @@ def decision_audit(records: list[dict]) -> dict:
     latencies = [_num(r.get("latency_sec")) for r in decisions if _num(r.get("latency_sec")) is not None]
     models = Counter(r.get("model") for r in decisions if r.get("model"))
     truncations = sum(1 for r in decisions if r.get("finish_reason") == "length")
+    retries = [r for r in records if r.get("event") == "decide_retry"]
+    by_model = _by_model(decisions, errors, retries)
 
     exits = [r for r in submitted if r.get("exit")]
     exit_reasons = Counter(str(r.get("reason") or "").split(" ")[0] for r in exits)
@@ -118,8 +120,14 @@ def decision_audit(records: list[dict]) -> dict:
         "rejection_examples": {rule: rej_examples[rule] for rule, _ in rej_by_rule.most_common(REJECTION_TOP_N)},
         "rejections_by_symbol": dict(rej_by_symbol.most_common(REJECTION_TOP_N)),
         "errors": len(errors),
-        "error_samples": [f"{r.get('where') or r.get('symbol')}: {str(r.get('detail'))[:120]}" for r in errors[:5]],
+        # The model travels with each sample (#231): a decide error writes
+        # no decision event, so a model that only errored was invisible in
+        # `models` and its errors reached the reviewer unattributed - who
+        # then blamed the model that had actually answered.
+        "error_samples": [_error_sample(r) for r in errors[:5]],
         "models": dict(models),
+        "by_model": by_model,
+        "retries": len(retries),
         "truncated_outputs": truncations,
         "tokens_in": usage_in,
         "tokens_out": usage_out,
@@ -133,6 +141,52 @@ def decision_audit(records: list[dict]) -> dict:
         "exit_claims_flagged": len(exit_claim_examples),
         "exit_claim_examples": exit_claim_examples[:8],
     }
+
+
+def _error_sample(r: dict) -> str:
+    where = r.get("where") or r.get("symbol")
+    model = r.get("model")
+    tag = f"{where} ({model})" if model else str(where)
+    return f"{tag}: {str(r.get('detail'))[:120]}"
+
+
+NO_MODEL = "(no model)"
+
+
+def _by_model(decisions: list[dict], errors: list[dict], retries: list[dict]) -> dict:
+    """Decisions, errors, retries, truncations, tokens and latency per model.
+
+    Counted across every event that names a model, not decisions alone: on
+    2026-09-02 `test` ran Kimi-K3 for six cycles that all ended in a decide
+    error and then Qwen for 29 that answered. `models` said {K3: 1, Qwen: 29},
+    the six errors carried no model, and the reviewer recommended switching
+    back to K3 (#231). A day with a mid-session model change has to read as
+    two models with their own failure counts. Errors that no model produced
+    (holdings, learning, open-order lookups) sit under NO_MODEL."""
+    out: dict[str, dict] = {}
+
+    def row(model):
+        return out.setdefault(model or NO_MODEL, {"decisions": 0, "errors": 0, "retries": 0, "truncated": 0,
+                                                  "tokens_in": 0, "tokens_out": 0, "latency_avg_sec": None,
+                                                  "_lat": []})
+
+    for r in decisions:
+        d = row(r.get("model"))
+        d["decisions"] += 1
+        d["truncated"] += r.get("finish_reason") == "length"
+        d["tokens_in"] += int((r.get("usage") or {}).get("prompt_tokens") or 0)
+        d["tokens_out"] += int((r.get("usage") or {}).get("completion_tokens") or 0)
+        lat = _num(r.get("latency_sec"))
+        if lat is not None:
+            d["_lat"].append(lat)
+    for r in errors:
+        row(r.get("model"))["errors"] += 1
+    for r in retries:
+        row(r.get("model"))["retries"] += 1
+    for d in out.values():
+        lat = d.pop("_lat")
+        d["latency_avg_sec"] = round(sum(lat) / len(lat), 2) if lat else None
+    return out
 
 
 def config_changes(records: list[dict]) -> list[dict]:
@@ -176,8 +230,13 @@ def estimate_cost_usd(audit: dict, price_table: dict | None) -> float | None:
     table (config). None if no price known for any model used."""
     if not price_table or not audit.get("models"):
         return None
-    # tokens are not split per model in the audit; approximate with the
-    # most-used model's price (single-model days are the norm).
+    by_model = {m: d for m, d in (audit.get("by_model") or {}).items() if m != NO_MODEL}
+    if by_model and all(m in price_table for m in by_model):
+        return round(sum(d["tokens_in"] / 1e6 * float(price_table[m].get("in", 0))
+                         + d["tokens_out"] / 1e6 * float(price_table[m].get("out", 0))
+                         for m, d in by_model.items()), 4)
+    # Older audits carry no per-model split; approximate with the most-used
+    # model's price (single-model days are the norm).
     model = max(audit["models"], key=audit["models"].get)
     p = price_table.get(model)
     if not p:
@@ -259,6 +318,15 @@ def render_markdown(d: dict) -> str:
     lines.append(f"- models: {a['models']}; {a['tokens_in']:,} in / {a['tokens_out']:,} out tokens; "
                  f"latency avg {a['latency_avg_sec']}s max {a['latency_max_sec']}s; truncated outputs {a['truncated_outputs']}"
                  + (f"; est. cost ${d['cost_usd']}" if d.get("cost_usd") is not None else ""))
+    if a.get("by_model"):
+        # One line per model, errors included: a model that forfeited every
+        # cycle shows its forfeits here rather than vanishing (#231). Judge a
+        # model on ITS row, not on the day's totals.
+        lines.append("- **per model** (decisions / errors / retries / truncated, avg latency):")
+        for model, m in a["by_model"].items():
+            lat = f", avg {m['latency_avg_sec']}s" if m.get("latency_avg_sec") is not None else ""
+            lines.append(f"  - `{model}`: {m['decisions']} decisions, {m['errors']} errors, {m['retries']} retries, "
+                         f"{m['truncated']} truncated{lat}")
 
     if d.get("prior_scores"):
         ps = d["prior_scores"]

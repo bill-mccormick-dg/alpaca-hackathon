@@ -17,6 +17,7 @@ from datetime import datetime
 from statistics import median
 
 from bot.occ import parse_occ_symbol
+from bot.risk import EASTERN
 
 # Exit reasons, in the order they are reported.
 STOP_LOSS = "stop_loss"
@@ -89,6 +90,16 @@ def _hour(when) -> int | None:
     return when.hour if isinstance(when, datetime) else None
 
 
+def _eastern(when):
+    """Alpaca returns fill times in UTC; the journal, the cron logs and the
+    digest's own headings are Eastern. Before this, a 12:10 ET entry reached
+    the reviewer as 16:10 and `by_entry_hour` bucketed on the UTC hour under a
+    label that said ET (#231). Naive datetimes are left alone."""
+    if isinstance(when, datetime) and when.tzinfo is not None:
+        return when.astimezone(EASTERN)
+    return when
+
+
 def pair_round_trips(fills: list[dict]) -> tuple[list[dict], list[dict]]:
     """FIFO-match sell fills against earlier buy fills, per symbol.
 
@@ -104,8 +115,9 @@ def pair_round_trips(fills: list[dict]) -> tuple[list[dict], list[dict]]:
         sym, qty = f["symbol"], float(f["qty"])
         if qty <= 0:
             continue
+        when = _eastern(f["filled_at"])
         if f["side"] == "buy":
-            lots[sym].append({"price": float(f["price"]), "time": f["filled_at"], "remaining": qty})
+            lots[sym].append({"price": float(f["price"]), "time": when, "remaining": qty})
             continue
 
         mult = contract_multiplier(sym)
@@ -126,9 +138,9 @@ def pair_round_trips(fills: list[dict]) -> tuple[list[dict], list[dict]]:
                     "entry_hour": _hour(lot["time"]),
                     "dte_at_entry": _dte_at(sym, lot["time"]),
                     "exit_price": exit_price,
-                    "exit_time": f["filled_at"],
+                    "exit_time": when,
                     "exit_reason": f.get("reason") or FLATTEN,
-                    "hold_minutes": _hold_minutes(lot["time"], f["filled_at"]),
+                    "hold_minutes": _hold_minutes(lot["time"], when),
                     "pnl": round(pnl, 2),
                     "pnl_pct": round((exit_price / lot["price"] - 1) * 100, 2) if lot["price"] else None,
                 }

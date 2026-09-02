@@ -16,6 +16,7 @@ source and asserting it. The fix in every case was one command.
 | Is cron installed? | `crontab -l` ("no crontab for root") | `/etc/cron.d/alpaca-hackathon` — the Ansible role installs there |
 | Did an account trade or hold? | token count of the decision (`out=2` ≈ `[]`) | `order_submitted` / `order_rejected` events — those are the real names; there is no `order`, `exit`, or `rejected` event |
 | What lineup do the docs describe? | the branch you wrote them on | `main` — rebase before merging docs that describe config; `tests/test_docs_lineup.py` now fails on drift |
+| Which model produced today's errors? | the digest's `models` count (decisions only) | the `model` field on each `error` / `decide_retry` event; the digest's per-model rows since #231 |
 
 When a live number matters (prior close, a price the model cited), get it from
 Alpaca (`get_stock_snapshot` → `prevDailyBar.c`), not from the model's reason.
@@ -73,7 +74,7 @@ Alpaca (`get_stock_snapshot` → `prevDailyBar.c`), not from the model's reason.
 
 ## Open threads (Sep 2, 2026)
 
-- #216 Part 2 — replay journaled prompts, score constraint adherence (209 decisions exist)
+- #216 Part 2 — replay journaled prompts, score constraint adherence (209 decisions exist); reopened Sep 2, scheduled Thu Sep 3 during the freeze
 - #218 — pinned reviewer bypasses the guard; resolve against `audit["models"]`
 - #221 — CSV misses flatten closes
 - #222 — model exits: 11 attempts / 6 blocked / 5 executed on Sep 2; two sound, three not
