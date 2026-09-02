@@ -5,17 +5,31 @@ the file at the same path, re-export the PDF, and nothing else changes.
 
 | File | Slide | What it should show |
 |---|---|---|
-| `ha-dashboard.png` | 13, Home Assistant | the operational dashboard with all three accounts populated |
-| `equity-curve.png` | 14, Results | the equity graph Mon open → Thu close |
+| `ha-dashboard.png` | Home Assistant | the operational dashboard with all three accounts populated |
+| `equity-curve.svg` | Results | **generated** - `python scripts/equity_curve.py` |
 
 `ha-dashboard.png` is a **real capture** (2026-08-30, pre-open): all three
 accounts, their state rows, and the controls with each account's own model in
 the dropdown. Flat P&L and "hold" everywhere, because nothing has traded yet —
 so it is still worth recapturing after Thursday's close.
 
-`equity-curve.png` is still a **placeholder**. `tests/test_dashboard.py` fails
-if a slide references a file that is missing, but nothing can tell a
-placeholder from a real capture — that part is on you.
+`equity-curve.svg` is **generated from `logs/equity.jsonl`**, so it is never a
+placeholder and never hand-drawn:
+
+```sh
+scp root@<the-bot-host>:/opt/alpaca-hackathon/logs/equity.jsonl logs/
+python scripts/equity_curve.py
+```
+
+It plots percent change from each account's open on the first scored session
+rather than raw dollars, because the three accounts did not start from the same
+equity and a shared dollar axis would show `mixed`'s head start as performance.
+The closing dollar figures are in the key. Re-run it after Thursday's close;
+the script says so itself while the week is still partial.
+
+That leaves `ha-dashboard.png` as the only hand-captured image, and
+`tests/test_dashboard.py` can only tell you the file exists - whether it shows
+a day with real trades in it is on you.
 
 ## Capture them Thursday, not before
 
