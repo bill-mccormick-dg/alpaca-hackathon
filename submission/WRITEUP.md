@@ -4,7 +4,7 @@
 
 **Team:** RazorsEdge — William P. McCormick / William C. McCormick · **Account:** `PA3VS39Y5LE2` ($100,000 paper) ·
 **Repo:** github.com/bill-mccormick-dg/alpaca-hackathon (MIT) · **Stack:** Alpaca
-MCP server, Featherless.ai (Kimi-K2 / Qwen3.8), Python
+MCP server, Featherless.ai (Kimi-K2.6 / Qwen3.8-Flash-Next), Python
 
 ## Thesis
 
@@ -32,6 +32,24 @@ Holding is the default. The thesis and tactics are in the prompt as
 `strategy_notes` — config, not code — and the model's reasoning, tool calls,
 token usage and latency are journaled every cycle. Thinking-mode models are run
 with thinking disabled; that single setting turned empty answers into decisions.
+
+**Choosing the model, honestly.** Featherless lists 21,912 models, 15,575 of
+them with tool calling on our plan, so "open weights" narrows nothing by
+itself. Our gates are written down and re-checkable: tool calling for the
+research loop, context for a ~5k prompt that reaches 95k tokens mid-research,
+a thinking-mode toggle without which these models return empty answers, a warm
+endpoint for a 10-minute cron, and a price in the table that reports the day's
+spend. `scripts/verify_models.py` checks every one against the live catalog.
+What we do not claim is a bake-off: Kimi was the first model confirmed to
+support tool calling and it stayed, and our official/test A/B varies the model
+*and* the research tools *and* the learning loop, so it compares config
+bundles rather than models. The gate that discriminates is instruction
+adherence, and one rejection shows why. `Llama-3.1-Hawkish-8B`, a finance
+fine-tune, is cheaper than everything we run and clears every mechanical gate.
+On the live prompt it proposed a 1-DTE contract in 3 of 3 runs, which the
+prompt forbids and the 14:50 backstop would close the same afternoon, and five
+actions against a four-position cap. Well-formed JSON, wrong content. It also
+exposed a real bug: the funnel permitted what the prompt forbade.
 
 **The guardrails do not trust the model's arithmetic, and we check it.** Each
 cycle the model is handed a prediction-market prior (Kalshi's index-close

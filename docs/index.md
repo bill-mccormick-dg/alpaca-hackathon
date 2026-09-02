@@ -40,6 +40,11 @@ one before expiry. **The model never touches an order.**
 | Keys | Only on CT 108 (`/root/.config/alpaca-hackathon/credentials.env`) | Your own `secrets.yaml` locally; CT 108 has its copy |
 | Rule | No orders before Mon Aug 31 9:30 ET (enforced in code) | Trade freely |
 
+Why those models and not others - the selection gates, the rejected
+alternatives, and the honest history of how the incumbent got the seat - is
+[Why these models](strategy#why-these-models). `scripts/verify_models.py`
+re-checks the mechanical half against Featherless's live catalog.
+
 ## Where things run
 
 - **CT 108** (a Proxmox LXC on our own hardware): cron runs both accounts every

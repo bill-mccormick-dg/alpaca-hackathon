@@ -685,6 +685,189 @@ A tiny sample, so diagnostics rather than verdicts (`trade_report.py`, round-tri
 - Equity above $100,000 helps; a clean, explainable curve with the guardrails
   visibly working is the write-up either way.
 
+## Why these models
+
+Four seats take a Featherless model: the judged account, each of the two
+challenger accounts, and the end-of-day reviewer, which is not a fourth model
+but whichever of the others did not trade that account. This section says how
+they got there, what would change them, and what has been ruled out.
+
+### The honest history: nothing was selected
+
+The current model is a **compatibility-driven default, not the winner of a
+comparison**, and it is worth saying so plainly before the criteria below,
+because the criteria read like a rationale and were not one.
+
+`moonshotai/Kimi-K2-Instruct` entered the repo in `36c8f7a` (Fri Aug 28, step
+2 of the build) as `FeatherlessClient`'s default, on one stated ground:
+"Featherless's docs confirm native tool-calling support on it, which the
+decision loop will need down the line." It was promoted to a config value in
+`d5912db` — a commit about making the model *configurable*, which argues about
+cost attribution and not at all about which model. No benchmark was run, no
+alternatives were compared, and no issue records a choice. It worked, so it
+stayed.
+
+Two later moves were equally undecided:
+
+- The judged account was pinned to `moonshotai/Kimi-K2.6` in
+  [#167](https://github.com/bill-mccormick-dg/alpaca-hackathon/issues/167) —
+  explicitly *not* a claim that K2.6 is better. A runtime override had put 32
+  of day 1's 33 decisions on K2.6; the pin makes the config match what the
+  account actually traded, rather than letting an expiry silently revert it to
+  a model with one live cycle behind it.
+- The `test` account's `Qwen/Qwen3.8-Flash-Next` arrived with the
+  aggressive-challenger config, alongside changes to research tools, the
+  learning loop and several knobs.
+
+**The two-account A/B has therefore never isolated the model.** `official` and
+`test` differ in model *and* research tools *and* the learning loop *and*
+prior settings, so the equity difference between them measures a config
+bundle. `farm.py` was built to run N single-variable challengers in parallel
+([#13](https://github.com/bill-mccormick-dg/alpaca-hackathon/issues/13)) and
+has only ever run the three production accounts. Presenting an invented
+rationale would be worse than admitting the default.
+
+So what follows is **selection policy, not post-hoc justification**: the gates
+a candidate must clear, each tied to something the code already enforces or
+the pipeline already depends on, and what would actually make us switch.
+
+### The gates, and the code behind each
+
+| # | Gate | Why — the thing in this repo that makes it binding |
+|---|---|---|
+| 1 | **Open weights, on Featherless** | Hackathon requirement. It is why the Claude CLI that `alpaca-trader` used is not here at all. |
+| 2 | **Native tool calling** | `bot/research.py::TOOLS` offers four read-only tools; without `features.tool_use` the challenger config cannot run. |
+| 3 | **Context for the prompt, with headroom** | One decision prompt is ~5k tokens with 60 contracts (5,246 measured). The bounded research loop accumulates far more: 95,328 prompt tokens on one test-account decision across six tool calls. 4k-context models cannot be handed the prompt at all. |
+| 4 | **Follows the instructions in the prompt** | Not just valid JSON — the right *content*. `bot/risk.py` rejects what breaks a cap, but a model that proposes five actions against `max_positions: 4`, or 1-DTE contracts the 14:50 backstop will close the same afternoon, wastes the cycle inside the rules. |
+| 5 | **Answers reliably, warm** | A 10-minute cron with `request_timeout_sec: 60`. A model that has to cold-start, or that returns `capacity_exhausted`, forfeits the cycle — the next attempt is the next cron slot. |
+| 6 | **Thinking mode can be turned off** | Every config carries `model_params.chat_template_kwargs.enable_thinking: false`, and it is load-bearing rather than insurance: without it a thinking model spends the whole `max_tokens` budget on hidden reasoning and returns **empty content** with `finish_reason=length`. A model that ignores the flag is unusable here. |
+| 7 | **Costed, and cheap enough to run all day** | `model_prices` in config feeds both the dashboard's model dropdown and `bot/review.py::estimate_cost_usd`, so a model that is not priced is a model whose spend is not reported. |
+| 8 | **Not its own reviewer** | `bot/config.py::resolve_review_model()` needs at least one entry in `review_model_preference` that is not the account's own model — see [the critique comes from a model that did not trade](#the-critique-comes-from-a-model-that-did-not-trade). |
+
+Gates 1–3 and 5–7 are mechanical and checkable from the catalog. **Gate 4 is
+the one that discriminates**, and it is the one no catalog field reports.
+
+### The lineup, and the evidence for it
+
+Live from Featherless's catalog. Everything in this table is printed by
+`python scripts/verify_models.py --all-configs --rejected`, so it can be
+re-checked rather than believed:
+
+| Seat | Model | Tools | Context | $ in/out per M |
+|---|---|---|---|---|
+| `official` trades (`config.yaml`) | `moonshotai/Kimi-K2.6` | yes | 262,144 | 0.77 / 3.50 |
+| `test` trades (`config-test.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 32,768 | 0.15 / 0.50 |
+| `mixed` trades (`config-variants/mixed.yaml`) | `moonshotai/Kimi-K2-Instruct` | yes | 32,768 | 0.60 / 2.50 |
+| Reviewer | computed per account from `review_model_preference` | — | — | — |
+
+Two things that table does not say, which the script does:
+
+- **Availability is per-model and it moves.** On 2026-09-02 the other two
+  were `warm` but `Kimi-K2-Instruct` was `unregistered`: not loaded, so the
+  next call to it pays a cold start. K2-Instruct is the judged account's
+  *reviewer*, one call a day after the close, which is the seat where a cold
+  start costs least; in a trading seat that same tier is gate 5 failing. The
+  script prints the tier on every run, because it changes underneath you.
+- **Advertised context is a lower bound, not a ceiling.** The 95,328-token
+  research cycle ran on a model the catalog lists at 32,768, and Featherless
+  answered it (`finish_reason=stop`). So context is a disqualifier at the
+  bottom end and not a ranking anywhere else.
+
+Runtime overrides can move any account onto any model in `model_prices` from
+the dashboard, and they **expire at 16:00 ET**. The table above is git — what
+an account is running *right now* is in its `config` journal event and on the
+dashboard.
+
+### Rejected alternatives
+
+**The finance-domain fine-tunes.** The obvious move for a trading bot is a
+model trained on finance. Featherless's "Finance LLMs" category has nine, and
+the five most on-the-nose for options — `vfaix-vpa-options-trader`,
+`vfai-x-3.5-9b-options`, `atlas-r2-qwen3-14b`, `NEXUS-Finance`,
+`atlas-finanzas-deepseek` — **are not in the API catalog at all** (confirmed
+again 2026-09-02). They are visible in the web UI, marked COLD, and cannot be
+called. Of the ones that are callable, `AdaptLLM/finance-chat` and
+`hyokwan/familidata` are 4k-context with no tool use: they fail gates 2 and 3
+outright and the script prints both failures.
+
+**The one that clears every mechanical gate — `mukaj/Llama-3.1-Hawkish-8B`.**
+This is the candidate worth documenting, because nothing about the catalog
+rules it out. Tool use, 32k context, on our plan, and **$0.14 / $0.26 per M —
+cheaper than anything we run.** Tested 2026-08-31 against the live
+`config-test.yaml` prompt (60 contracts, ~4.9k tokens, research tools off,
+three runs each):
+
+| | Hawkish-8B | Kimi-K2-Instruct |
+|---|---|---|
+| Latency, single call | 7.4s | 1.8s |
+| Valid JSON array | 3/3 | 3/3 |
+| Proposals | 1, 5, 5 | 0, 0, 0 (hold) |
+| Contracts at 1 DTE | **3/3 runs** | none |
+
+Every Hawkish run proposed at least one 1-DTE contract, which the prompt says
+plainly "will be sold the same afternoon regardless of how it is doing", and
+`strategy_notes` asks for 2–14 DTE. One run proposed **five actions against
+`max_positions: 4`**, so the funnel would have refused one outright; another
+proposed a SPY call and a QQQ put simultaneously on the single reason that
+"implied volatility is low relative to the underlying's price action".
+
+The JSON was well-formed every time. It is the *content* that ignores the
+constraints — which is gate 4, and the distinction the rubric turns on:
+**syntactic compliance is necessary and not sufficient, and a domain
+fine-tune buys financial vocabulary rather than constraint-following.**
+
+Stated honestly: three samples, one off-hours prompt, market closed, research
+disabled. Kimi holding after hours is also the easy answer. This is evidence
+about instruction-following, not a verdict on live intraday P&L — the real
+test is a challenger account, never the judged one.
+
+**It also found a bug, which is the better argument for testing candidates at
+all.** `min_days_to_expiration` was 1 while `eod_close_dte` is 1, so the funnel
+admitted exactly the entries the 14:50 backstop was guaranteed to close the
+same afternoon — the guardrail permitted what the prompt forbade, and only the
+incumbent model's goodwill was closing the gap. Every config now floors at 2
+([#166](https://github.com/bill-mccormick-dg/alpaca-hackathon/issues/166)).
+Gate 4 was doing a job the code should have been doing, and now is.
+
+**`GLM-5.3-Flash`, on gate 6 alone.** It ignores
+`chat_template_kwargs.enable_thinking` entirely — the flag is accepted and has
+no effect — so there is no way to stop it spending the token budget on hidden
+reasoning. That is a whole-config failure and not a tuning problem, and it is
+noted in `config-test.yaml` beside the setting so nobody tries it twice.
+
+**A snapshot that already rotted, which is the argument for the script.**
+`KBTG-Labs/THaLLE-0.2-ThaiLLM-8B-fa` returned `capacity_exhausted` on a live
+call on 2026-08-31. Re-tested 2026-09-02 it answers fine — though only with
+`enable_thinking: false`; without it, it burns the whole budget on hidden
+reasoning and returns empty content, gate 6 exactly. A model rejected on
+availability is rejected *as of a date*, which is why the evidence lives in
+`scripts/verify_models.py` and not only in this paragraph.
+
+### What would make us change
+
+In order of what would actually move us, not in order of how easy it is to
+measure:
+
+1. **Constraint adherence on the real prompt, measured.** Replay a fixed set
+   of journaled prompts through a candidate and score DTE compliance, proposal
+   count against `max_positions`, sell-symbol correctness, and whether cited
+   numbers appear in the prompt (`scripts/audit_citations.py` already scores
+   that last one). This is the artifact that is missing, and it is cheap.
+2. **A single-variable live A/B.** `farm.py --account <name> --config ...` on
+   its own paper account, differing from `config.yaml` in `model` and nothing
+   else — the thing the current `official`/`test` pair cannot give us.
+3. **A gate failing on the incumbent.** A model going `unregistered` in a
+   trading seat, ignoring `enable_thinking`, or repeatedly returning
+   `finish_reason=length` (the digest counts `truncated_outputs` daily) is a
+   reason to move without any comparison at all.
+
+Cost breaks ties and does not decide: the whole day's inference is dollars, and
+one avoidable bad fill costs more than a week of it.
+
+**During the scoring week, the bar for switching the judged account is
+higher than any of the above.** Continuity beats an unvalidated improvement:
+#167 pinned K2.6 for exactly that reason.
+
 ## Daily loop
 
 After each close: `eod_review.py` (the end-of-day digest) → read the digest → edit
