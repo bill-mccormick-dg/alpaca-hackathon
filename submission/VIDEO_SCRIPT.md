@@ -70,7 +70,7 @@ cycle and shot 2 has a fresh one to show.
 Shots 3 and 6 (`status.py`, `override.py`) are in `demo.sh` and are good filler
 if a block runs short; neither is in the narration's timing.
 
-**Slide 15, "Choosing the model, honestly", is deliberately deck-only.** The
+**Slide 16, "Choosing the model, honestly", is deliberately deck-only.** The
 narration's last block already ends at 4:58 against a 5:00 cap, so a new beat
 does not fit; the model-selection argument is made in the deck and the
 write-up instead, and `narration.md` names what to cut first if it runs long. If a
