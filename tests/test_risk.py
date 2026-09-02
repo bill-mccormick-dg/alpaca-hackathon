@@ -4,7 +4,7 @@ from datetime import date, datetime
 from pathlib import Path
 
 from bot import risk
-from bot.models import AccountState, Position, Proposal
+from bot.models import AccountState, OpenOrder, Position, Proposal
 from bot.risk import EASTERN, RiskManager
 
 UNDERLYINGS = ["SPY", "QQQ", "AAPL", "MSFT", "NVDA"]
@@ -18,6 +18,7 @@ def make_config(**overrides):
         "max_contracts_per_order": 10,
         "daily_loss_cutoff_pct": 2.0,
         "min_days_to_expiration": 1,
+        "eod_close_dte": 0,  # below the floor, so RiskManager does not warn on every fixture (#166)
         "max_days_to_expiration": 45,
         "trade_start": "09:45",
         "trade_end": "15:45",
@@ -134,6 +135,120 @@ class OptionsExpirationTest(RiskManagerTestBase):
         self.assertFalse(ok)
 
 
+class ExpirationWindowGatesEntriesOnlyTest(RiskManagerTestBase):
+    """#166. The window used to run before the sell branch, so it applied to
+    every option order. Two consequences: a held contract could not be sold
+    on its last day ('0 days to expiration outside [1, 45]' - and exits.py's
+    expiry-day rule comes through this same funnel), and raising the floor
+    to keep 1-DTE entries out would have locked in every 1-DTE holding."""
+
+    def setUp(self):
+        super().setUp()
+        self.risk = RiskManager(make_config(min_days_to_expiration=2), logs_dir=Path(self.tmpdir.name))
+        self.account = AccountState(
+            equity=100000, start_of_day_equity=100000, cash=100000,
+            positions={
+                "AAPL260115P00200000": Position(symbol="AAPL260115P00200000", instrument="option", qty=3, market_value=600, underlying="AAPL"),
+                "AAPL260116P00200000": Position(symbol="AAPL260116P00200000", instrument="option", qty=3, market_value=600, underlying="AAPL"),
+                "AAPL260110P00200000": Position(symbol="AAPL260110P00200000", instrument="option", qty=3, market_value=600, underlying="AAPL"),
+            },
+        )
+
+    def _sell(self, symbol):
+        return Proposal(instrument="option", symbol=symbol, side="sell", qty=3, underlying="AAPL")
+
+    def test_a_buy_below_the_floor_is_refused(self):
+        p = Proposal(instrument="option", symbol="AAPL260116C00200000", side="buy", qty=1, underlying="AAPL")  # 1 DTE
+        ok, reason = self.risk.check_order(p, self.account, 2.0, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "1 days to expiration outside [2, 45]")
+
+    def test_a_held_contract_can_be_sold_on_its_last_day(self):
+        ok, reason = self.risk.check_order(self._sell("AAPL260115P00200000"), self.account, 2.0, self.mid_session)  # 0 DTE
+        self.assertTrue(ok, reason)
+
+    def test_a_held_contract_can_be_sold_below_the_entry_floor(self):
+        ok, reason = self.risk.check_order(self._sell("AAPL260116P00200000"), self.account, 2.0, self.mid_session)  # 1 DTE
+        self.assertTrue(ok, reason)
+
+    def test_an_expired_contract_cannot_be_sold(self):
+        """Not a window question - nothing fills after expiry."""
+        ok, reason = self.risk.check_order(self._sell("AAPL260110P00200000"), self.account, 2.0, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "expired 5 day(s) ago")
+
+    def test_stock_sells_are_untouched_by_the_option_window(self):
+        account = AccountState(equity=1, start_of_day_equity=1, cash=1,
+                               positions={"AAPL": Position(symbol="AAPL", instrument="stock", qty=5, market_value=500)})
+        ok, reason = self.risk.check_order(Proposal(instrument="stock", symbol="AAPL", side="sell", qty=5), account, 100, self.mid_session)
+        self.assertTrue(ok, reason)
+
+
+class FloorMustExceedBackstopTest(unittest.TestCase):
+    """The floor and eod_close_dte are two config keys that only agree by
+    hand. A warning, not a refusal: eod_close_dte is a runtime knob and a bad
+    override must not stop the account."""
+
+    def test_warns_when_the_floor_does_not_exceed_eod_close_dte(self):
+        with tempfile.TemporaryDirectory() as tmp, self.assertLogs("bot.risk", level="WARNING") as logs:
+            RiskManager(make_config(min_days_to_expiration=1, eod_close_dte=1), logs_dir=Path(tmp))
+        self.assertIn("min_days_to_expiration=1 does not exceed eod_close_dte=1", logs.output[0])
+
+    def test_silent_when_the_floor_is_above_it(self):
+        with tempfile.TemporaryDirectory() as tmp, self.assertNoLogs("bot.risk", level="WARNING"):
+            RiskManager(make_config(min_days_to_expiration=2, eod_close_dte=1), logs_dir=Path(tmp))
+
+
+class OpenOrdersCountTest(RiskManagerTestBase):
+    """#171: the caps bound committed exposure, not just what has filled."""
+
+    QQQ = "QQQ260123P00709000"
+
+    def _account(self, orders, positions=None):
+        return AccountState(equity=100000, start_of_day_equity=100000, cash=100000,
+                            positions=positions or {}, open_orders=orders)
+
+    def _buy(self, symbol, qty=4):
+        return Proposal(instrument="option", symbol=symbol, side="buy", qty=qty, underlying=symbol[:3])
+
+    def test_a_second_buy_for_a_symbol_with_a_resting_buy_is_refused(self):
+        """The 2026-09-01 double: 12:00's limit sat unfilled, 12:10 saw
+        positions 0 and bought the idea again."""
+        acct = self._account([OpenOrder(id="a", symbol=self.QQQ, side="buy", qty=4, limit_price=3.56, submitted_at="2026-09-01T16:00:17Z")])
+        ok, reason = self.risk.check_order(self._buy(self.QQQ), acct, 3.7, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, f"a buy for {self.QQQ} is already resting (qty 4 @ limit 3.56, sent 16:00) - it counts as held; "
+                                 "wait for the fill, or the next cycle cancels it")
+
+    def test_a_different_symbol_is_still_fine(self):
+        acct = self._account([OpenOrder(id="a", symbol=self.QQQ, side="buy", qty=4)])
+        ok, reason = self.risk.check_order(self._buy("QQQ260123P00708000"), acct, 3.7, self.mid_session)
+        self.assertTrue(ok, reason)
+
+    def test_resting_buys_count_toward_max_positions(self):
+        """Four resting buys for four contracts and nothing held used to pass
+        a cap of four - and could then all fill."""
+        risk_mgr = RiskManager(make_config(max_positions=2), logs_dir=Path(self.tmpdir.name))
+        acct = self._account([OpenOrder(id="a", symbol="SPY260123P00764000", side="buy", qty=1),
+                              OpenOrder(id="b", symbol="AAPL260123C00220000", side="buy", qty=1)])
+        ok, reason = risk_mgr.check_order(self._buy(self.QQQ), acct, 3.7, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "already at max_positions (2, 2 of them resting buys)")
+
+    def test_a_resting_sell_reduces_what_can_be_sold_again(self):
+        held = {self.QQQ: Position(symbol=self.QQQ, instrument="option", qty=4, market_value=1480, underlying="QQQ")}
+        acct = self._account([OpenOrder(id="a", symbol=self.QQQ, side="sell", qty=4)], positions=held)
+        p = Proposal(instrument="option", symbol=self.QQQ, side="sell", qty=4, underlying="QQQ")
+        ok, reason = self.risk.check_order(p, acct, 3.7, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "cannot sell 4, only 4 held and 4 already resting to sell")
+
+    def test_unknown_open_orders_size_on_holdings_alone(self):
+        acct = self._account(None)
+        ok, reason = self.risk.check_order(self._buy(self.QQQ), acct, 3.7, self.mid_session)
+        self.assertTrue(ok, reason)
+
+
 class PositionCapTest(RiskManagerTestBase):
     def test_rejects_buy_exceeding_max_position_usd(self):
         p = Proposal(instrument="stock", symbol="AAPL", side="buy", qty=100)
@@ -211,6 +326,22 @@ class SellSideTest(RiskManagerTestBase):
         p = Proposal(instrument="stock", symbol="AAPL", side="sell", qty=1)
         ok, _ = self.risk.check_order(p, self.account, 100, self.mid_session)
         self.assertFalse(ok)
+
+    def test_a_sell_of_an_option_not_held_names_what_is_held_on_that_underlying(self):
+        """#170: the rejection travels back into the next cycle's prompt via
+        the learning block, so it should carry the right symbol."""
+        account = AccountState(
+            equity=100000, start_of_day_equity=100000, cash=100000,
+            positions={"SPY260908P00764000": Position(symbol="SPY260908P00764000", instrument="option", qty=10, market_value=4990, underlying="SPY")},
+        )
+        p = Proposal(instrument="option", symbol="SPY260908P00763000", side="sell", qty=10, underlying="SPY")
+        ok, reason = self.risk.check_order(p, account, 4.99, self.mid_session)
+        self.assertFalse(ok)
+        self.assertEqual(reason, "cannot sell 10, only 0 held; held on SPY: SPY260908P00764000 x10")
+
+        p = Proposal(instrument="option", symbol="QQQ260908P00700000", side="sell", qty=1, underlying="QQQ")
+        ok, reason = self.risk.check_order(p, account, 4.99, self.mid_session)
+        self.assertEqual(reason, "cannot sell 1, only 0 held; nothing held on QQQ")
 
     def test_sell_allowed_past_last_entry_but_before_trade_end(self):
         past_last_entry = datetime(2026, 1, 15, 15, 30)  # after 15:15, before 15:45
@@ -386,3 +517,16 @@ class EarlyExitBlockTest(unittest.TestCase):
 
     def test_unparseable_entry_ts_fails_open(self):
         self.assertIsNone(risk.early_exit_block(self._sell(), self._pos(), "garbage", {}, self.NOW))
+
+    def test_a_repeat_block_names_the_count(self):
+        """#188: the same exit was refused three cycles running with an
+        identical message, then filled the moment the leash expired. The
+        rejection detail reaches the next cycle's learning block, so the
+        repeat count is how the guard tells the model it is churning."""
+        block = risk.early_exit_block(self._sell(), self._pos(),
+                                      "2026-08-31T11:50:00-04:00", {}, self.NOW, blocked_before=2)
+        self.assertIn("already been refused 2 time(s) today", block)
+        self.assertIn("churn, not a thesis change", block)
+        first = risk.early_exit_block(self._sell(), self._pos(),
+                                      "2026-08-31T11:50:00-04:00", {}, self.NOW)
+        self.assertNotIn("already been refused", first)

@@ -20,7 +20,7 @@ from datetime import datetime
 from pathlib import Path
 
 from bot import journal, mqtt, overrides
-from bot.config import load_config
+from bot.config import config_provenance, load_config
 from bot.credentials import validate_account
 from bot.risk import EASTERN
 
@@ -59,6 +59,23 @@ def show(config_path: str | None = None) -> int:
     return 0
 
 
+def republish_effective(config_path: str | None, now: datetime) -> None:
+    """Retained config/effective, refreshed after a CLI set/clear (#130).
+
+    The bridge republishes the topic after every change IT applies, but a
+    CLI-originated change used to be invisible to Home Assistant until the
+    next cycle's `config` event - up to ten minutes of the dashboard showing
+    the wrong model (live at 09:53 ET on 2026-08-31, when the official
+    account was switched to Kimi-K2.6 and the select kept saying
+    K2-Instruct). load_config() here already merges the just-written
+    overrides, so this publishes what the next cycle will actually run.
+    Fire-and-forget like every publish: MQTT down or disabled changes
+    nothing about the override itself."""
+    effective = config_provenance(load_config(config_path, now=now))
+    if mqtt.publish(mqtt.topic("config", "effective"), effective, retain=True):
+        print("republished config/effective - the dashboard reflects this now")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--account", default="test", help="which account's overrides file (official, test, or any name)")
@@ -90,12 +107,14 @@ def main() -> int:
             return 2
         journal.log("override_set", key=args.key, value=entry["value"], until=entry["until"], set_by="cli")
         print(f"{args.key} = {entry['value']!r} until {entry['until']}")
+        republish_effective(args.config, now)
         return 0
 
     if args.all:
         n = overrides.clear_all()
         journal.log("override_cleared", key="*", count=n, set_by="cli")
         print(f"cleared {n} override(s) - back to config.yaml")
+        republish_effective(args.config, now)
         return 0
     if not args.key:
         print("clear needs a key or --all", file=sys.stderr)
@@ -103,6 +122,8 @@ def main() -> int:
     existed = overrides.clear_override(args.key)
     journal.log("override_cleared", key=args.key, existed=existed, set_by="cli")
     print(f"{args.key}: {'cleared' if existed else 'was not set'}")
+    if existed:
+        republish_effective(args.config, now)
     return 0
 
 

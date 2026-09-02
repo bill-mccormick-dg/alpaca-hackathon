@@ -1,74 +1,84 @@
-# Video script — AI Day Trader - Long Premium, Short Leash
+# Video script - Autobelay
 
-**First cut lives in `submission/video/`**: `demo.sh` (the CT 108 terminal
-footage - live cycle, kill switch, eod_review, override - captioned,
-`PAUSE=0` to rehearse), `demo_local.sh` + `mqtt_watch.py` (the local half:
-the docker-compose farm/A-B comparison, and a genuine live MQTT capture -
-subscribe locally, trigger a cycle on CT 108, watch the messages arrive),
-`narration.md` (word-for-word voice-over with director's notes on which
-footage each block sits over, timed to ~4:58 under the 5:00 cap),
-`slides.html` (twelve slides, arrow keys, real journal/tool-call/MQTT
-excerpts). The outline below is the original plan the first cut follows.
+**Word-for-word narration is [`video/narration.md`](video/narration.md)**; the
+terminal half is [`video/demo.sh`](video/demo.sh), which prints a caption before
+each command and pauses for you. This file is the shot list and the checklist.
 
-**Format:** MP4, 1080p, ≤ 5:00 (target 3:30–4:30). Screen recording + voice.
-Terminal font ≥ 16 pt, dark theme, window ~1600×900. Record Wed or Thu after a
-day with real trades. Dry-run the whole command sequence once first.
+**Format:** MP4, 1080p, <= 5:00 (this cut is timed to ~4:40). Screen recording
+plus voice. Terminal font >= 16 pt, dark theme, window ~1600x900.
+**Every shot is the real system running** - no generated imagery, no mockups.
 
-Every shot is the real system running — no generated imagery.
+## One command drives the whole take
 
-## 0:00–0:35 · Pitch (slide 2, then slide 3)
+```sh
+bash submission/video/record.sh --check    # nothing recorded: is everything ready?
+bash submission/video/record.sh            # the take
+```
 
-> "This is Long Premium, Short Leash — an autonomous options agent built on
-> Alpaca's MCP server. The idea in one sentence: buy defined-risk, short-dated
-> premium when an open-source model can name a reason, and let deterministic
-> code size it, stop it, and close it before expiry. The model never touches
-> an order. Open model proposes; code disposes."
+`record.sh` runs on your Mac and alternates the two halves in narration order:
+it `ssh`es to CT 108 for each terminal shot, and drives Chrome for each slide
+and each web page. Three scripts, so each does one thing:
 
-## 0:35–2:15 · The agent in action (terminal on CT 108, during market hours)
+| Script | Runs on | Does |
+|---|---|---|
+| `record.sh` | Mac | the running order, and the pacing |
+| `demo.sh` | CT 108 | the seven terminal shots (`demo.sh 2` runs just one) |
+| `browser.sh` | Mac | one Chrome window, five tabs, and the slide keystrokes |
 
-Command: `./.venv/bin/python run_cycle.py --account test --config config-test.yaml --verbose`
+**How the pacing works**, because it is the only unusual part. A terminal step
+waits for Enter in your terminal. A browser step puts Chrome in front and then
+waits for you to switch *back*. So you talk for exactly as long as you want
+over either one and nothing advances until you move; the switch itself is the
+cut. Fluffed a line? `record.sh --from 9` picks up at any step, and
+`--list` prints the order.
 
-Narrate as it scrolls:
-- equity/positions line — "live paper account through Alpaca's MCP server"
-- (pause on the prompt contract block if shown) — "Alpaca's free feed has no
-  Greeks, so we derive IV and delta from each contract's price on the fly"
-- `research:` lines — "before deciding, the model investigates: bars, a
-  snapshot, news — read-only Alpaca MCP tools, six calls max, every one
-  journaled"
-- `model output:` — "then it must answer: a JSON array, or hold"
-- `SUBMITTED ...` / `REJECTED ...: ...` — "and here's the leash: this proposal
-  passes; this one is refused by the position cap, and the journal records
-  which rule said no"
+`--check` verifies the host, the journal, Accessibility permission, Chrome's
+AppleScript JavaScript switch, and - the one that actually bites - whether the
+viewer's Cloudflare session has expired. Its email one-time PIN is slow on
+camera and the session only lasts six hours, so find out before you record, not
+during. It also opens the Chrome window: **drag that onto the display you are
+recording and leave it there.** Chrome opens new windows on whichever display
+it last used, and no amount of AppleScript reliably moves them.
 
-Then `./.venv/bin/python status.py` — positions, halt state, today's summary.
+Then rehearse once, without touching the test account's positions:
 
-## 2:15–3:00 · The leash (kill switch)
+```sh
+PAUSE=0 SKIP_HALT=1 bash submission/video/demo.sh
+```
 
-Command: `./.venv/bin/python flatten.py --halt --account test`
-> "One command closes everything, verified against the broker, and trips the
-> kill switch." Then run a cycle: `halted: manual halt`. Show the `HALT` file,
-> delete it. (If the Home Assistant light exists: cut to it going red.)
+`SKIP_HALT=1` skips the one destructive shot. Drop it for the take - the kill
+switch closing real positions is the point of that shot. `FORCE=--force` lets
+the whole thing rehearse outside market hours.
 
-## 3:00–3:45 · Measure, then change (eod_review)
+**Record during market hours**, Wednesday or Thursday, so shot 1 is a real
+cycle and shot 2 has a fresh one to show.
 
-Command: `./.venv/bin/python eod_review.py --account official --date <yesterday>`
-> "At the close, one command reconstructs every round trip from Alpaca's fills,
-> groups rejections by rule, appends the equity curve, and then a *different*
-> model - one that did not trade today - writes its read of the day with one
-> recommended change. Featherless is twenty thousand models behind one API, so
-> the reviewer costs one call and is not grading its own homework. We apply it with an
-> override that expires at the close, or a config PR that CI deploys to the
-> box before the open." Show `override.py show` and the PR list briefly.
+## Shot list
 
-## 3:45–4:20 · Results and honesty (slide 9)
+| # | Source | Shows |
+|---|---|---|
+| - | slides 1-3 | thesis, then the runtime diagram: the model in one box, one order path |
+| 1 | `demo.sh` | a live cycle: gates, snapshot, research tools, JSON, the gate |
+| 2 | `demo.sh` | `last_cycle.py` - the chain it was given (pagination), the prior (including a withheld one), the decision, the order and its stated reason |
+| - | slides | Greeks: Alpaca's, with Black-Scholes as the backstop; then Brier-scoring the priors |
+| 4 | `demo.sh` | the kill switch, verified against the broker, and the next cycle refusing |
+| - | browser | the live viewer, and the four bugs it caught in two days |
+| - | browser | Home Assistant: the dashboard (desktop, then a phone frame), what pushes and what does not |
+| 5, 7 | `demo.sh` | the end-of-day digest, then `DEPLOYED` and the runner: it ships itself |
+| - | slides | results, thanks |
 
-Equity curve Mon→Thu, round trips, exit mix, official vs challenger. One
-sentence on what didn't work and what we'd change. Then slide 10 for two
-seconds: repo, MIT, next steps.
+Shots 3 and 6 (`status.py`, `override.py`) are in `demo.sh` and are good filler
+if a block runs short; neither is in the narration's timing.
 
 ## Capture checklist
 
-- [ ] Rehearse the command sequence; keep output short (`| head` where needed)
-- [ ] QuickTime/OBS 1080p; mic level check; no notifications
-- [ ] Export H.264/AAC MP4; check length ≤ 5:00
+- [ ] `record.sh --check` clean, and the Chrome window on the recording display
+- [ ] Rehearse the command sequence (`PAUSE=0 SKIP_HALT=1`)
+- [ ] Log into the viewer *before* recording - the email OTP is slow on camera
+- [ ] Collapse the Home Assistant sidebar (it lists the rest of the home network)
+- [ ] Chrome: View > Developer > Allow JavaScript from Apple Events, so the
+      Home Assistant shots fit the whole dashboard in frame by themselves
+- [ ] Don't click inside the deck while narrating - it advances on any click
+- [ ] QuickTime/OBS 1080p; mic level check; notifications off
+- [ ] Export H.264/AAC MP4; check length <= 5:00
 - [ ] Upload YouTube (unlisted); test the link logged out; paste into METADATA.md

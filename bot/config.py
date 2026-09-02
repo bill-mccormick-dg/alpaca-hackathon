@@ -30,6 +30,9 @@ TRACKED_KEYS = (
     # the prompt, so flipping it must show up as a config change when a P&L
     # swing is being attributed.
     "predictions_enabled",
+    # Same logic (#211): the instrument framing is prompt text, and the mixed
+    # variant's whole experiment rides on it.
+    "instrument_note",
     # The churn guard's thresholds (#132/#138): they change when a model
     # exit is allowed, so they belong in the hash - and the dashboard's
     # number rows read them from config/effective, which is this dict.
@@ -82,6 +85,36 @@ def resolve_review_model(config: dict) -> str | None:
         if candidate and candidate != trading:
             return str(candidate)
     return None
+
+
+def model_params_for(config: dict, model: str | None) -> dict:
+    """The extra request-body params for one model: the global `model_params`
+    dict, with `model_params_by_model[<model>]` winning key-by-key on top.
+
+    Exists because one toggle does not fit every model (#206): the global
+    `enable_thinking: false` is load-bearing for Kimi-K2.6 and
+    Qwen3.8-Flash-Next (without it they spend the whole token budget on
+    hidden reasoning and forfeit the cycle), but Kimi-K3 REFUSES tool calls
+    while thinking is disabled - verified live on Featherless, where it
+    answers "tool usage is currently disabled" in prose instead of calling.
+    Resolved at call time against the EFFECTIVE model, because the model is
+    switchable from the dashboard mid-session and a per-model param frozen
+    at startup would follow the wrong model.
+
+    The merge is shallow and per top-level key on purpose: an override of
+    `chat_template_kwargs` replaces the whole nested dict, so what is sent
+    for a model is readable straight off its config entry rather than the
+    result of a deep merge nobody can see."""
+    merged: dict = {}
+    base = config.get("model_params")
+    if isinstance(base, dict):
+        merged.update(base)
+    per_model = config.get("model_params_by_model")
+    if isinstance(per_model, dict) and model:
+        override = per_model.get(str(model))
+        if isinstance(override, dict):
+            merged.update(override)
+    return merged
 
 
 def config_provenance(config: dict) -> dict:

@@ -38,7 +38,8 @@ locally). Every entrypoint takes `--account <name>` (default **test**) and
 | `trade_report.py [--days N] [--json]` | Round trips reconstructed from Alpaca's fills, exits classified, cuts by underlying / instrument / DTE / hour |
 | `eod_review.py [--date] [--no-model] [--json]` | The end-of-day digest (see The daily loop) |
 | `python -m unittest discover -s tests` | Credential-free tests |
-| `scripts/verify_*.py` | Manual live checks (Alpaca connectivity, Featherless, snapshot) |
+| `scripts/verify_*.py` | Manual live checks (Alpaca connectivity, Featherless, snapshot, option-chain coverage) |
+| `scripts/audit_citations.py --account <name> --day YYYY-MM-DD` | Offline: which prior figures the model quoted that day that its prompt never contained (#172). Journal only, no credentials |
 
 ## Named accounts
 
@@ -93,6 +94,53 @@ Its own journal (`logs/journal-<name>.jsonl`; the official account keeps
   halt, written after a breach of `daily_loss_cutoff_pct` flattens the
   account. Expires with the day; delete it to resume early.
 
+## The journal in a browser
+
+The zero-setup way to watch the bot think, and the first thing to give a new
+teammate or a judge: **https://bot.wpmccormick.pw**. Enter an email address,
+paste the one-time PIN Cloudflare sends, and the journal starts streaming.
+Sessions last six hours. The Access policy deliberately accepts any working
+email rather than a list of addresses - a judge cannot be pre-registered.
+
+What it shows, live: every cycle as it happens, the model's full reasoning, the
+orders and the rule behind each rejection. Controls are checkboxes for the three
+accounts, a toggle for tool-call and config chatter, and a date picker that
+replays an earlier day. There is nothing else - no halt, no override, no
+button that reaches the trading path at all.
+
+`journal_viewer.py` tails `logs/journal*.jsonl` and pushes them over
+server-sent events, bound to the LAN on :8300; `cloudflared` publishes that
+one port. It holds no credentials.
+
+### When it is broken
+
+| Symptom | Where to look |
+|---|---|
+| 502 after a successful login | the unit, not the tunnel: `systemctl status alpaca-hackathon-journal-viewer` |
+| The page loads but never updates | the unit is up but the source changed under it - see the restart note below |
+| Login loop, or "restricted to members" | Cloudflare Access dashboard state, not this repo |
+| Nothing loads at all | check Cloudflare's status page before debugging CT 108 |
+
+The login-methods trap is worth naming because it cost an evening: if the
+Access application is pinned to a single identity provider, the email
+one-time-PIN option disappears and *everyone* is locked out, including the
+person who owns the account. The fix is in the Cloudflare dashboard - turn
+"Accept all available identity providers" back on.
+
+**The viewer does not restart itself on deploy.** Unlike `mqtt_bridge.py` it has
+no source watcher, and `deploy.yml` has no restart step for it, so a change to
+`journal_viewer.py` sits on disk while the old code keeps serving. After any
+deploy that touches it:
+
+```sh
+systemctl restart alpaca-hackathon-journal-viewer
+```
+
+Deploy, tunnel and Access mechanics live in homenetwork's `alpaca-hackathon`
+and `cloudflared` roles; the Access login rules are dashboard state on purpose.
+The unit is gated on `journal_viewer.py` existing in the checkout, so an older
+deploy does not leave it flapping under `Restart=always`.
+
 ## Runtime overrides
 
 Two config layers with explicit precedence: `config.yaml` (git) is the base;
@@ -107,9 +155,10 @@ can never leak into the judged account.
 | `temperature`, `max_tokens` | sampling and answer length |
 | `strategy_notes` | the tactics paragraph appended to the prompt — the main dial |
 | `research_contracts_per_underlying` | how many contracts the model is shown |
-| `option_strike_band_pct` | how far from spot the shown strikes reach |
+| `option_strike_band_pct` | how far from spot the shown strikes reach — and, on SPY/QQQ, how many pages the chain fetch takes |
 | `stop_loss_pct`, `take_profit_pct` | when `bot/exits.py` closes a position |
 | `eod_close_dte` | how near expiry the end-of-day backstop closes |
+| `min_hold_minutes`, `early_exit_drawdown_pct` | the churn guard: how long a position must be held before the model may sell it, and the drawdown that waives the wait |
 | `review_model` | which model critiques the day in `eod_review.py` — computed from `review_model_preference` unless pinned |
 | `predictions_enabled` | whether the Kalshi prior is fetched and shown to the model — a switch in HA |
 
@@ -197,18 +246,19 @@ journaled it did not happen.
 
 | Event | Written when |
 |---|---|
-| `cycle_start`, `cycle_end` | each cycle opens / closes, with equity and position count |
+| `cycle_start`, `cycle_end` | each cycle opens / closes, with equity and position count; `cycle_start` also carries `chain_coverage` — per underlying, how many contracts and pages the option chain fetch took, the furthest DTE it reached, and whether it hit the page cap (`truncated`) |
 | `config` | the effective config for that cycle: values, a hash, any active overrides, and the resolved `review_model` |
-| `decision` | the model answered — raw output, model, token usage, latency, finish reason, reasoning head, tool calls |
+| `decision` | the model answered — raw output, model, token usage, latency, finish reason, reasoning head, tool calls, the size of the learning and positions blocks it was shown (`learning_chars`, `positions_block_chars`), and `citations`: how many prior figures its reasons quoted, which appear nowhere in the prior it was given (`unsupported`) and which belong to a different underlying (`misattributed`) (#172; `scripts/audit_citations.py` rebuilds it for older days) |
 | `tool_call` | the model used one of its four read-only research tools |
-| `order_submitted` / `order_rejected` / `order_error` / `dry_run` | an order's outcome — rejections carry **the rule that rejected them** |
+| `order_submitted` / `order_rejected` / `order_error` / `dry_run` | an order's outcome — rejections carry **the rule that rejected them**; a sell that code resolved from a neighbouring strike onto the held contract carries `resolved_from` with the symbol the model wrote (#170) |
+| `order_canceled` | one of the bot's own entry buys was still resting from an earlier cycle and the new cycle cancelled it (`ok`, the broker's text when it could not) — #171 |
 | `decide_retry` | a transient model failure was retried inside the cycle |
 | `identity_refused` / `identity_unverified` | the broker's account number did not match the account asked for |
 | `daily_loss_halt`, `daily_loss_flatten`, `flatten`, `manual_halt` | trading stopped, and why |
 | `override_set` / `override_cleared` | a runtime knob changed |
-| `error` | anything else, with where and the detail |
+| `error` | anything else, with where and the detail — `where: open_orders` means the resting-order lookup failed and that cycle sized on holdings alone |
 | `predictions` | the Kalshi prior the model was handed that cycle — the numbers **and** whether they were withheld |
-| `eod_review` | the end-of-day digest ran |
+| `eod_review` | the end-of-day digest ran, and `review_model` says which model wrote the critique — check it is not the account's own `model` (#177) |
 
 `logs/` is git-ignored and excluded from the deploy rsync, so state on CT 108
 survives redeploys.
@@ -243,50 +293,18 @@ grep '"order_rejected"' logs/journal.jsonl | tail -5
 
 # what the model actually said, most recent first
 grep '"decision"' logs/journal.jsonl | tail -1
+
+# did the option menu actually reach the configured DTE window this cycle
+grep '"cycle_start"' logs/journal.jsonl | tail -1 | jq .chain_coverage
 ```
 
-## The journal in a browser
-
-**<https://bot.wpmccormick.pw>** - the third window onto the same journal
-(after the greps above and the HA cards below), and the only one that needs
-nothing but an email address: enter yours, Cloudflare Access emails a one-time
-PIN, and you're in for six hours. The current policy deliberately admits
-*anyone with a working email* - judges can't pre-register - so treat the page
-as public; it is read-only by construction (no credentials loaded, no POST
-route - see `journal_viewer.py`'s docstring).
-
-What you get: all three accounts' journals streaming live (the page follows
-the end like `tail -f`), one line per event in the terminal watcher's idiom.
-Controls along the top:
-
-- **account checkboxes** (`official` / `test` / `mixed`) - filter the stream
-- **tool/config chatter** - off by default; ticks in the model's research
-  tool calls and per-cycle config records
-- **replay** date picker - re-render any prior day in full, via
-  `bot/journal.py`'s own reader (Eastern dates, same as the files)
-
-The live view trims old events from the page to stay responsive; the date
-picker is the way to see a full day with scrollback.
-
-When it misbehaves:
-
-- **502 after login** - the tunnel is fine, the *unit* is down:
-  `systemctl status alpaca-hackathon-journal-viewer` on CT 108. The role only
-  installs the unit when `journal_viewer.py` exists in the checkout
-  (`alpaca_hackathon_journal_viewer_enabled` in homenetwork turns it off
-  entirely).
-- **"sign-in is restricted to members of the account" or a login loop** -
-  Cloudflare Access dashboard state has regressed, not anything on the CT.
-  The app must *accept all available identity providers*; pinned to the
-  Cloudflare IdP it locks out everyone but Cloudflare-account members
-  (happened 2026-08-31).
-- **Login flaky for everyone at once** - check
-  [Cloudflare status](https://www.cloudflarestatus.com/) for an Access
-  degradation before debugging anything of ours.
-
-Deploy/tunnel/Access mechanics live in the private `homenetwork` repo
-(`roles/alpaca-hackathon` and `roles/cloudflared` READMEs) - this page is
-about using it.
+Read `chain_coverage` per underlying: `max_dte` should sit near
+`max_days_to_expiration` (45); far below it with `truncated: true` means the
+fetch hit `CHAIN_MAX_PAGES` (`bot/snapshot.py`) — raise the cap or narrow
+`option_strike_band_pct`. Far below it with `truncated: false` just means no
+listed expiry that far out inside the band. Before #158 this was invisible:
+SPY/QQQ silently stopped at 3 DTE, and an in-window proposal the model found
+through its research tools was refused as unpriceable.
 
 ## Home Assistant over MQTT
 

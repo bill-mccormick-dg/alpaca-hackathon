@@ -5,6 +5,9 @@ directly; the HTTP layer is stdlib and gets one socket-level smoke test.
 """
 
 import json
+import re
+import shutil
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -155,6 +158,55 @@ class HttpSmokeTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             self._get("/nope")
         self.assertEqual(ctx.exception.code, 404)
+
+
+class ReasonsAreNotTruncatedTest(unittest.TestCase):
+    """The renderer is JavaScript inside a Python string, so these assert on
+    the page source rather than on behaviour. Issue #174: reasons were cut at
+    220 characters mid-word, and the model's reasoning is the whole point of
+    the page - the row CSS already wraps, and MAX_ROWS caps the page by row
+    count, so nothing needed the character limit."""
+
+    def test_no_character_slice_is_applied_to_a_reason(self):
+        for line in journal_viewer.PAGE.splitlines():
+            if "reason" in line and ".slice(" in line:
+                self.fail(f"a reason is being truncated: {line.strip()}")
+
+    def test_rejections_show_the_models_case_as_well_as_the_verdict(self):
+        """A rejection needs both facts - bot/report.py::_trade_line makes the
+        same argument for the email. (Anchored on the renderer branch, not the
+        first mention: the CSS names the event class too.)"""
+        lines = journal_viewer.PAGE.splitlines()
+        start = next(i for i, x in enumerate(lines) if "e === 'order_rejected'" in x)
+        branch = "\n".join(lines[start:start + 4])
+
+        self.assertIn("r.detail", branch, "the funnel's verdict must still show")
+        self.assertIn("r.reason", branch, "the model's case must show too")
+
+    def test_the_page_still_caps_rows_rather_than_characters(self):
+        self.assertIn("MAX_ROWS", journal_viewer.PAGE)
+        self.assertIn("white-space:pre-wrap", journal_viewer.PAGE)
+
+
+class PageJavaScriptParsesTest(unittest.TestCase):
+    """The renderer is JavaScript inside a Python string, so Python's own
+    syntax check never sees it and a stray brace ships a blank page to
+    everyone - including judges - with every server-side test still green.
+    Skipped when node is unavailable; CI's ubuntu-latest has it."""
+
+    def test_the_pages_script_is_syntactically_valid(self):
+        node = shutil.which("node")
+        if not node:
+            self.skipTest("node not installed")
+        match = re.search(r"<script>(.*?)</script>", journal_viewer.PAGE, re.DOTALL)
+        self.assertIsNotNone(match, "the page should carry exactly one inline script")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "feed.js"
+            path.write_text(match.group(1))
+            result = subprocess.run([node, "--check", str(path)], capture_output=True, text=True, check=False)
+
+        self.assertEqual(result.returncode, 0, f"page JavaScript does not parse:\n{result.stderr}")
 
 
 if __name__ == "__main__":

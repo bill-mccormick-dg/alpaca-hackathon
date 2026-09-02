@@ -13,43 +13,26 @@
   register: alpaca_hackathon_dashboard_file
   notify: restart home assistant
 
-- name: Deploy the read-only team dashboard (issue #87)
-  ansible.builtin.template:
-    src: dashboard_team.yaml.j2
-    dest: "{{ ha_team_dashboard_dest }}"
-    mode: "0644"
-  register: alpaca_hackathon_team_dashboard_file
-  notify: restart home assistant
-  when: ha_team_dashboard_enabled
-
-- name: Remove the team dashboard when disabled
+# The read-only "team" dashboard (issue #87) is retired (#145): its trade-log
+# and end-of-day cards moved onto the operational dashboard, and remote
+# teammates read the journal viewer instead. This removes the file a previous
+# converge deployed; drop its `lovelace:` entry from configuration.yaml too
+# (the debug task below says so once, when the removal actually happens).
+- name: Remove the retired team dashboard (issue #145)
   ansible.builtin.file:
     path: "{{ ha_team_dashboard_dest }}"
     state: absent
+  register: alpaca_hackathon_team_dashboard_removed
   notify: restart home assistant
-  when: not ha_team_dashboard_enabled
 
-- name: Show the one-time manual step to register the team dashboard
+- name: Show the one-time manual step to deregister the team dashboard
   ansible.builtin.debug:
     msg: >-
-      Team dashboard written to {{ ha_team_dashboard_dest }}. Register it
-      alongside the operational one, and mark the OPERATIONAL one admin-only
-      so non-admin teammates cannot reach the kill switches:
-        lovelace:
-          dashboards:
-            {{ ha_dashboard_url_path }}:
-              require_admin: true          # <-- kill switches live here
-              mode: yaml
-              filename: {{ ha_dashboard_filename }}
-            {{ ha_team_dashboard_url_path }}:
-              mode: yaml
-              title: {{ ha_team_dashboard_title }}
-              icon: {{ ha_team_dashboard_icon }}
-              show_in_sidebar: true
-              filename: {{ ha_team_dashboard_filename }}
-      Then create a NON-ADMIN Home Assistant user per teammate. See
-      ansible/README.md "Remote team access" for the Tailscale side.
-  when: ha_team_dashboard_enabled and alpaca_hackathon_team_dashboard_file.changed
+      Retired team dashboard removed from {{ ha_team_dashboard_dest }}. Also
+      delete its entry (url path "alpaca-hackathon-team") from the
+      `lovelace: dashboards:` block in configuration.yaml, or HA shows a
+      broken dashboard in the sidebar.
+  when: alpaca_hackathon_team_dashboard_removed.changed
 
 - name: Show the one-time manual step to register the dashboard
   ansible.builtin.debug:

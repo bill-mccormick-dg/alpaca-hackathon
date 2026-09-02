@@ -221,7 +221,7 @@ class Handler(BaseHTTPRequestHandler):
 
 PAGE = r"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>AI Day Trader — journal</title>
+<title>Autobelay — journal</title>
 <style>
   :root { --bg:#0f1720; --fg:#e6edf3; --dim:#8b98a5; --official:#d48ae0; --test:#6fd3d3; --mixed:#7fa7e8; }
   body { background:var(--bg); color:var(--fg); font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; margin:0; }
@@ -248,7 +248,7 @@ PAGE = r"""<!doctype html>
   #trimmed { color:var(--dim); font-style:italic; padding:4px 0; }
 </style></head><body>
 <header>
-  <b>AI Day Trader — journal</b>
+  <b>Autobelay — journal</b>
   <span id="status" class="dim">connecting…</span>
   <label><input type="checkbox" class="acct" value="official" checked> official</label>
   <label><input type="checkbox" class="acct" value="test" checked> test</label>
@@ -286,13 +286,20 @@ function line(r){
   else if (e === 'tool_call') body = `<span class="dim">  · ${esc(r.tool)} ${esc(JSON.stringify(r.args||{}).slice(0,70))} → ${r.result_chars} chars</span>`;
   else if (e === 'decision') { body = `✱ MODEL  ${r.count} proposal(s)  <span class="dim">${esc(r.model)}  ${(r.usage||{}).total_tokens} tok  ${r.latency_sec}s</span>`;
     try { let acts = JSON.parse(r.raw); if (acts && !Array.isArray(acts)) acts = acts.actions || acts.proposals || [acts];
-      for (const p of acts||[]) body += `\n<span class="reason">${esc(p.side)} ${esc(p.qty)} ${esc(p.symbol)}${p.limit_price?' @ '+esc(p.limit_price):''} — ${esc((p.reason||'').slice(0,220))}</span>`; } catch(err){} }
-  else if (e === 'order_submitted') body = `✓ ORDER  ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} @ ${esc(r.price)}${r.exit?' (exit)':''}\n<span class="reason">${esc((r.reason||'').slice(0,220))}</span>`;
-  else if (e === 'order_rejected') body = `✗ BLOCKED ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} — ${esc(r.detail)}`;
+      for (const p of acts||[]) body += `\n<span class="reason">${esc(p.side)} ${esc(p.qty)} ${esc(p.symbol)}${p.limit_price?' @ '+esc(p.limit_price):''} — ${esc(p.reason||'')}</span>`; } catch(err){}
+    const c = r.citations;  // #172: figures the reason quoted that the prior never contained
+    if (c && c.unsupported && c.unsupported.length) body += `\n<span class="reason">⚠ ${c.unsupported.length} unsupported prior citation(s): ${esc(c.unsupported.map(u => u.quoted + ' (nearest real: ' + u.nearest.label + ' ' + u.nearest.value + ')').join('; '))}</span>`;
+    if (c && c.misattributed && c.misattributed.length) body += `\n<span class="reason">⚠ ${c.misattributed.length} misattributed prior citation(s): ${esc(c.misattributed.map(u => u.quoted + ' is ' + u.nearest.label).join('; '))}</span>`; }
+  else if (e === 'order_submitted') body = `✓ ORDER  ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} @ ${esc(r.price)}${r.exit?' (exit)':''}\n<span class="reason">${esc(r.reason||'')}</span>`;
+  else if (e === 'order_rejected') { body = `✗ BLOCKED ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} — ${esc(r.detail)}`;
+    // Verdict first, then the model's case: they are different facts and a
+    // rejection needs both (same reasoning as bot/report.py::_trade_line).
+    if (r.reason) body += `\n<span class="reason">${esc(r.reason)}</span>`; }
   else if (e === 'order_error') body = `! ORDER ERROR ${esc(r.symbol)} — ${esc(r.detail)}`;
   else if (e === 'dry_run') body = `⋯ DRY    ${esc(r.side)} ${esc(r.qty)} ${esc(r.symbol)} @ ${esc(r.price)}`;
+  else if (e === 'order_canceled') body = `${r.ok ? '↩ CANCELLED' : '! cancel failed'} stale buy ${esc(r.qty)} ${esc(r.symbol)}${r.limit_price?' @ '+esc(r.limit_price):''} — ${esc(r.detail||'')}`;
   else if (e === 'cycle_end') body = `<span class="dim">◀ end, ${r.actions} action(s)</span>`;
-  else if (e === 'error') body = `! ERROR in ${esc(r.where)}: ${esc(String(r.detail).slice(0,180))}`;
+  else if (e === 'error') body = `! ERROR in ${esc(r.where)}: ${esc(String(r.detail).slice(0,600))}`;
   else if (e === 'eod_review') body = `◆ EOD ${esc(r.day)}`;
   else body = `${esc(e)} ${esc(JSON.stringify(Object.fromEntries(Object.entries(r).filter(([k])=>!['ts','event','_account'].includes(k)))).slice(0,160))}`;
   return head + `<span class="ev-${e}">${body}</span>`;

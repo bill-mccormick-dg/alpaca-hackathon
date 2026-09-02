@@ -14,10 +14,20 @@ from dataclasses import dataclass, field
 from datetime import date, datetime
 
 from bot import greeks, journal, predictions, research
+from bot.config import model_params_for
 from bot.featherless import FeatherlessClient
+from bot.menu import select_menu
 from bot.models import Proposal
 from bot.occ import parse_occ_symbol
 from bot.risk import EASTERN
+
+# The default instrument framing - the hackathon requires options, and on
+# the official account stock is a supporting act. A variant whose experiment
+# IS instrument choice overrides `instrument_note` in its config (#211).
+DEFAULT_INSTRUMENT_NOTE = (
+    "Options trading is the core of this challenge - your strategy must use it, not just stock. "
+    "Stock trades are allowed but should support your options thesis rather than replace it."
+)
 
 PROMPT_TEMPLATE = """You are the decision engine of an autonomous PAPER-trading agent on \
 Alpaca, built for a hackathon options-trading challenge. You run periodically during US \
@@ -29,12 +39,12 @@ you already hold. Never propose selling a symbol you do not hold - that would be
 short, which this account cannot do. Whole-number quantities only (shares or option \
 contracts). Market or limit orders only.
 
-Options trading is the core of this challenge - your strategy must use it, not just stock. \
-Stock trades are allowed but should support your options thesis rather than replace it.
+{instrument_note}
 
 Hard limits (enforced downstream in code; a violating proposal is rejected outright and \
 never adjusted for you, so propose within them): max ${max_position_usd:.0f} total notional \
-per position (existing + new, combined), max {max_positions} concurrent positions, max \
+per position (existing + new, combined), max {max_positions} concurrent positions (a resting buy \
+counts as one), max \
 {max_contracts_per_order} option contracts per single order, whitelist symbols only \
 ({underlyings}), options must have between {min_dte} and {max_dte} days to expiration. New \
 entries (buys) are rejected after {last_entry} ET; sells remain legal until {trade_end} ET.
@@ -43,7 +53,12 @@ How long a position can actually live, which is not the same as the expiration w
 code closes any option once it has {expiry_close_dte} day(s) to expiration, and an end-of-day \
 backstop closes anything with {eod_close_dte} day(s) or fewer left. So a contract you buy at \
 {eod_close_dte} DTE or nearer will be sold the same afternoon regardless of how it is doing - \
-choose an expiration that gives your thesis room to play out, or do not open the position.
+choose an expiration that gives your thesis room to play out, or do not open the position. \
+The reverse holds too: a contract further out than that is under NO expiry pressure - code \
+will not touch it for days, and each held position below states the first date an expiry rule \
+can. Never cite DTE, theta, a "forced close" or the backstop as a reason to sell before that \
+date; the stop-loss and take-profit own the marks, and an early exit needs a NAMED change in \
+the evidence stated at entry.
 
 Below is the account state and, per whitelisted underlying, its current price and the \
 {contracts_per_underlying} option contracts nearest the money within the tradeable \
@@ -52,20 +67,29 @@ spread_pct where both sides of the quote exist: the bid/ask spread as a percenta
 spread_pct is what a buy-then-sell round trip at market costs you before the underlying moves \
 at all (entry and exit each pay half the spread relative to mid) - your thesis must clear at \
 least that much just to break even. Prefer the tighter contract when two express the same view. \
-Alpaca's \
-feed carries no Greeks or implied volatility, so where a contract's price was stable enough \
-to solve for it, implied volatility and the standard Greeks (delta, gamma, theta per day, \
-vega per 1 vol point) were derived from it via Black-Scholes and are included too. A contract \
-missing those fields means the price data was too thin or stale to solve reliably - judge \
-that one on price, strike, and days-to-expiration alone. The Greeks are solved independently \
-per contract from a free indicative feed, so they will not be internally consistent (put and \
-call deltas at one strike need not sum to -1, and a few quotes are plainly stale). Treat them as \
-rough guides; do NOT spend effort auditing or reconciling the data - skip anything that looks \
-broken and decide from what is plausible. Keep your reasoning brief and answer decisively.
+Each \
+contract also carries implied volatility and the standard Greeks (delta, gamma, theta per day, \
+vega per 1 vol point, rho) as Alpaca computes them (greeks_source "alpaca"). Where Alpaca has \
+none - a thin or stale quote - they were derived from the contract's own price via \
+Black-Scholes instead (greeks_source "derived"): treat those as rough guides only. A contract \
+with no Greeks at all had price data too thin to solve - judge that one on price, strike, and \
+days-to-expiration alone. Either way, do NOT spend effort auditing or reconciling the data - \
+skip anything that looks broken and decide from what is plausible. Keep your reasoning brief \
+and answer decisively.
+
+POSITIONS YOU HOLD, when present below, is the authoritative list of what you own. A sell may \
+name only a symbol from that list, copied exactly: the option menu lists neighbouring strikes at \
+the same expiry right beside what you hold, and a sell that names one of those is not a sale of \
+your position - it is refused (or, when only the strike differs, rewritten to the held contract). \
+Each position carries the reason you gave when you opened it and the prediction-market prior at \
+that moment, next to the prior now. Judge whether a thesis has changed by comparing those two \
+priors and today's price action against the stated reason - not by re-deriving a view from \
+scratch every cycle. RESTING ORDERS are buys you already sent that have not filled: they count \
+against your caps, and sending the same idea again doubles the position when both fill.
 
 STRATEGY (from config.yaml - the thesis you are executing; the hard limits above still win):
 {strategy_notes}
-{learning}{predictions}{tools_note}SNAPSHOT:
+{learning}{predictions}{positions}{tools_note}SNAPSHOT:
 {snapshot}
 
 Respond with ONLY a JSON array (no markdown fence, no prose) of zero or more actions:
@@ -117,6 +141,16 @@ def _summarize_contract(symbol: str, raw: dict, spot: float, today: date) -> dic
         mid = (bid + ask) / 2
         entry["spread_pct"] = round((ask - bid) / mid * 100, 1)
 
+    # Alpaca's snapshot carries IV and Greeks on most contracts (#160 - the
+    # "free feed has none" belief was wrong; the far-OTM and quote-less ones
+    # lack them). Prefer those: computed on one surface with rates and
+    # dividends, so put and call deltas at a strike agree. Black-Scholes on
+    # our side is the fallback for the rest, and is marked as such.
+    provided = _alpaca_greeks(raw)
+    if provided:
+        entry.update(provided, greeks_source="alpaca")
+        return entry
+
     price = _contract_market_price(raw)
     if price is not None:
         g = greeks.greeks(price, spot, occ.strike, dte / 365, occ.option_type)
@@ -127,16 +161,43 @@ def _summarize_contract(symbol: str, raw: dict, spot: float, today: date) -> dic
                 gamma=round(g.gamma, 5),
                 theta=round(g.theta, 4),
                 vega=round(g.vega, 4),
+                greeks_source="derived",
             )
     return entry
 
 
+def _alpaca_greeks(raw: dict) -> dict | None:
+    """The snapshot's own impliedVolatility + greeks block, in the prompt's
+    field names and rounding; None unless IV and delta are both present."""
+    g = raw.get("greeks") or {}
+    iv = raw.get("impliedVolatility")
+    if not isinstance(g, dict) or iv is None or g.get("delta") is None:
+        return None
+    try:
+        out = {"iv": round(float(iv), 4), "delta": round(float(g["delta"]), 4)}
+        for name, places in (("gamma", 5), ("theta", 4), ("vega", 4), ("rho", 4)):
+            if g.get(name) is not None:
+                out[name] = round(float(g[name]), places)
+    except (TypeError, ValueError):
+        return None
+    return out
+
+
 def _summarize_options(snapshot: dict, config: dict, today: date) -> dict:
-    """Trims each underlying's option chain to the N contracts nearest the
-    money (config's research_contracts_per_underlying), regardless of how
+    """Trims each underlying's option chain to the N contracts that make the
+    menu (config's research_contracts_per_underlying), regardless of how
     many bot/snapshot.py fetched - keeps the prompt bounded and relevant
-    without another network round-trip."""
+    without another network round-trip.
+
+    Which N is bot/menu.py's call (#159): the at-the-money and a
+    slightly-out-of-the-money strike per side across three expiries in the
+    tactics' band, so coarse-strike names offer strike distance and not
+    just side and expiry. Chosen from the OCC symbol and Alpaca's delta
+    alone, then summarized: the summary can solve Black-Scholes per
+    contract, and since #158 the fetched chain can be thousands, so the
+    solve runs on the N that make the prompt, not the pool."""
     limit = int(config.get("research_contracts_per_underlying", 12))
+    min_dte = int(config.get("min_days_to_expiration", 1))
     summarized = {}
     for underlying, per_name in (snapshot.get("options") or {}).items():
         spot = per_name.get("underlying_price")
@@ -145,13 +206,12 @@ def _summarize_options(snapshot: dict, config: dict, today: date) -> dict:
             continue
 
         contracts = []
-        for symbol, raw in (per_name.get("contracts") or {}).items():
+        for symbol, raw in select_menu(per_name.get("contracts") or {}, spot, today, limit, min_dte=min_dte):
             entry = _summarize_contract(symbol, raw, spot, today)
             if entry is not None:
                 contracts.append(entry)
-        contracts.sort(key=lambda c: (abs(c["strike"] - spot), c["dte"]))
 
-        summarized[underlying] = {"underlying_price": spot, "contracts": contracts[:limit]}
+        summarized[underlying] = {"underlying_price": spot, "contracts": contracts}
     return summarized
 
 
@@ -164,7 +224,8 @@ decision; then answer with the JSON array. Tools never place orders.
 
 
 def build_prompt(
-    snapshot: dict, config: dict, today: date | None = None, tools: bool = False, learning: str = ""
+    snapshot: dict, config: dict, today: date | None = None, tools: bool = False, learning: str = "",
+    positions_block: str = "",
 ) -> str:
     today = today or datetime.now(EASTERN).date()
     payload = {
@@ -176,6 +237,9 @@ def build_prompt(
         tools_note=tools_note,
         learning=learning or "",
         predictions=predictions.prompt_block(snapshot.get("predictions") or {}),
+        # bot/holdings.py - the held symbols with their entry thesis and the
+        # prior then vs now (#170, #173). Sits after the prior it refers to.
+        positions=positions_block or "",
         max_position_usd=float(config["max_position_usd"]),
         max_positions=int(config["max_positions"]),
         max_contracts_per_order=int(config["max_contracts_per_order"]),
@@ -191,6 +255,15 @@ def build_prompt(
         expiry_close_dte=int(config.get("expiry_close_dte", 0)),
         eod_close_dte=int(config.get("eod_close_dte", 1)),
         contracts_per_underlying=int(config.get("research_contracts_per_underlying", 12)),
+        # Configurable because the old hardcoded text ("stock trades ...
+        # should support your options thesis rather than replace it") was the
+        # OFFICIAL account's policy baked into every account's prompt - and it
+        # silently overrode the mixed variant's whole experiment: 70 decisions
+        # over two days never so much as mentioned stock, because the template
+        # said options-first before the notes could say "choose per idea"
+        # (#211). The default keeps the official behaviour verbatim; mixed
+        # sets instrument_note to a neutral sentence.
+        instrument_note=str(config.get("instrument_note") or DEFAULT_INSTRUMENT_NOTE).strip(),
         strategy_notes=str(config.get("strategy_notes") or "(none)").strip(),
         snapshot=json.dumps(payload, separators=(",", ":")),
     )
@@ -271,15 +344,16 @@ def _sampling_kwargs(config: dict) -> dict:
     merged verbatim into the request body - the escape hatch for
     model-specific controls such as reasoning/thinking toggles
     (chat_template_kwargs, reasoning_effort, thinking), which differ per
-    model family and belong in the variant's config, not in code."""
+    model family and belong in the variant's config, not in code - with
+    `model_params_by_model[<effective model>]` winning on top (#206:
+    Kimi-K3 needs thinking ON to tool-call while K2.6/Qwen need it off to
+    answer at all)."""
     kwargs = {}
     if config.get("temperature") is not None:
         kwargs["temperature"] = float(config["temperature"])
     if config.get("max_tokens") is not None:
         kwargs["max_tokens"] = int(config["max_tokens"])
-    extra = config.get("model_params")
-    if isinstance(extra, dict):
-        kwargs.update(extra)
+    kwargs.update(model_params_for(config, config.get("model")))
     return kwargs
 
 
@@ -338,7 +412,7 @@ async def _chat_with_research(client: FeatherlessClient, mcp, config: dict, prom
 
 async def decide(
     snapshot: dict, config: dict, client: FeatherlessClient, today: date | None = None, mcp=None,
-    learning: str = "",
+    learning: str = "", positions_block: str = "",
 ) -> Decision:
     """One decision. With research tools enabled (config + an MCP client),
     the model may look things up first (bounded); otherwise a single call.
@@ -347,7 +421,7 @@ async def decide(
     carries usage, latency and the tool calls made so the journal can
     attribute cost, speed and evidence to the model/config that produced it."""
     use_tools = _research_enabled(config, mcp)
-    prompt = build_prompt(snapshot, config, today, tools=use_tools, learning=learning)
+    prompt = build_prompt(snapshot, config, today, tools=use_tools, learning=learning, positions_block=positions_block)
     started = time.monotonic()
     tool_calls: list[dict] = []
     if use_tools:

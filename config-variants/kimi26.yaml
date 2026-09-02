@@ -11,7 +11,7 @@ max_position_usd: 5000
 max_positions: 4
 max_contracts_per_order: 10
 daily_loss_cutoff_pct: 2.0
-min_days_to_expiration: 1
+min_days_to_expiration: 2  # must exceed eod_close_dte (#166)
 max_days_to_expiration: 45
 option_strike_band_pct: 0.08
 research_contracts_per_underlying: 12
@@ -31,8 +31,13 @@ strategy_notes: |
   - One idea per underlying at a time; do not stack several strikes or
     expirations on the same name.
   - Positions are managed by code after entry: a stop-loss and take-profit on
-    the premium, and a forced close on expiry day. You may still propose a
-    sell to exit early on a thesis change - say why.
+    the premium, and a forced close on expiry day. An open position is
+    presumed valid until a stop, a take-profit, or a NAMED change in the
+    evidence cited at entry - to exit early, say which number moved and in
+    which direction. DTE is not such a number: no expiry rule touches a
+    position before the date shown on it, so expiry pressure is never a
+    reason to exit early. Sell only the exact symbol listed under POSITIONS
+    YOU HOLD.
   - Stock is allowed only as a small directional complement, never the main
     idea.
 

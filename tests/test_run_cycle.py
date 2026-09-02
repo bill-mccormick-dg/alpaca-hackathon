@@ -70,6 +70,19 @@ class AccountFromSnapshotTest(unittest.TestCase):
         snap = {"account": {"equity": 1.0, "start_of_day_equity": 1.0, "cash": 1.0, "positions": []}}
         self.assertEqual(run_cycle.account_from_snapshot(snap).positions, {})
 
+    def test_open_orders_round_trip_and_unknown_stays_unknown(self):
+        """#171: [] is 'checked, none resting', None is 'lookup failed'."""
+        base = {"equity": 1.0, "start_of_day_equity": 1.0, "cash": 1.0, "positions": []}
+        order = {"id": "a", "client_order_id": "hb-x", "symbol": "QQQ260903P00709000", "side": "buy", "qty": 4.0,
+                 "filled_qty": 0.0, "order_type": "limit", "limit_price": 3.56, "submitted_at": "2026-09-01T16:00:17Z",
+                 "instrument": "option"}
+        acct = run_cycle.account_from_snapshot({"account": dict(base, open_orders=[order])})
+        self.assertEqual([o.symbol for o in acct.pending_buys()], ["QQQ260903P00709000"])
+        self.assertEqual(acct.committed_position_count, 1)
+        self.assertEqual(run_cycle.account_from_snapshot({"account": dict(base, open_orders=[])}).open_orders, [])
+        self.assertIsNone(run_cycle.account_from_snapshot({"account": dict(base, open_orders=None)}).open_orders)
+        self.assertIsNone(run_cycle.account_from_snapshot({"account": base}).open_orders)
+
 
 
 
@@ -78,7 +91,7 @@ class CycleEndAlwaysPublishesTest(unittest.TestCase):
 
     There are four of them - exits-only, final-day skip, no-proposals, and the
     normal finish - and an earlier version hooked the trade-report publish to
-    only the first. So the Home Assistant trade card and the team dashboard
+    only the first. So the Home Assistant trade and report cards
     refreshed only on cycles that closed a position, which on a normal day is
     never. Nothing failed; the card just sat at `unknown`.
 

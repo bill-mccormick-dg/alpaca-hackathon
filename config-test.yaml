@@ -33,10 +33,17 @@ max_contracts_per_order: 10
 # and halt for the day (flatten logic: a later step).
 daily_loss_cutoff_pct: 2.0
 
-# Options expiration window — reject proposals for contracts outside this
-# range. Guards against 0-DTE gamma risk on one side, multi-month decay drag
-# on the other.
-min_days_to_expiration: 1
+# Options expiration window — entries (buys) for contracts outside this range
+# are refused; sells are always legal down to expiry, so a position can be
+# closed on its last day. Guards against 0-DTE gamma risk on one side,
+# multi-month decay drag on the other.
+#
+# The floor must exceed eod_close_dte (#166): at 1 the funnel admitted 1-DTE
+# entries the 14:50 CT backstop was guaranteed to sell the same afternoon -
+# the spread paid twice for a thesis given no time. Day 2's 0-2 DTE-at-entry
+# bucket lost $300 over 2 trades. Only the prompt argued against it, and a
+# guardrail that depends on the model's goodwill is not one.
+min_days_to_expiration: 2
 max_days_to_expiration: 45
 
 # Option chain research is bounded to strikes within this fraction of the
@@ -90,15 +97,31 @@ strategy_notes: |
   - One idea per underlying at a time; do not stack several strikes or
     expirations on the same name.
   - Positions are managed by code after entry: a stop-loss and take-profit on
-    the premium, and a forced close on expiry day. You may still propose a
-    sell to exit early on a thesis change - say why.
+    the premium, and a forced close on expiry day. An open position is
+    presumed valid until a stop, a take-profit, or a NAMED change in the
+    evidence cited at entry - to exit early, say which number moved and in
+    which direction. DTE is not such a number: no expiry rule touches a
+    position before the date shown on it, so expiry pressure is never a
+    reason to exit early. Sell only the exact symbol listed under POSITIONS
+    YOU HOLD.
   - Stock is allowed only as a small directional complement, never the main
     idea.
 
 # Model - the Featherless model id and sampling for the decide call. Also
 # runtime-overridable (see bot/overrides.py) for intraday A/B without a
 # deploy; a change here in git is the durable version.
-model: Qwen/Qwen3.8-Flash-Next  # challenger: 4x cheaper than Kimi, newest agentic model (Aug 2026)
+# K3 since 2026-09-02 (dashboard ~02:00 ET, made durable here): with the
+# official account promoted to Qwen, this account runs the qualification
+# trial for Kimi-K3 - benchmark leader (llm-stats 54.5 vs Qwen 49.6, #3 in
+# agents) with zero live trades until today. Verified on a real prompt in
+# #206: thinking+answer 3,545 completion tokens in ~140s, budget 6000 via
+# its model_params_by_model entry. Promotion to official for Thursday is a
+# decision for tonight's digest, not a default.
+model: moonshotai/Kimi-K3
+# Pinned (dashboard, same session): the computed reviewer for a K3 trader
+# would be K2.6; the operator chose Qwen3.8-Flash-Next - still not this
+# account's own model, so the no-self-review property holds.
+review_model: Qwen/Qwen3.8-Flash-Next
 # Qwen3.8 / Kimi-K2.6 are thinking models: without this they spend the whole
 # max_tokens budget on hidden reasoning and return empty content (confirmed
 # live 2026-08-29). GLM-5.3-Flash ignores this flag entirely - not usable here.
@@ -119,8 +142,46 @@ model_params:
   chat_template_kwargs:
     enable_thinking: false
 temperature: 0.2
-max_tokens: 800 # a JSON array of a few proposals, not prose
-request_timeout_sec: 60
+# 1500 since 2026-09-02, matching the official account (same dashboard
+# session) - headroom against finish_reason=length, not extra spend.
+max_tokens: 1500
+# 240 for K3 (#206): its decisions run ~140s, above the old 60 - which
+# only survived empirically because httpx's read timeout counts between
+# chunks. Applies to every model on this account; the fast models never
+# get near it.
+request_timeout_sec: 240
+
+# Per-token prices (USD per million) for the nightly cost line - this file
+# never had the block (an oversight; mixed.yaml has it), so the test
+# account's costs went unpriced. Same list as config.yaml.
+model_prices:
+  moonshotai/Kimi-K2-Instruct: {in: 0.6, out: 2.5}
+  moonshotai/Kimi-K2.6: {in: 0.77, out: 3.5}
+  Qwen/Qwen3.8-Flash-Next: {in: 0.15, out: 0.5}
+  # K3 (#206): public per-M rates from llm-stats (via Fireworks) - the most
+  # expensive option on the list by far; the dashboard select shows it, the
+  # nightly cost line prices it.
+  moonshotai/Kimi-K3: {in: 3.0, out: 15.0}
+
+# Per-model exceptions to model_params, merged on top per top-level key at
+# call time against the EFFECTIVE model (bot/config.py::model_params_for,
+# #206). Kimi-K3 is the reason this exists: verified live on Featherless
+# 2026-09-02, it REFUSES tool calls while thinking is disabled ("tool usage
+# is currently disabled", in prose) but tool-calls correctly with its
+# default thinking on - and unlike K2.6/Qwen its thinking is brief (a
+# trivial prompt answered in 37 completion tokens), so leaving thinking on
+# does not eat the budget the way the global toggle exists to prevent.
+model_params_by_model:
+  moonshotai/Kimi-K3:
+    chat_template_kwargs:
+      enable_thinking: true
+    # Measured on a real ~8k-token decision prompt (2026-09-02, official
+    # dry-run): thinking + answer took 3,545 completion tokens and 140s; at
+    # the fleet's 1500 the cycle forfeited (finish_reason=length, the
+    # answer never started). This rides the same per-model merge into the
+    # request body, so selecting K3 from the dashboard gets a workable
+    # budget without touching the fleet's max_tokens.
+    max_tokens: 6000
 
 # Transient model failures cost a whole cycle otherwise - the next attempt is
 # the next cron slot, 10 minutes later (issue #85: 21% of early cycles lost a
@@ -130,7 +191,10 @@ request_timeout_sec: 60
 # never overlap the next one. Auth/quota failures and truncated output are
 # never retried - see bot/retry.py.
 decide_max_attempts: 3
-decide_retry_budget_sec: 120
+# 400 for K3 (#206): a single ~140s attempt already exceeded the old 120,
+# so a transient failure got no retry. 400 fits two K3 attempts inside the
+# 10-minute cadence.
+decide_retry_budget_sec: 400
 
 # Deterministic exits (bot/exits.py), checked at the top of every cycle
 # BEFORE the model is consulted. Percentages are of the entry premium (or

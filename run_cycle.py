@@ -17,7 +17,17 @@ import asyncio
 import sys
 from datetime import date, datetime, timedelta, timezone
 
-from bot import execute, journal, learning, mqtt, overrides, predictions
+from bot import (
+    citations,
+    execute,
+    holdings,
+    journal,
+    learning,
+    mqtt,
+    overrides,
+    predictions,
+    stale_orders,
+)
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import config_provenance, load_config
 from bot.credentials import load_credentials, validate_account
@@ -26,12 +36,19 @@ from bot.exits import check_exits
 from bot.featherless import DEFAULT_MODEL, FeatherlessClient
 from bot.flatten import flatten_all
 from bot.identity import check_account_identity
-from bot.models import AccountState, Position
+from bot.models import AccountState, OpenOrder, Position
+from bot.occ import parse_occ_symbol
 from bot.orders import INCOMPLETE
 from bot.report import trades_payload
 from bot.retry import RetryBudget, call_with_retry, summarize
 from bot.risk import EASTERN, RiskManager, early_exit_block
-from bot.snapshot import _data, build_snapshot, price_for_proposal, quote_option_mid
+from bot.snapshot import (
+    _data,
+    build_snapshot,
+    chain_coverage,
+    price_for_proposal,
+    quote_option_mid,
+)
 from bot.trades import pair_round_trips
 
 # Hackathon rule (docs/alpaca-official-guidelines.md): the judging account
@@ -79,6 +96,26 @@ async def learning_block(client: AlpacaMCPClient, config: dict, snap: dict, now:
         return ""
 
 
+def holdings_block(snap: dict, prior: dict | None, config: dict | None = None, today=None) -> str:
+    """POSITIONS YOU HOLD / RESTING ORDERS for the prompt (bot/holdings.py;
+    #170, #173, #188): the held symbols with the reason and prior they were
+    opened on, the prior now, and the code exits with the first date an
+    expiry rule can act. Always rendered - a flat account gets the one-line
+    "none" so a sell is unmistakably a naked short. The journal walk is what
+    can fail; then the positions still print, just without their history."""
+    account = snap.get("account") or {}
+    positions = account.get("positions") or []
+    open_orders = account.get("open_orders", [])
+    context: dict = {}
+    if positions:
+        try:
+            history = journal.read_events("all", events=("order_submitted", "predictions", "flatten", "daily_loss_flatten"))
+            context = holdings.entry_context(positions, history)
+        except Exception as exc:  # noqa: BLE001 - context is advisory; the list of holdings is not
+            journal.log("error", where="holdings", detail=describe_error(exc))
+    return holdings.render_positions_block(positions, open_orders, context, prior, config, today)
+
+
 def account_from_snapshot(snap: dict) -> AccountState:
     acct = snap["account"]
     positions = {
@@ -93,12 +130,14 @@ def account_from_snapshot(snap: dict) -> AccountState:
         )
         for p in acct["positions"]
     }
+    raw_orders = acct.get("open_orders")
     return AccountState(
         equity=acct["equity"],
         start_of_day_equity=acct["start_of_day_equity"],
         cash=acct["cash"],
         positions=positions,
         account_number=acct.get("account_number"),
+        open_orders=[OpenOrder(**o) for o in raw_orders] if raw_orders is not None else None,
     )
 
 
@@ -113,7 +152,7 @@ async def run(args: argparse.Namespace) -> int:
 
     def end_cycle(**fields) -> None:
         """Journal cycle_end, and refresh the day's trades for the Home
-        Assistant / team view first (#87).
+        Assistant report cards first (#87, #145).
 
         Every exit path goes through here on purpose. The first version of
         this hooked only the exits-only early return, so a NORMAL cycle - the
@@ -190,6 +229,17 @@ async def run(args: argparse.Namespace) -> int:
             f"equity {acct.equity:.2f}  cash {acct.cash:.2f}  day P&L {day_pnl:+.2f}  "
             f"positions {acct.open_position_count}  account={args.account}"
         )
+        # Whether the option menu actually reached the configured DTE window
+        # this cycle (#158) - an observation, so it rides on cycle_start
+        # rather than config, and a truncated chain is loud, not silent.
+        coverage = chain_coverage(snap.get("options"))
+        for underlying, cov in coverage.items():
+            if cov["truncated"]:
+                print(
+                    f"WARNING: {underlying} option chain truncated at {cov['pages']} page(s) "
+                    f"(max DTE fetched {cov['max_dte']}) - raise CHAIN_MAX_PAGES or narrow the band",
+                    file=sys.stderr,
+                )
         journal.log(
             "cycle_start",
             account=args.account,
@@ -197,10 +247,30 @@ async def run(args: argparse.Namespace) -> int:
             day_pnl=day_pnl,
             positions=acct.open_position_count,
             dry_run=args.dry_run,
+            chain_coverage=coverage,
         )
         # What this cycle actually ran with (git config + active overrides),
         # so a P&L change can be attributed to the config change behind it.
         journal.log("config", account=args.account, **config_provenance(config))
+
+        # Entry buys still resting from an EARLIER cycle are cancelled before
+        # anything else looks at the account (#171): a thesis the model has
+        # not re-examined must not fill hours later, and must not be counted
+        # as either held or absent. Sells are never touched. The snapshot and
+        # the account are edited to match, so the model and the funnel see
+        # the post-cancel state, not the one the broker reported a moment ago.
+        open_orders = (snap.get("account") or {}).get("open_orders")
+        if open_orders is None:
+            journal.log("error", where="open_orders", detail="open-order lookup failed; funnel is sizing on holdings alone")
+            print("WARNING: could not read open orders - resting buys are invisible this cycle", file=sys.stderr)
+        elif not args.dry_run:
+            for cancel in await stale_orders.cancel_stale_entries(client, open_orders):
+                journal.log("order_canceled", reason="unfilled entry from a previous cycle", **cancel)
+                print(f"{'CANCELLED' if cancel['ok'] else 'cancel FAILED for'} stale buy {cancel['qty']} {cancel['symbol']}"
+                      f"{' @ ' + str(cancel['limit_price']) if cancel.get('limit_price') else ''} (sent {cancel['submitted_at']}): {cancel['detail']}")
+                if cancel["ok"]:
+                    open_orders[:] = [o for o in open_orders if o["id"] != cancel["id"]]
+            acct.open_orders = [OpenOrder(**o) for o in open_orders]
 
         if risk.daily_loss_breached(acct):
             # Flatten everything, then halt for the rest of the day.
@@ -256,6 +326,7 @@ async def run(args: argparse.Namespace) -> int:
             return 0
 
         outcomes = await learning_block(client, config, snap, now)
+        positions_block = holdings_block(snap, prior, config, now.date())
 
         # Measured 21% of cycles losing their decision to a transient model
         # failure (issue #85). Without a retry the slot is simply forfeited -
@@ -279,7 +350,8 @@ async def run(args: argparse.Namespace) -> int:
 
         try:
             decision = await call_with_retry(
-                lambda: decide(snap, config, featherless, today=now.date(), mcp=client, learning=outcomes),
+                lambda: decide(snap, config, featherless, today=now.date(), mcp=client, learning=outcomes,
+                               positions_block=positions_block),
                 budget=budget,
                 on_retry=_on_retry,
             )
@@ -296,9 +368,36 @@ async def run(args: argparse.Namespace) -> int:
             print(f"decision step failed: {detail}", file=sys.stderr)
             return 1
         proposals, raw = decision.proposals, decision.raw
+        # Do the reasons quote numbers the prompt actually contained? (#172)
+        # Journaled on the decision so the digest and reviewer can count it.
+        cited = citations.audit(proposals, prior, decision.tool_calls)
+        if cited and cited.get("unsupported"):
+            print(f"WARNING: {citations.describe(cited)}", file=sys.stderr)
+        # And do exit reasons state facts the account contradicts - a forced
+        # close that is days away, or an above/below-prior-close claim the
+        # tape disproves? (#188, found by godmagick)
+        dtes = {}
+        for sym, pos in acct.positions.items():
+            if pos.instrument == "option":
+                try:
+                    dtes[sym] = (parse_occ_symbol(sym).expiration - now.date()).days
+                except ValueError:
+                    pass
+        spot_ref = {}
+        for und, block in (snap.get("options") or {}).items():
+            spot = (block or {}).get("underlying_price")
+            entry = (prior or {}).get(und)
+            ref = (entry.get("chain") or {}).get("reference_close") if isinstance(entry, dict) else None
+            if spot and ref:
+                spot_ref[und] = (float(spot), float(ref))
+        exit_claims = citations.audit_exit_claims(proposals, dtes, spot_ref, config)
+        if exit_claims:
+            print(f"WARNING: {citations.describe_exit_claims(exit_claims)}", file=sys.stderr)
         journal.log(
             "decision",
             raw=raw,
+            citations=cited,
+            exit_claims=exit_claims or None,
             count=len(proposals),
             model=decision.model,
             usage=decision.usage,
@@ -307,6 +406,7 @@ async def run(args: argparse.Namespace) -> int:
             reasoning=decision.reasoning or None,
             tool_calls=decision.tool_calls or None,
             learning_chars=len(outcomes) or None,
+            positions_block_chars=len(positions_block) or None,
         )
 
         if args.verbose:
@@ -327,17 +427,38 @@ async def run(args: argparse.Namespace) -> int:
         # Entry times for the min-hold guard: the last submitted BUY per
         # symbol today, from the journal. Read once per cycle, not per
         # proposal - and only the model's sells are guarded; exits.py and
-        # flatten.py never pass this way.
+        # flatten.py never pass this way. blocked_today counts the guard's
+        # own refusals per symbol (#188): the 2026-09-01 SPY put was
+        # re-proposed three cycles running against an identical rejection,
+        # then sold the moment the leash expired - the repeat count makes
+        # the pattern visible to the model and the digest.
         entries_today = {}
-        for rec in journal.read_events(events=("order_submitted",)):
-            if rec.get("side") == "buy" and rec.get("symbol"):
-                entries_today[rec["symbol"]] = rec.get("ts")
+        blocked_today: dict[str, int] = {}
+        for rec in journal.read_events(events=("order_submitted", "order_rejected")):
+            sym = rec.get("symbol")
+            if not sym:
+                continue
+            if rec.get("event") == "order_submitted" and rec.get("side") == "buy":
+                entries_today[sym] = rec.get("ts")
+            elif rec.get("event") == "order_rejected" and str(rec.get("detail") or "").startswith("model exit blocked"):
+                blocked_today[sym] = blocked_today.get(sym, 0) + 1
 
         for p in proposals:
-            block = early_exit_block(p, acct.positions.get(p.symbol), entries_today.get(p.symbol), config, now)
+            # #170: a sell naming a neighbouring strike of the one contract
+            # held at that expiry means the held one. Resolved before every
+            # guard so the min-hold check and the funnel judge the real
+            # position; the journal keeps what the model actually wrote.
+            as_written = p.symbol
+            p, resolution = holdings.resolve_sell(p, acct.positions)
+            resolved = {"resolved_from": as_written} if resolution else {}
+            if resolution:
+                print(f"RESOLVED {resolution}")
+            block = early_exit_block(p, acct.positions.get(p.symbol), entries_today.get(p.symbol), config, now,
+                                     blocked_before=blocked_today.get(p.symbol, 0))
             if block:
                 journal.log("order_rejected", detail=block, side=p.side, qty=p.qty,
-                            symbol=p.symbol, instrument=p.instrument, price=None, reason=p.reason)
+                            symbol=p.symbol, instrument=p.instrument, price=None, reason=p.reason,
+                            model=decision.model, **resolved)
                 print(f"REJECTED {p.side} {p.qty} {p.symbol}: {block}")
                 continue
             price = price_for_proposal(snap, p)
@@ -363,9 +484,17 @@ async def run(args: argparse.Namespace) -> int:
                     client, risk, acct, price, p, dry_run=args.dry_run, now=now
                 )
             label = f"{p.side} {p.qty} {p.symbol}"
+            # `model` on every proposal-funnel order event, so "which model
+            # made this trade" is read straight off the record instead of
+            # joined to the same cycle's decision by timestamp - the join
+            # breaks exactly on the days it matters, when the model changed
+            # mid-session (2026-08-31: 32 of 33 decisions on an override).
+            # Code exits (stop/take-profit/expiry) stay unstamped: no model
+            # decided those, and the absence says so.
             fields = {
                 "side": p.side, "qty": p.qty, "symbol": p.symbol, "instrument": p.instrument,
                 "price": price, "price_source": price_source, "reason": p.reason,
+                "model": decision.model, **resolved,
             }
             if r.status == execute.ZERO_QTY:
                 continue

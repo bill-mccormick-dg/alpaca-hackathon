@@ -1,6 +1,8 @@
-# AI Day Trader - Long Premium, Short Leash — one-page write-up
+# Autobelay — one-page write-up
 
-**Team:** Bill McCormick (+1) · **Account:** `PA3VS39Y5LE2` ($100,000 paper) ·
+*long premium, short leash*
+
+**Team:** RazorsEdge — William P. McCormick / William C. McCormick · **Account:** `PA3VS39Y5LE2` ($100,000 paper) ·
 **Repo:** github.com/bill-mccormick-dg/alpaca-hackathon (MIT) · **Stack:** Alpaca
 MCP server, Featherless.ai (Kimi-K2 / Qwen3.8), Python
 
@@ -17,10 +19,12 @@ can name. It is bad at managing a position minute to minute, so it doesn't.
 ## AI logic
 
 Every 10 minutes in market hours the agent builds a snapshot through Alpaca's
-MCP server — account, positions, clock, and per underlying the ~12
-nearest-the-money contracts in a 1–45 DTE window. Alpaca's free indicative feed
-has no Greeks, so IV, delta, gamma, theta and vega are **derived on the fly**
-from each contract's price via Black-Scholes (`bot/greeks.py`). The model then
+MCP server — account, positions, open orders, clock, and per underlying a
+12-contract menu from a chain fetched across the whole 2–45 DTE window: the
+at-the-money and a slightly-out-of-the-money strike per side across three
+expiries in the tactics' band, each with Alpaca's own IV and
+Greeks (Black-Scholes in `bot/greeks.py` fills in only the contracts Alpaca
+does not price, and marks them as derived). The model then
 runs a **bounded research loop**: up to six read-only tool calls (recent bars, a
 stock snapshot, specific contracts, news) through Alpaca's MCP server, each
 journaled, after which it must answer with a JSON array of proposals or `[]`.
@@ -29,12 +33,28 @@ Holding is the default. The thesis and tactics are in the prompt as
 token usage and latency are journaled every cycle. Thinking-mode models are run
 with thinking disabled; that single setting turned empty answers into decisions.
 
+**The guardrails do not trust the model's arithmetic, and we check it.** Each
+cycle the model is handed a prediction-market prior (Kalshi's index-close
+market and the option chain's own implied odds). Every percentage it then cites
+in a stated reason is checked against the numbers it was actually shown, the
+count rides on the `decision` journal event, and the end-of-day digest lists
+any quote that matches nothing (or that belongs to a different underlying) with
+the real value beside it; the reviewer model is told to judge decisions on the
+journalled prior rather than on the figure quoted. The audit was built on a
+suspicion — three day-2 quotes looked invented when read against the wrong
+hour's prompt — and its first run cleared the model: 22 figures quoted on day
+2, 22 exact, one attributed to the wrong underlying. That is the honest
+robustness story: the model's prose is checked, and the check said it was
+telling the truth. Each open position is also shown with the prior *at the
+time it was opened* beside the prior now, so "has my thesis changed?" is a
+comparison against recorded numbers, not against the model's memory of them.
+
 ## Risk gates (deterministic, never negotiated)
 
 `bot/risk.py::check_order()` is the only gate and `bot/execute.py::place_proposal()`
 the only order path. Per proposal: whitelist, side/qty sanity, ≤ $5,000 notional
 per position (contracts × 100 × price), ≤ 4 positions, ≤ 10 contracts per
-order, 1–45 DTE, entries only 09:45–15:15 ET, sells until 15:45. Per cycle,
+order, 2–45 DTE on entries (sells stay legal to expiry), entries only 09:45–15:15 ET, sells until 15:45. Per cycle,
 **before** the model is consulted: close any contract on its expiry day, and
 any position past −40 % / +60 % of entry premium (`bot/exits.py`). Per day:
 a 2 % loss cutoff flattens everything and halts; a manual `HALT` file is a

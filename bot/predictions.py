@@ -495,7 +495,9 @@ def prompt_block(predictions: dict) -> str:
         "Kalshi's event market on the index close, and the option chain's own implied odds "
         "(P(S>K) = -dC/dK from call prices). They are independent crowds measuring nearly the "
         "same thing - DISAGREEMENT between them is information; agreement is just the base rate. "
-        "Compare both to today's price action:"
+        "Compare both to today's price action. When you cite one of these numbers in a reason, quote "
+        "it exactly as printed or refer to it by name (e.g. 'Kalshi P(down>1%) supports this') - never "
+        "round or restate it; quoted figures are audited against this block:"
     )
     lines = []
     for underlying, s in predictions.items():

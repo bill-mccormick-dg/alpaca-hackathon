@@ -31,14 +31,16 @@ glossary for the terms these docs use.
   whole opinion about a stock laid out on a grid, and almost everything this
   bot does starts by fetching a slice of it — the strikes within ±8% of the
   current price, in the tradeable expiration window — and showing the model
-  the 12 nearest the money. Read one row as: "the market will sell you the
-  right to buy SPY at 765 until Wednesday for about $2.40."
+  12 of them: at and slightly out of the money, call and put, across three
+  expiries. Read one row as: "the market will sell you the right to buy SPY
+  at 765 until Wednesday for about $2.40."
 - **ATM / OTM** — at-the-money (strike ≈ current price) / out-of-the-money
   (strike beyond it). OTM contracts cost less and need a bigger move.
 - **The Greeks** — the collective name for four sensitivities of an option's
   price, each written as a Greek letter, and each answering "if *one* thing
-  changes, how much does this contract move?" `bot/greeks.py` derives all four
-  per contract. They are the next four entries.
+  changes, how much does this contract move?" Alpaca's snapshot supplies them
+  (plus rho) for most contracts; `bot/greeks.py` derives them only for the
+  ones it could not price. They are the next four entries.
 - **Delta** — how much the option moves per $1 move in the stock. Runs 0 to +1
   for a call and −1 to 0 for a put, which is why the tactics say `|delta|`. It
   doubles as a rough "chance this finishes in the money", so |delta| ≈ 0.4 is a
@@ -140,19 +142,25 @@ makes the guardrails able to be simple absolute numbers rather than
 margin-aware, assignment-aware risk logic — the sort we could not prove correct
 in four days.
 
-### The Greeks are indicative, and the prompt says so
+### Where the Greeks come from, and the prompt says so
 
-`bot/greeks.py` solves each contract's implied volatility from *its own* market
-price and derives delta/gamma/theta/vega from that — independently, per
-contract. They will therefore not be internally consistent: put and call deltas
-at one strike need not sum to −1, and some quotes are plainly stale.
+Alpaca's option snapshot carries `impliedVolatility` and a `greeks` block
+(delta, gamma, theta, vega, rho) on most contracts — computed on one surface
+with rates and dividends, so put and call deltas at a strike agree. Those are
+what the prompt shows, tagged `greeks_source: alpaca`. (Until 2026-08-31 the
+bot believed the free feed carried none and re-derived everything; on NVDA the
+home-grown numbers were ~5 vol points and ~5 delta points off, with the
+call/put skew the wrong way round — see #160.)
 
-This is stated in the prompt rather than hidden, along with an instruction not
-to spend effort auditing or reconciling the numbers: skip anything that looks
-broken and decide from what is plausible. A contract whose price was too thin to
-solve arrives with no Greeks at all and is to be judged on price, strike and DTE
-alone. Presenting derived figures as if they were an exchange feed would invite
-exactly the wrong kind of confidence.
+The contracts Alpaca does not price — far out of the money, or a one-sided
+quote — fall back to `bot/greeks.py`, which solves implied volatility from the
+contract's *own* market price and derives the rest, independently per contract.
+Those arrive tagged `greeks_source: derived` and the prompt tells the model to
+treat them as rough guides, along with an instruction not to spend effort
+auditing or reconciling the numbers: skip anything that looks broken and decide
+from what is plausible. A contract whose price was too thin even for that
+arrives with no Greeks at all and is to be judged on price, strike and DTE
+alone.
 
 ## When the bot buys or sells stock
 
@@ -268,11 +276,16 @@ unparseable"), so shares are held overnight by design. Only the
 | Daily-loss halt, kill switch, end-of-day handling | code | `run_cycle.py`, `flatten.py` |
 | The only order path | code | `bot/execute.py::place_proposal()` |
 
-The model is given: account state, per-underlying spot price, the ~12
-nearest-the-money contracts within the tradeable expiration window with
-bid/ask/last and **derived** Greeks (Alpaca's free feed carries none —
-`bot/greeks.py` solves implied volatility from each contract's market price
-and computes delta/gamma/theta/vega from it), the hard limits, and the
+The model is given: account state, per-underlying spot price, a menu of ~12
+contracts per name (the chain is fetched across the *whole* window — paginated,
+since one API page covers only 1–3 DTE on SPY/QQQ — and `bot/menu.py` spends
+the 12 slots on three expiries across the tactics' 2–14 DTE band, and per
+expiry and side the at-the-money strike plus the out-of-the-money strike whose
+delta is nearest 0.40; see "What the model sees" below for why) with
+bid/ask/last and Greeks (Alpaca's own IV and delta/gamma/theta/vega/rho where
+the feed supplies them, which is most contracts; `bot/greeks.py` derives them
+from the contract's market price for the rest, tagged as such), the hard
+limits, and the
 strategy notes. It returns a JSON array of proposals or `[]`. Holding is the
 default and is treated as a good decision.
 
@@ -312,14 +325,45 @@ which supplies the reference level.
 Nothing in the code acts on it. `risk.py`, `execute.py` and `exits.py` never
 see it; it appears in exactly one place, the prompt, labelled:
 
-> PREDICTION MARKETS (Kalshi, crowd-implied, read-only - a PRIOR to weigh, not
-> a signal to copy; compare to what the option chain implies and to today's
-> price action)
+> PREDICTION MARKETS (crowd-implied, read-only - PRIORS to weigh, not signals
+> to copy): Kalshi's event market on the index close, and the option chain's
+> own implied odds … DISAGREEMENT between them is information; agreement is
+> just the base rate. Compare both to today's price action. When you cite one
+> of these numbers in a reason, quote it exactly as printed or refer to it by
+> name - never round or restate it; quoted figures are audited against this
+> block:
 
 So it can only influence a trade by persuading the model, and anything it
 inspires still passes the same `check_order()` funnel as every other proposal.
 Read-only, no API key, never traded, cached for five minutes, and silently
 omitted on any failure.
+
+**And the model's citations of it are audited (#172).** Built on a suspicion
+that turned out to be the operator's error, and kept because the check is
+cheap and the risk is real. On 2026-09-01 the judged account's model wrote
+"68.7% chance of down>1% close", "only 7.6% chance of finishing above prior
+close" and "extreme bearishness (81.9% down>1%)". Read against the prompt an
+hour earlier those looked invented and skewed toward the trade; read against
+the prior journaled in the *same* cycle — 13:00 and 13:20 Eastern, where the
+email and the viewer had shown 12:00 and 12:20 Central — all three are exact.
+The first run of the audit over that day found 22 quoted figures, 22 supported.
+What it did surface was subtler: at 13:20 the QQQ chain prior had been withheld
+as noisy, and the model quoted SPY's chain figure (27.3%) as "the options
+market" for QQQ — a real number under the wrong name.
+
+So `bot/citations.py` checks every percentage the model writes in a
+prior-shaped clause against every number the prior block carried (both crowds,
+both underlyings, and complements for "P(below)" phrasing), and reports two
+kinds of miss: *unsupported*, a figure that matches nothing within half a point,
+and *misattributed*, a figure that matches only another underlying's prior
+while this one had a prior on show. Both ride on the `decision` journal event
+as `citations`; the digest prints the counts and each miss beside the real
+value; the reviewer prompt says to judge on the journalled prior rather than
+the quote; the feed marks the cycle. Deliberately reporting only:
+`check_order()` bounds what can be traded and does not grade rhetoric. The
+prompt's last sentence above — quote or name, never restate — is the cheap
+half; the audit is how we know whether the model's prose can be trusted on a
+given day, which after day 2 it could.
 
 ### When it is withheld
 
@@ -507,13 +551,15 @@ with the reasoning each carries in `config.yaml`:
 | Notional per position | $5,000 | what the position costs to open: `contracts x 100 x contract price` for options — the premium paid, *not* the underlying exposure — and `qty x price` for shares |
 | Concurrent positions | 4 | keeps total exposure comprehensible at a glance |
 | Contracts per order | 10 | "a backstop against a fat-fingered or hallucinated large size, independent of the dollar cap" |
-| Expiration window | 1–45 DTE | "guards against 0-DTE gamma risk on one side, multi-month decay drag on the other" |
+| Expiration window (entries) | 2–45 DTE | "guards against 0-DTE gamma risk on one side, multi-month decay drag on the other" — and, since #166, the floor sits above `eod_close_dte` so the funnel refuses what the 14:50 backstop would sell the same day. Sells are exempt: a position must stay closable to expiry |
 | Entries | 09:45–15:15 ET | skips the opening auction's noise; stops opening new risk near the close |
 | Sells | until 15:45 ET | exits stay legal after entries stop |
 | Daily loss | 2% of start-of-day equity | breaching it flattens and halts for the day |
+| Resting orders | counted | a buy still working at the broker counts as held: a second buy for the same symbol is refused, and its symbol counts toward the position cap — the caps bound *committed* exposure, not just what has filled (#171) |
+| Stale entries | cancelled | any of the bot's own buys still open at the top of a cycle was sent by an earlier cycle; it is cancelled (journaled as `order_canceled`) before the model or the funnel look at the account. Sells are never cancelled this way |
 
 **These are the hard caps, not the tactics.** The prompt asks for 2–14 DTE (see
-above); the *code* permits 1–45. The narrower band is a preference the model is
+above); the *code* permits 2–45. The narrower band is a preference the model is
 told to favour, the wider one is the limit it cannot cross — so a sensible
 contract slightly outside the tactic is allowed, and a wild one is not.
 
@@ -526,9 +572,8 @@ enforced in `bot/risk.py`. Nothing about the platform caps the list.
 Worth separating from a number it is easy to confuse with:
 `research_contracts_per_underlying: 12` is **12 option contracts per name**, not
 an allowance of twelve symbols. The two are different axes, and together they
-set the size of the menu: 5 underlyings × 12 nearest-the-money contracts = **60
-contracts in every prompt**, each with strike, DTE, bid/ask/last and derived
-Greeks.
+set the size of the menu: 5 underlyings × 12 contracts = **60 contracts in
+every prompt**, each with strike, DTE, bid/ask/last and Greeks.
 
 Three reasons the list stays short:
 
@@ -551,9 +596,13 @@ ten-minute cadence.
 **Changing it** is a one-line config edit — the whitelist is data, not code. Two
 caveats: `config.yaml` is trading code under the [deploy
 freeze](operations.md#deploy-safety-during-the-scoring-week), so it cannot land
-Mon–Fri 08:20–15:15 CT; and prefer adding *names* over raising
-`research_contracts_per_underlying`, since 12 contracts already span the ±8%
-strike band and more per name mostly surfaces strikes the tactics would not pick.
+Mon–Fri 08:20–15:15 CT; and know what raising
+`research_contracts_per_underlying` actually surfaces: the pool is the whole
+strike band across the whole expiration window, and the first twelve slots go
+to the at-the-money and slightly-out-of-the-money strike per side across three
+expiries (`bot/menu.py`, #159); slots beyond that fill nearest-the-money first,
+so a higher count mostly adds neighbouring strikes on SPY/QQQ and more expiries
+of the same strikes on NVDA/AAPL/MSFT.
 
 One mechanical detail, in case you ever debug a rejection: an option proposal is
 checked against its **underlying**, not its OCC symbol. A contract on a
@@ -575,8 +624,23 @@ The two keys are easy to confuse and do different jobs:
 |---|---|---|---|
 | `expiry_close_dte` | 0 | `bot/exits.py`, **every cycle** | closes a contract once it has this many days left — 0 means "expiring today" |
 | `eod_close_dte` | 1 | `flatten.py --expiring-only`, **once at 15:50 ET** | the cron backstop, in case a cycle did not run |
+| `min_days_to_expiration` | 2 | `bot/risk.py::check_order()`, **on every buy** | the entry floor — must sit *above* `eod_close_dte`, or the funnel admits contracts the backstop is guaranteed to sell that afternoon |
 
-One is the continuous rule; the other is the end-of-day safety net behind it.
+One is the continuous rule; the other is the end-of-day safety net behind it;
+the third keeps entries out of the zone the second one clears.
+
+**The floor gates entries only.** Until #166 the expiration window ran on every
+option order, sells included, which had two bad consequences. Raising the floor
+to keep 1-DTE entries out would have made every 1-DTE *holding* unsellable
+through the funnel — by the model, and by `exits.py`, whose stop, take-profit
+and expiry-day sells pass through the same `check_order()`. And at the old
+floor of 1, a contract reaching its expiry day was already refused
+("0 days to expiration outside [1, 45]"), so the expiry-day rule could not fire
+at all; only the previous afternoon's backstop stood between a position and
+exercise. Sells now skip the window entirely — a sell only ever closes something
+held, and the one thing it checks is that the contract has not already expired.
+`RiskManager` logs a warning at startup whenever the floor does not exceed
+`eod_close_dte`, because those two keys only agree by hand.
 
 **Both are now stated in the prompt.** The model used to be told the expiration
 *window* (1–45 DTE) but nothing about the rules that *end* a position, so it
@@ -612,7 +676,9 @@ Consequences:
 
 A tiny sample, so diagnostics rather than verdicts (`trade_report.py`, round-trip attribution):
 
-- The model traded on stated reasons, and the journal shows them.
+- The model traded on stated reasons, and the journal shows them — and, since
+  #172, says how often those reasons quoted numbers the prompt never contained
+  (day 2: none of 22).
 - Rejections are rare and *sensible* (a cap, not a malformed proposal) — a
   guardrail rejecting the same idea all day is a prompt bug, not a win.
 - Exits were mostly stops/take-profits doing their job, not expiry rescues.
@@ -640,12 +706,14 @@ account's own `model`:
 
 | Account | Trades on | Reviewed by |
 |---|---|---|
-| `official` | Kimi-K2-Instruct | **Kimi-K2.6** |
+| `official` | Kimi-K2.6 | **Kimi-K2-Instruct** |
 | `test` | Qwen3.8-Flash-Next | **Kimi-K2.6** |
 | `mixed` | Kimi-K2-Instruct | **Kimi-K2.6** |
 
-Nothing trades on K2.6, so all three critiques are independent. It costs one
-call a day.
+No account is ever its own reviewer, because the rule is computed rather than
+configured: when `official` was pinned to K2.6 its reviewer moved to
+K2-Instruct on its own, with no second edit. That is the whole point of
+resolving it at review time. It costs one call a day.
 
 **It is recomputed every time, deliberately.** The trading model is changeable
 at runtime from the dashboard. Had the reviewer been resolved once and stored,
@@ -658,6 +726,16 @@ run. `tests/test_config.py` pins exactly that transition.
 Set `review_model` — in config, or as a runtime override, or from the
 dashboard's **Review model** selector — to pin one instead of computing it.
 Unset is the normal case.
+
+**The claim is checkable, because for two days it was false.** From #127 the
+resolved reviewer was journaled on every `config` event and shown on the
+dashboard, but `eod_review.py` itself still built its client on `model` — so
+on 2026-08-31 and 2026-09-01 every account graded its own homework while this
+section said otherwise (#177). Since then the digest's last heading names the
+model that actually wrote it (`## Model's read of the day (advisory, by …)`),
+and the `eod_review` journal event carries `review_model`. If the heading ever
+names the account's trading model, the preference list is exhausted or
+misconfigured — not a feature.
 
 #### What it actually produces
 
@@ -742,10 +820,12 @@ Every one is safe to move mid-session, and none of them can breach a risk limit
 | `temperature` | 0–2, step 0.1 | 0.2 | how much the model varies between cycles |
 | `max_tokens` | 50–8000, step 50 | 800 | the answer budget per decision |
 | `research_contracts_per_underlying` | 1–60 | 12 | how many contracts per name go into the prompt |
-| `option_strike_band_pct` | 0.01–0.5 | 0.08 | how far from spot the chain is fetched (±8%) |
+| `option_strike_band_pct` | 0.01–0.5 | 0.08 | how far from spot the chain is fetched (±8%) — on SPY/QQQ that is ~245 contracts per expiration, so the band also sets how many pages the fetch takes (capped at `CHAIN_MAX_PAGES`; a cap hit is journaled as `truncated`) |
 | `stop_loss_pct` | 1–100 | 40 | close at this much loss on entry premium |
 | `take_profit_pct` | 1–1000 | 60 | close at this much gain |
 | `eod_close_dte` | 0–45 | 1 | the end-of-day sweep closes contracts with this many days left |
+| `min_hold_minutes` | 0–390 | 30 | a model-proposed sell of a position younger than this is refused (the churn guard, #132) |
+| `early_exit_drawdown_pct` | 1–100 | 25 | …unless the position is already down more than this on its premium |
 | `review_model` | the costed model list | *computed* | which model writes the end-of-day critique |
 | `predictions_enabled` | on / off | on | whether the Kalshi prior is fetched and shown to the model |
 
@@ -759,11 +839,100 @@ worth having.
 
 **What the model sees — `research_contracts_per_underlying`,
 `option_strike_band_pct`.** These decide the size and shape of the menu.
-Widening the strike band reaches further out of the money; raising the contract
-count shows more of what was fetched. Both make the prompt longer and the cycle
-slower, and 12 contracts across ±8% already spans more than the tactics would
-pick from. Reach for these if the agent complains it cannot find a suitable
-contract, not to give it more to read.
+Widening the strike band reaches further out of the money (and fetches more
+pages on the index names); raising the contract count shows more of what was
+fetched — the whole band across the whole 2–45 DTE window is the pool. Both
+make the prompt longer and the cycle slower. Reach for these if the agent
+complains it cannot find a suitable contract, not to give it more to read.
+
+*Which* 12 is `bot/menu.py`'s call, and it changed on 2026-09-01 (#159). The
+menu used to be the 12 nearest the money by |strike − spot|, and on names with
+coarse strikes that collapsed to one strike: NVDA's 12 on day 1 were all K=220
+— call and put across six expiries — MSFT's all 510, AAPL 10 of 12 at 317.5.
+The model could pick side and expiry from the menu and nothing else; "half a
+delta out" was not on offer, and its NVDA flip-flopping (call, put, call, all
+at 220) was exactly the degenerate choice space it had been given. SPY and QQQ
+escaped only by the accident of $1 strikes. The tactics ask for "at or slightly
+out of the money (|delta| roughly 0.35–0.55)" with 2–14 DTE, so the menu now
+spends its slots on that: three expiry buckets, the nearest to 2, 7 and 14 DTE;
+per expiry and side the at-the-money strike, then the out-of-the-money strike
+whose Alpaca delta is nearest 0.40 (the next strike out when a contract has no
+delta). ATM picks for every bucket come before any OTM pick, so a small count
+still spans expiries; leftover slots fall back to nearest-the-money; the result
+is ordered by expiry then strike so the prompt reads as a grid. On NVDA that is
+three strikes × three expiries × two sides instead of one strike × six. The
+targets and the delta are constants, not knobs: the slot count is already a
+knob, and the selection rule is code the config hash does not need to track.
+
+**What the model knows about its own positions.** Every cycle is a fresh
+process, and until #173 the model saw that a position existed and how it was
+doing — one row in the snapshot JSON — and nothing else: not why it had opened
+it, not what the prior said at the time, not even a plain list of what it was
+allowed to sell. Two live failures on the judged account on 2026-09-01 came
+straight from that. It tried to close a +32% SPY put three cycles running and
+named a neighbouring strike each time (763, 763, 762 for a held 764) — the held
+symbol was one row among thirty, and since #158 the menu lists its same-expiry
+neighbours right beside it (#170). And it proposed exiting a ten-minute-old QQQ
+put on a "weakening thesis" while every number it had cited at entry had moved
+in its favour, because it re-derived the view from scratch (#173).
+
+`bot/holdings.py` now renders a prose block after the prior:
+
+```
+POSITIONS YOU HOLD (the ONLY symbols a sell may name - copy them exactly):
+- QQQ260903P00708000 x4 @ 3.715, +0.4% vs entry; opened 13:10 ET
+    stated at entry: "QQQ down 1.2% intraday with both Kalshi and option chain showing heavy downside odds; ..."
+    prior at entry: Kalshi P(above) 0.068, P(up>1%) 0.044, P(down>1%) 0.779 | chain P(above) 0.075, P(up>1%) 0.013, P(down>1%) 0.575
+    prior now:      Kalshi P(above) 0.068, P(up>1%) 0.044, P(down>1%) 0.819 | chain withheld (noisy: isotonic fit moved probabilities 0.051 on average)
+RESTING ORDERS (sent, unfilled - they already count against your caps; ...):
+- buy 4 QQQ260903P00709000 @ limit 3.56, submitted 12:00 ET
+```
+
+The entry reason comes from the `order_submitted` event that opened the
+position (the first buy since the symbol was last flat, so a name traded,
+closed and re-bought gets today's reason, not last week's); the prior at entry
+is the `predictions` record journaled in that same cycle. **The prior line is
+what makes replaying the reason safe**: per #172 the model fabricates
+statistics inside its reasons, so a reason alone would let it "verify" the
+position against its own confabulation. Paired with the journaled prior, "has
+my thesis weakened?" becomes a comparison against numbers we control — and in
+the QQQ example above the honest answer was that it had strengthened
+(P(down>1%) 0.779 → 0.819 in the ten minutes between entry and the proposed
+exit). A
+position with no journaled opener says *no recorded thesis* rather than
+inventing one. A flat account gets one line — *none — any sell would be a naked
+short* — so the long-only rule is stated in terms of the list rather than left
+to the model's memory of the preamble. The strategy notes changed to match:
+*an open position is presumed valid until a stop, a take-profit, or a NAMED
+change in the evidence cited at entry*, replacing the old "you may still
+propose a sell on a thesis change — say why", which invited a thesis-change
+hunt every ten minutes that a capable model always won.
+
+For the one operation where the symbol is already known, code also closes the
+transcription gap: a sell naming an option that is not held, when exactly one
+held contract shares its underlying, type and expiration, is resolved to that
+contract before any guard runs (`holdings.resolve_sell`; the order event
+carries `resolved_from` with what the model wrote). It can only ever reduce
+exposure, and the quantity still passes `check_order`. Anything ambiguous —
+two puts held at the same expiry — is left to the funnel, whose rejection now
+names what *is* held on that underlying so the next cycle's learning block
+carries the right symbol.
+
+The counter-argument is anchoring: a model that holds a loser because "my
+thesis said so". The asymmetry favours showing the thesis anyway — code owns
+stop-loss, take-profit, expiry and the end-of-day backstop without consulting
+the model, so stubbornness is capped at `stop_loss_pct`, while churn had no
+ceiling beyond `min_hold_minutes`. Watch the EOD digest for a rise in stop-loss
+exits after this landed.
+
+**The churn guard — `min_hold_minutes`, `early_exit_drawdown_pct`.** Before the
+positions block existed, the treatment for ten-minute exits was a leash
+(#132): a model-proposed sell of a position opened fewer than `min_hold_minutes`
+ago is refused unless the position is already down more than
+`early_exit_drawdown_pct` of its premium — the stop and take-profit own the
+marks; the model's early exit has to wait out the hold. Code exits never pass
+through it. Both are runtime knobs, and both stay: the block above removes the
+reason to churn, the leash bounds it if the model churns anyway.
 
 **How positions end — `stop_loss_pct`, `take_profit_pct`, `eod_close_dte`.**
 The first two are checked at the top of every cycle *before* the model is
@@ -805,8 +974,9 @@ same validator.
 
 Deliberately absent from the dashboard, and from `override.py` entirely:
 `max_position_usd`, `max_positions`, `max_contracts_per_order`, `underlyings`,
-`min_days_to_expiration` / `max_days_to_expiration`, `daily_loss_cutoff_pct`,
-`last_entry` / `trade_end`, `expiry_close_dte` and `final_flatten_date`.
+`min_days_to_expiration` / `max_days_to_expiration` (entries only — sells are
+always legal down to expiry), `daily_loss_cutoff_pct`, `last_entry` /
+`trade_end`, `expiry_close_dte` and `final_flatten_date`.
 
 Those are the risk limits, and changing one takes a config edit, a pull request
 and a deploy — which during market hours the freeze refuses outright. The knobs

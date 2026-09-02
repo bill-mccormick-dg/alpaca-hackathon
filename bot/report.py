@@ -79,6 +79,9 @@ def recent_trades(events, limit: int = DEFAULT_TRADE_LIMIT, tz=None) -> list[dic
                 "detail": record.get("detail") or "",
                 "exit": bool(record.get("exit")),
                 "order_id": record.get("order_id") or "",
+                # Stamped by the proposal funnel; absent on code exits, whose
+                # absence says no model decided them.
+                "model": record.get("model") or "",
             }
         )
     return trades[-limit:] if limit else trades
@@ -94,7 +97,10 @@ def _trade_line(t: dict, reason_chars: int = REASON_CHARS) -> str:
     qty = f"x{t['qty']}" if t.get("qty") is not None else ""
     price = f" @ ${float(t['price']):.2f}" if t.get("price") is not None else ""
     tag = " (exit)" if t.get("exit") else ""
-    head = f"**{t['time']}** · {verb}{tag} {t['side']} {qty} `{t['symbol']}`{price}".replace("  ", " ")
+    # Short model name (the id's basename) on model-originated events - with
+    # three accounts on three models, "who decided this" belongs on the line.
+    by = f" [{t['model'].rsplit('/', 1)[-1]}]" if t.get("model") else ""
+    head = f"**{t['time']}** · {verb}{tag}{by} {t['side']} {qty} `{t['symbol']}`{price}".replace("  ", " ")
     lines = [head]
     # Why the funnel refused / what broke - first, because it is the fact a
     # reader of "rejected" is looking for.
@@ -170,6 +176,9 @@ def render_feed_line(r: dict) -> str:
         return f"{t} {mark}{exit_tag} {r.get('side')} {r.get('qty')} {r.get('symbol')} @ {r.get('price')} — {_clip(r.get('reason'), 160)}"
     if e in ("order_rejected", "order_error"):
         return f"{t} ✗ {e.split('_')[1].upper()} {r.get('side')} {r.get('qty')} {r.get('symbol')} — {r.get('detail')}"
+    if e == "order_canceled":
+        mark = "↩ CANCELLED" if r.get("ok") else "! cancel failed"
+        return f"{t} {mark} stale buy {r.get('qty')} {r.get('symbol')} — {_clip(r.get('detail'), 120)}"
     if e == "cycle_end":
         return f"{t} ◀ end, {r.get('actions')} action(s)"
     if e in ("manual_halt", "daily_loss_halt"):

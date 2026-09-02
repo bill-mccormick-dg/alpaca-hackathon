@@ -9,11 +9,13 @@ Ten minutes from clone to a dry-run cycle. Nothing to install but Docker.
 
 ## 1. Access
 
-- Zero-setup first step: watch the bot live at
-  **<https://bot.wpmccormick.pw>** - enter your email, Cloudflare sends a
-  one-time PIN, and you're looking at all three accounts' journals streaming
-  in real time. No repo, no keys, no Tailscale. Details in
-  [Operations](operations.md#the-journal-in-a-browser).
+**Start here, it takes a minute:** open
+[bot.wpmccormick.pw](https://bot.wpmccormick.pw), enter your email, paste the
+one-time PIN. That is the live journal - every cycle, the model's reasoning,
+every order and the rule behind every rejection. No repo access, no VPN and no
+credentials needed, and watching one live cycle explains more than this page
+will. The rest of this section is for actually running the thing.
+
 - Ask for collaborator access to `bill-mccormick-dg/alpaca-hackathon` (private
   until submission).
 - Create **your own** Alpaca paper trading account at
@@ -81,6 +83,10 @@ that talks to Alpaca or Featherless is wrapped so a fake can stand in (see
 
 ## 4. Where to look first
 
+Before reading any of it: watch one cycle arrive in the
+[live viewer](https://bot.wpmccormick.pw). Ten minutes of that is worth an
+hour of the journal read cold.
+
 | You want to... | Read / run |
 |---|---|
 | understand one cycle end to end | [Architecture](architecture), then `run_cycle.py` top to bottom (~250 lines) |
@@ -93,8 +99,10 @@ that talks to Alpaca or Featherless is wrapped so a fake can stand in (see
 
 ## 5. Things that will bite you
 
-- Alpaca's free options feed has **no Greeks**; ours are derived per contract
-  (`bot/greeks.py`) and are not internally consistent. The prompt says so.
+- Alpaca's options snapshot **does** carry IV and Greeks on most contracts
+  (the code believed otherwise until #160). Contracts it does not price get
+  `bot/greeks.py`'s Black-Scholes derivation, tagged `greeks_source: derived`
+  in the prompt — those are rough, and the prompt says so.
 - Newer Featherless models are **thinking models**: without
   `model_params: {chat_template_kwargs: {enable_thinking: false}}` they return
   empty content. `config-test.yaml` has it set.

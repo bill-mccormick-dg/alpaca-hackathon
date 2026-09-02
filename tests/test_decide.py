@@ -3,6 +3,7 @@ import tempfile
 import unittest
 from datetime import date
 from pathlib import Path
+from unittest import mock
 
 from bot import decide, journal
 from bot.models import Proposal
@@ -44,6 +45,33 @@ def _snapshot(**options):
 
 
 class SummarizeOptionsTest(unittest.TestCase):
+    def test_summarizes_only_the_contracts_that_make_the_menu(self):
+        """#158: the fetched chain can be thousands of contracts. The
+        Black-Scholes solve inside _summarize_contract must run on the N
+        chosen, not the pool - with expired and unparseable symbols dropped
+        before the choice so the menu is never left short. The choice itself
+        is bot/menu.py's (#159): here one expiry bucket, so the ATM call, the
+        ATM put and the out-of-the-money call, in expiry/strike order."""
+        snap = _snapshot(
+            AAPL={
+                "underlying_price": 200.0,
+                "contracts": {
+                    "AAPL260204C00210000": _contract(bid=1.0, ask=1.2),   # $10 away
+                    "AAPL260204C00200000": _contract(bid=5.2, ask=5.5),   # ATM, 20 dte
+                    "AAPL260114C00200000": _contract(bid=5.2, ask=5.5),   # ATM but expired
+                    "AAPL260227P00200000": _contract(bid=5.0, ask=5.3),   # ATM, 43 dte
+                    "AAPL260204P00201000": _contract(bid=5.0, ask=5.3),   # $1 away
+                    "not-an-occ-symbol": _contract(bid=1.0, ask=1.1),
+                },
+            }
+        )
+        with mock.patch.object(decide, "_summarize_contract", wraps=decide._summarize_contract) as summarize:
+            result = decide._summarize_options(snap, _config(research_contracts_per_underlying=3), TODAY)
+
+        chosen = [c["symbol"] for c in result["AAPL"]["contracts"]]
+        self.assertEqual(chosen, ["AAPL260204C00200000", "AAPL260204P00201000", "AAPL260204C00210000"])
+        self.assertEqual(summarize.call_count, 3)
+
     def test_derives_strike_type_dte_from_occ_symbol(self):
         snap = _snapshot(
             AAPL={
@@ -89,6 +117,44 @@ class SummarizeOptionsTest(unittest.TestCase):
         contract = result["AAPL"]["contracts"][0]
         self.assertIn("iv", contract)
         self.assertIn("delta", contract)
+        self.assertEqual(contract["greeks_source"], "derived")
+
+    def test_prefers_alpacas_own_greeks_over_the_derivation(self):
+        """#160: the snapshot carries impliedVolatility + greeks on most
+        contracts, computed on one surface - ours diverged by ~5 delta points
+        on NVDA. When present they win, rho comes along, and the source is
+        marked so the model knows which numbers are rough."""
+        raw = dict(_contract(bid=5.2, ask=5.5), impliedVolatility=0.30601,
+                   greeks={"delta": 0.52719, "gamma": 0.037612, "rho": 0.02751, "theta": -0.24512, "vega": 0.13774})
+        snap = _snapshot(AAPL={"underlying_price": 200.0, "contracts": {"AAPL260204C00200000": raw}})
+
+        contract = decide._summarize_options(snap, _config(), TODAY)["AAPL"]["contracts"][0]
+
+        self.assertEqual(contract["iv"], 0.306)
+        self.assertEqual(contract["delta"], 0.5272)
+        self.assertEqual(contract["gamma"], 0.03761)
+        self.assertEqual(contract["theta"], -0.2451)
+        self.assertEqual(contract["vega"], 0.1377)
+        self.assertEqual(contract["rho"], 0.0275)
+        self.assertEqual(contract["greeks_source"], "alpaca")
+
+    def test_falls_back_to_the_derivation_when_alpacas_block_is_incomplete(self):
+        raw = dict(_contract(bid=5.2, ask=5.5), impliedVolatility=None, greeks={"delta": None})
+        snap = _snapshot(AAPL={"underlying_price": 200.0, "contracts": {"AAPL260204C00200000": raw}})
+
+        contract = decide._summarize_options(snap, _config(), TODAY)["AAPL"]["contracts"][0]
+
+        self.assertEqual(contract["greeks_source"], "derived")
+        self.assertNotIn("rho", contract)
+
+    def test_alpacas_greeks_do_not_need_a_usable_price(self):
+        # A one-sided quote cannot be solved, but Alpaca may still have priced it.
+        raw = {"latestQuote": {"bp": 0, "ap": 5.5}, "impliedVolatility": 0.4, "greeks": {"delta": 0.3}}
+        snap = _snapshot(AAPL={"underlying_price": 200.0, "contracts": {"AAPL260204C00200000": raw}})
+
+        contract = decide._summarize_options(snap, _config(), TODAY)["AAPL"]["contracts"][0]
+
+        self.assertEqual((contract["iv"], contract["delta"], contract["greeks_source"]), (0.4, 0.3, "alpaca"))
 
     def test_omits_greeks_when_no_price_data_at_all(self):
         snap = _snapshot(
@@ -134,9 +200,9 @@ class SummarizeOptionsTest(unittest.TestCase):
 
         kept = result["AAPL"]["contracts"]
         self.assertEqual(len(kept), 2)
-        # 200 is exactly at the money; 190 ties 210 on distance but sorts
-        # first (stable sort preserves the original dict's insertion order).
-        self.assertEqual({c["strike"] for c in kept}, {200.0, 190.0})
+        # 200 is at the money; the second slot is the slightly-OTM call the
+        # tactics ask for (#159), not the in-the-money 190.
+        self.assertEqual({c["strike"] for c in kept}, {200.0, 210.0})
 
     def test_underlying_with_no_price_gets_empty_contracts(self):
         snap = _snapshot(AAPL={"underlying_price": None, "contracts": {}})
@@ -169,6 +235,21 @@ class BuildPromptTest(unittest.TestCase):
 
         self.assertIn("How long a position can actually live", prompt)
         self.assertIn("end-of-day backstop", prompt)
+
+    def test_instrument_note_defaults_to_options_first_and_is_overridable(self):
+        """#211: the hardcoded options-first sentence was the OFFICIAL
+        account's policy in every account's prompt, and it silently overrode
+        the mixed variant's instrument-choice experiment - 70 decisions over
+        two days, zero that even mentioned stock. The default keeps the
+        official behaviour verbatim; a variant supplies its own sentence."""
+        default = decide.build_prompt(_snapshot(), _config(), TODAY)
+        self.assertIn("Options trading is the core of this challenge", default)
+
+        neutral = decide.build_prompt(
+            _snapshot(), _config(instrument_note="Options and stock are peers - choose per idea."), TODAY
+        )
+        self.assertIn("Options and stock are peers", neutral)
+        self.assertNotIn("should support your options thesis", neutral)
 
     def test_holding_period_rules_come_from_config_not_hardcoded(self):
         prompt = decide.build_prompt(
@@ -226,6 +307,26 @@ class BuildPromptTest(unittest.TestCase):
         self.assertIn("PREDICTION MARKETS", prompt)
         self.assertIn("SPY via KXINX", prompt)
         self.assertLess(prompt.index("PREDICTION MARKETS"), prompt.index("SNAPSHOT:"))
+
+    def test_positions_block_sits_after_the_prior_and_before_the_snapshot(self):
+        """bot/holdings.py's block refers to 'the prior now', so it follows the
+        PREDICTION MARKETS block; and like every prose block it precedes the
+        JSON so the model reads the rules before the data."""
+        block = "POSITIONS YOU HOLD (the ONLY symbols a sell may name - copy them exactly):\n- X x1 @ 1\n\n"
+        snap = _snapshot()
+        snap["predictions"] = {"SPY": {"series": "KXINX", "close_time": "2026-01-15T21:00:00Z",
+                                       "reference_close": 7400.0, "implied_median": 7425.0, "implied_move_pct": 0.34,
+                                       "p_above_reference": 0.6, "p_up_over_1pct": 0.2, "p_down_over_1pct": 0.1, "volume": 500}}
+        prompt = decide.build_prompt(snap, _config(), TODAY, positions_block=block)
+        self.assertLess(prompt.index("PREDICTION MARKETS"), prompt.index("POSITIONS YOU HOLD (the ONLY"))
+        self.assertLess(prompt.index("POSITIONS YOU HOLD (the ONLY"), prompt.index("SNAPSHOT:"))
+        self.assertNotIn("- X x1 @ 1", decide.build_prompt(snap, _config(), TODAY))
+
+    def test_prompt_explains_the_positions_block_and_resting_orders(self):
+        prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
+        self.assertIn("A sell may name only a symbol from that list, copied exactly", prompt)
+        self.assertIn("not by re-deriving a view from scratch", prompt)
+        self.assertIn("RESTING ORDERS are buys you already sent that have not filled", prompt)
 
     def test_requests_only_market_or_limit_orders(self):
         prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
@@ -372,6 +473,13 @@ class ThinkingModelTest(unittest.IsolatedAsyncioTestCase):
         prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
         self.assertIn("do NOT spend effort auditing", prompt)
 
+    def test_prompt_explains_where_the_greeks_come_from(self):
+        prompt = decide.build_prompt(_snapshot(), _config(), TODAY)
+        self.assertIn('greeks_source "alpaca"', prompt)
+        self.assertIn('greeks_source "derived"', prompt)
+        self.assertNotIn("carries no Greeks", prompt)
+        self.assertNotIn("not be internally consistent", prompt)
+
 
 class DecideTest(unittest.IsolatedAsyncioTestCase):
     async def test_returns_parsed_proposals_and_raw_text(self):
@@ -407,6 +515,18 @@ class DecideTest(unittest.IsolatedAsyncioTestCase):
         await decide.decide(_snapshot(), _config(), client, TODAY)
         _, kwargs = client.calls[0]
         self.assertEqual(kwargs, {})
+
+    async def test_per_model_params_follow_the_effective_model(self):
+        """#206: the K3 exception rides on config['model'], which the
+        dashboard can change mid-session - the request must carry the params
+        for the model actually being called."""
+        client = FakeFeatherlessClient("[]")
+        cfg = _config(model="k3",
+                      model_params={"chat_template_kwargs": {"enable_thinking": False}},
+                      model_params_by_model={"k3": {"chat_template_kwargs": {"enable_thinking": True}}})
+        await decide.decide(_snapshot(), cfg, client, TODAY)
+        _, kwargs = client.calls[0]
+        self.assertEqual(kwargs, {"chat_template_kwargs": {"enable_thinking": True}})
 
     async def test_empty_array_means_no_proposals(self):
         d = await decide.decide(_snapshot(), _config(), FakeFeatherlessClient("[]"), TODAY)

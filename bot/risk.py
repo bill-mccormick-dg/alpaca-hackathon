@@ -5,6 +5,7 @@ check_order() never negotiates a proposal into compliance — a proposal that
 violates a limit is rejected outright, with a reason, never clamped.
 """
 
+import logging
 from datetime import date, datetime, time
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -14,6 +15,7 @@ from bot.models import VALID_INSTRUMENTS, VALID_SIDES, AccountState, Proposal
 from bot.occ import parse_occ_symbol
 
 EASTERN = ZoneInfo("America/New_York")
+logger = logging.getLogger(__name__)
 
 LOGS_DIR = Path(__file__).resolve().parent.parent / "logs"
 
@@ -37,7 +39,7 @@ EARLY_EXIT_DRAWDOWN_PCT = 25.0
 
 
 def early_exit_block(proposal, position, entered_ts: str | None, config: dict,
-                     now: datetime) -> str | None:
+                     now: datetime, blocked_before: int = 0) -> str | None:
     """Why a MODEL-proposed sell of a just-opened position should be refused,
     or None to allow it. The code-exit paths (exits.py's stop/take-profit/DTE
     and flatten.py) never come through here.
@@ -48,6 +50,17 @@ def early_exit_block(proposal, position, entered_ts: str | None, config: dict,
     anti-churn strategy notes, once straight through them, the second time
     dressed in the permitted "thesis change" wording. The stop exists so the
     model does not have to react to marks; this makes that mechanical.
+
+    `blocked_before` (#188, found by godmagick): how many model exits the
+    guard has already refused for this symbol today. On 2026-09-01 the
+    judged account proposed the same SPY-put exit at 15:00, 15:10 and 15:20
+    - blocked all three times - then sold at 15:30 the moment the leash
+    expired, at -12% instead of the -7% of the first attempt. The guard
+    delayed the exit without ever dissuading it, because its rejection read
+    the same every cycle. Naming the repeat count in the detail puts the
+    pattern in front of the model (rejections reach the next cycle's
+    learning block) and in the digest, where three identical refusals in a
+    row are a prompt problem, not three coincidences.
 
     Fail-open on missing data, deliberately: no entry timestamp today means
     the position is from a prior session (held overnight - selling it is not
@@ -74,11 +87,16 @@ def early_exit_block(proposal, position, entered_ts: str | None, config: dict,
     if drawdown is not None and drawdown > threshold:
         # Well on its way to the stop anyway - let the model out.
         return None
+    repeat = (
+        f"; this exit has already been refused {blocked_before} time(s) today - "
+        f"re-proposing it without naming what changed is churn, not a thesis change"
+        if blocked_before else ""
+    )
     return (
         f"model exit blocked: opened {held_min:.0f} min ago (min_hold_minutes={min_hold:.0f}) "
         f"and drawdown {f'{drawdown:.1f}%' if drawdown is not None else 'unknown'} "
         f"<= early_exit_drawdown_pct={threshold:.0f} - the stop/take-profit own marks; "
-        f"sell again after the hold or let the leash work"
+        f"sell again after the hold or let the leash work{repeat}"
     )
 
 
@@ -101,6 +119,19 @@ class RiskManager:
         self.daily_loss_cutoff_pct = config["daily_loss_cutoff_pct"]
         self.min_days_to_expiration = config["min_days_to_expiration"]
         self.max_days_to_expiration = config["max_days_to_expiration"]
+        # Drift guard (#166): the floor gates entries, eod_close_dte is what
+        # the 14:50 backstop sells. If the floor is not above it, the funnel
+        # admits contracts the backstop is guaranteed to close the same
+        # afternoon - a warning rather than a hard fail only because
+        # eod_close_dte is a runtime knob and a bad override must not stop
+        # the account; the journal and the log both say so.
+        eod_close_dte = int(config.get("eod_close_dte", 1))
+        if int(self.min_days_to_expiration) <= eod_close_dte:
+            logger.warning(
+                "min_days_to_expiration=%s does not exceed eod_close_dte=%s: the funnel permits "
+                "entries the end-of-day backstop will close the same day",
+                self.min_days_to_expiration, eod_close_dte,
+            )
         self.trade_start = _parse_time(config["trade_start"])
         self.trade_end = _parse_time(config["trade_end"])
         self.last_entry = _parse_time(config["last_entry"])
@@ -203,23 +234,59 @@ class RiskManager:
             except ValueError as exc:
                 return False, str(exc)
             dte = (occ.expiration - now.date()).days
-            if not (self.min_days_to_expiration <= dte <= self.max_days_to_expiration):
-                return False, (
-                    f"{dte} days to expiration outside "
-                    f"[{self.min_days_to_expiration}, {self.max_days_to_expiration}]"
-                )
+            if dte < 0:
+                return False, f"expired {-dte} day(s) ago"
 
         held = account.positions.get(p.symbol)
         held_qty = held.qty if held else 0
 
         if p.side == "sell":
-            if p.qty > held_qty:
-                return False, f"cannot sell {p.qty}, only {held_qty} held"
+            # No expiration window on a sell: a sell only ever closes something
+            # held, and a position must stay closable all the way to expiry -
+            # by the model, and by exits.py's stop / take-profit / expiry-day
+            # rules, which come through this same funnel. Until #166 the window
+            # ran before this branch, so a held contract on its last day could
+            # not be sold here at all ("0 days to expiration outside [1, 45]").
+            resting_sell = account.pending_sell_qty(p.symbol)
+            if p.qty > held_qty - resting_sell:
+                detail = f"cannot sell {p.qty}, only {held_qty} held"
+                if resting_sell:
+                    detail += f" and {resting_sell:.0f} already resting to sell"
+                if not held and p.instrument == "option":
+                    # Name what IS held on that underlying (#170): the next
+                    # cycle's learning block replays today's rejections, so
+                    # the right symbol travels with the refusal.
+                    from bot.holdings import held_on_same_underlying
+
+                    same = held_on_same_underlying(p, account.positions)
+                    detail += f"; held on {p.whitelist_symbol}: {', '.join(same)}" if same else \
+                        f"; nothing held on {p.whitelist_symbol}"
+                return False, detail
             return True, "ok"
 
         # buy
+        if p.instrument == "option" and not (self.min_days_to_expiration <= dte <= self.max_days_to_expiration):
+            # Entries only. The floor exists so the funnel refuses what the
+            # end-of-day backstop (eod_close_dte) would sell the same
+            # afternoon; the ceiling keeps multi-month decay out.
+            return False, (
+                f"{dte} days to expiration outside "
+                f"[{self.min_days_to_expiration}, {self.max_days_to_expiration}]"
+            )
         if not self.entries_allowed(now):
             return False, "entries not allowed (outside window or past last_entry)"
+
+        # Resting orders are committed exposure (#171). A buy for the same
+        # symbol already working means this idea is on - a second one is the
+        # 2026-09-01 double-position, not a new decision.
+        resting = account.pending_buys(p.symbol)
+        if resting:
+            o = resting[0]
+            at = f" @ limit {o.limit_price}" if o.limit_price is not None else " at market"
+            return False, (
+                f"a buy for {p.symbol} is already resting (qty {o.remaining:.0f}{at}, sent {str(o.submitted_at or '?')[11:16]}) "
+                f"- it counts as held; wait for the fill, or the next cycle cancels it"
+            )
 
         held_value = held.market_value if held else 0.0
         order_value = self._order_notional(p, price)
@@ -229,8 +296,10 @@ class RiskManager:
                 f"exceeds max_position_usd {self.max_position_usd}"
             )
 
-        if held_qty == 0 and account.open_position_count >= self.max_positions:
-            return False, f"already at max_positions ({self.max_positions})"
+        if held_qty == 0 and account.committed_position_count >= self.max_positions:
+            resting_n = account.committed_position_count - account.open_position_count
+            incl = f", {resting_n} of them resting buys" if resting_n else ""
+            return False, f"already at max_positions ({self.max_positions}{incl})"
 
         return True, "ok"
 

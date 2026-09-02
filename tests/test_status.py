@@ -9,7 +9,7 @@ from bot.risk import RiskManager
 def _config():
     return {
         "underlyings": ["AAPL"], "max_position_usd": 1, "max_positions": 1, "max_contracts_per_order": 1,
-        "daily_loss_cutoff_pct": 1, "min_days_to_expiration": 1, "max_days_to_expiration": 2,
+        "daily_loss_cutoff_pct": 1, "min_days_to_expiration": 1, "max_days_to_expiration": 2, "eod_close_dte": 0,
         "trade_start": "09:45", "trade_end": "15:45", "last_entry": "15:15",
     }
 

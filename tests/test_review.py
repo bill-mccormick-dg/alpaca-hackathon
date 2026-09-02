@@ -64,6 +64,22 @@ class DecisionAuditTest(unittest.TestCase):
         self.assertEqual(a["tokens_out"], 842)
         self.assertEqual(a["latency_max_sec"], 9.0)
 
+    def test_one_verbatim_example_per_rejection_rule(self):
+        """#155: the reviewer only ever saw the collapsed key ('price must
+        be'), invented a fill-price mechanism, and recommended widening the
+        strike band. The full detail travels beside each key now."""
+        records = [
+            rec("10:00:00", "order_rejected", side="buy", qty=1, symbol="SPY260904P00766000", detail="price must be positive"),
+            rec("10:10:00", "order_rejected", side="buy", qty=1, symbol="SPY260904P00766000", detail="price must be positive"),
+            rec("10:20:00", "order_rejected", side="buy", qty=1, symbol="TSLA", detail="TSLA not in underlyings whitelist"),
+        ]
+
+        a = review.decision_audit(records)
+
+        self.assertEqual(a["rejections_by_rule"], {"price must be": 2, "not in underlyings whitelist": 1})
+        self.assertEqual(a["rejection_examples"], {"price must be": "price must be positive",
+                                                   "not in underlyings whitelist": "TSLA not in underlyings whitelist"})
+
     def test_rejection_keys_drop_numbers(self):
         self.assertEqual(review._rejection_key("position value 5120.00 exceeds max_position_usd 5000"), "exceeds max_position_usd")
         self.assertEqual(review._rejection_key("already at max_positions (4)"), "max_positions")
@@ -108,6 +124,27 @@ class DigestTest(unittest.TestCase):
         self.assertIn("2 round trips, net **+30.00**", md)
         self.assertIn("Tighten the take-profit.", md)
 
+    def test_render_shows_the_full_rejection_detail_beside_the_rule(self):
+        md = review.render_markdown(review.build_digest(DAY, "test", RECORDS, {"trades": 0}, []))
+
+        self.assertIn('`not in underlyings whitelist` in full: "TSLA not in underlyings whitelist"', md)
+
+    def test_render_withheld_priors_as_shadow_scores(self):
+        d = review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])
+        d["prior_scores"] = {
+            "baseline": 0.25, "today": {"kalshi": 0.18}, "running": {"kalshi": {"mean": 0.18, "days": 1}},
+            "forecasts": [],
+            "withheld": [{"underlying": "QQQ", "source": "kalshi", "p": 0.3, "outcome": 0, "brier": 0.09,
+                          "suppressed": "thin: volume 90.6 < 250.0"}],
+            "withheld_today": {"kalshi": 0.09},
+        }
+
+        md = review.render_markdown(d)
+
+        self.assertIn("- kalshi: today 0.18, running 0.18 over 1 day(s)", md)
+        self.assertIn("- withheld kalshi: today 0.09 - shadow-graded, not in the means above "
+                      "(withheld for: thin: volume 90.6 < 250.0)", md)
+
     def test_render_prior_scores_when_present(self):
         d = review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])
         d["prior_scores"] = {
@@ -126,6 +163,31 @@ class DigestTest(unittest.TestCase):
         d["prior_scores"] = {"skipped": "no final daily bar for 2026-09-01 yet - run after the close"}
         md = review.render_markdown(d)
         self.assertIn("no final daily bar", md)
+
+    def test_citation_audit_rolls_up_and_renders(self):
+        """#172: a per-cycle field on decision becomes one digest line, with
+        the offending quotes; days before the field existed show nothing."""
+        records = RECORDS + [
+            rec("11:00:05", "decision", raw="[...]", count=1, model="m1", usage={}, latency_sec=1.0, finish_reason="stop",
+                citations={"checked": 2, "unsupported": [{"symbol": "QQQ260903P00708000", "quoted": "68.7%",
+                                                          "nearest": {"label": "1 - QQQ Kalshi P(above)", "value": 0.874}}]}),
+            rec("11:10:05", "decision", raw="[]", count=0, model="m1", usage={}, latency_sec=1.0, finish_reason="stop",
+                citations={"checked": 1, "unsupported": [], "misattributed": [{"symbol": "QQQ260903P00708000", "quoted": "27.3%",
+                                                                              "nearest": {"label": "SPY chain P(down>1%)", "value": 0.273}}]}),
+            rec("11:20:05", "decision", raw="[]", count=0, model="m1", usage={}, latency_sec=1.0, finish_reason="stop",
+                citations={"skipped": "research tools ran"}),
+        ]
+        a = review.decision_audit(records)
+        self.assertEqual((a["citations_checked"], a["citations_unsupported"], a["citations_misattributed"], a["citations_skipped_cycles"]), (3, 1, 1, 1))
+        self.assertEqual(a["citation_examples"][0]["quoted"], "68.7%")
+        md = review.render_markdown(review.build_digest(DAY, "test", records, {"trades": 0}, []))
+        self.assertIn("**prior citations**: 3 checked, 1 unsupported, 1 misattributed, 1 cycle(s) skipped", md)
+        self.assertIn('11:00 QQQ260903P00708000 quoted "68.7%" - nearest real number: 1 - QQQ Kalshi P(above) 0.874', md)
+        self.assertIn('11:10 QQQ260903P00708000 quoted "27.3%" - actually: SPY chain P(down>1%) 0.273', md)
+
+        a = review.decision_audit(RECORDS)
+        self.assertIsNone(a["citations_checked"])
+        self.assertNotIn("prior citations", review.render_markdown(review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])))
 
     def test_no_prior_scores_no_section(self):
         d = review.build_digest(DAY, "test", RECORDS, {"trades": 0}, [])

@@ -24,6 +24,25 @@ ACCOUNT_RESPONSE = {
 
 EMPTY_POSITIONS_RESPONSE = {"data": {"result": []}}
 
+NO_OPEN_ORDERS_RESPONSE = {"data": {"result": []}}
+
+OPEN_ORDERS_RESPONSE = {
+    "data": {
+        "result": [
+            {
+                "id": "6b4e2f3a-0000-4000-8000-000000000001",
+                "client_order_id": "hb-20260901-120017-QQQ260903P00709000-buy",
+                "symbol": "QQQ260903P00709000", "asset_class": "us_option", "side": "buy",
+                "qty": "4", "filled_qty": "0", "type": "limit", "limit_price": "3.56",
+                "submitted_at": "2026-09-01T16:00:17.123456Z", "status": "new",
+            },
+            {"id": "x", "symbol": "AAPL", "asset_class": "us_equity", "side": "sell", "qty": "10", "filled_qty": "4",
+             "type": "market", "limit_price": None, "created_at": "2026-09-01T16:05:00Z"},
+            {"no": "symbol here"},
+        ]
+    }
+}
+
 STOCK_POSITION_RESPONSE = {
     "data": {
         "result": [
@@ -240,6 +259,29 @@ class BuildAccountStateTest(unittest.IsolatedAsyncioTestCase):
         self.assertIn("AAPL", account.positions)
 
 
+class OneSidedQuoteTest(unittest.IsolatedAsyncioTestCase):
+    """The mid of a zero bid and a real ask is half the price. After hours
+    IEX prints exactly that, and a strike band centred on half of SPY
+    fetches a chain nobody trades."""
+
+    async def test_a_zero_bid_means_the_ask_is_the_price(self):
+        client = FakeMCPClient({"get_stock_latest_quote": _stock_quote_response("SPY", 0, 761.85)})
+        self.assertEqual(await snapshot.get_underlying_price(client, "SPY"), 761.85)
+
+    async def test_a_missing_ask_means_the_bid_is_the_price(self):
+        client = FakeMCPClient({"get_stock_latest_quote": {"data": {"quotes": {"SPY": {"bp": 761.5, "ap": None}}}}})
+        self.assertEqual(await snapshot.get_underlying_price(client, "SPY"), 761.5)
+
+    async def test_two_sided_is_still_the_mid(self):
+        client = FakeMCPClient({"get_stock_latest_quote": _stock_quote_response("SPY", 761.5, 761.9)})
+        self.assertAlmostEqual(await snapshot.get_underlying_price(client, "SPY"), 761.7)
+
+    async def test_no_sides_at_all_raises(self):
+        client = FakeMCPClient({"get_stock_latest_quote": _stock_quote_response("SPY", 0, 0)})
+        with self.assertRaises(RuntimeError):
+            await snapshot.get_underlying_price(client, "SPY")
+
+
 def _research_config(**overrides):
     config = {
         "underlyings": ["AAPL"],
@@ -334,6 +376,120 @@ class BuildOptionResearchTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(research["AAPL"]["contracts"], {})
 
 
+def _page(symbols, next_token=None):
+    """One get_option_chain page in the API's own shape: `snapshots` plus a
+    `next_page_token` that is null on the last page."""
+    return {
+        "data": {
+            "snapshots": {s: {"latestQuote": {"ap": 5.5, "bp": 5.2}} for s in symbols},
+            "next_page_token": next_token,
+        }
+    }
+
+
+class ChainPaginationTest(unittest.IsolatedAsyncioTestCase):
+    """Issue #158: one page covers 1-3 DTE on SPY/QQQ. The API's
+    next_page_token is the truncation signal; follow it until null."""
+
+    TODAY = date(2026, 1, 15)
+
+    def _client(self, pages_by_token: dict):
+        def chain(arguments):
+            return pages_by_token[arguments.get("page_token")]
+
+        return FakeMCPClient({"get_stock_latest_quote": STOCK_QUOTE_RESPONSE, "get_option_chain": chain})
+
+    def _chain_calls(self, client):
+        return [args for name, args in client.calls if name == "get_option_chain"]
+
+    async def test_single_page_without_a_token_key_is_one_call(self):
+        # The legacy fixture omits next_page_token entirely - must mean "done".
+        client = FakeMCPClient({"get_stock_latest_quote": STOCK_QUOTE_RESPONSE, "get_option_chain": OPTION_CHAIN_RESPONSE})
+
+        research = await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        self.assertEqual(len(self._chain_calls(client)), 1)
+        self.assertEqual(research["AAPL"]["pages"], 1)
+        self.assertFalse(research["AAPL"]["truncated"])
+
+    async def test_requests_the_api_maximum_page_size(self):
+        client = self._client({None: _page(["AAPL260204C00200000"])})
+
+        await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        self.assertEqual(self._chain_calls(client)[0]["limit"], snapshot.CHAIN_PAGE_LIMIT)
+        self.assertEqual(snapshot.CHAIN_PAGE_LIMIT, 1000)
+
+    async def test_follows_the_token_and_merges_pages_with_identical_filters(self):
+        client = self._client({
+            None: _page(["AAPL260116C00200000", "AAPL260117C00200000"], next_token="t2"),
+            "t2": _page(["AAPL260227P00200000"], next_token=None),
+        })
+
+        research = await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        calls = self._chain_calls(client)
+        self.assertEqual(len(calls), 2)
+        self.assertNotIn("page_token", calls[0])
+        self.assertEqual(calls[1]["page_token"], "t2")
+        for key in ("underlying_symbol", "feed", "expiration_date_gte", "expiration_date_lte",
+                    "strike_price_gte", "strike_price_lte", "limit"):
+            self.assertEqual(calls[0][key], calls[1][key], key)
+        self.assertEqual(len(research["AAPL"]["contracts"]), 3)
+        self.assertEqual(research["AAPL"]["pages"], 2)
+        self.assertFalse(research["AAPL"]["truncated"])
+        self.assertEqual(research["AAPL"]["max_dte"], (date(2026, 2, 27) - self.TODAY).days)
+
+    async def test_stops_at_the_cap_and_says_so(self):
+        # Every page hands back a fresh token: an endless chain.
+        counter = {"n": 0}
+
+        def chain(arguments):
+            counter["n"] += 1
+            return _page([f"AAPL2602{counter['n']:02d}C00200000"], next_token=f"t{counter['n']}")
+
+        client = FakeMCPClient({"get_stock_latest_quote": STOCK_QUOTE_RESPONSE, "get_option_chain": chain})
+
+        research = await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        self.assertEqual(len(self._chain_calls(client)), snapshot.CHAIN_MAX_PAGES)
+        self.assertEqual(research["AAPL"]["pages"], snapshot.CHAIN_MAX_PAGES)
+        self.assertTrue(research["AAPL"]["truncated"])
+
+    async def test_a_repeated_token_breaks_the_loop(self):
+        client = self._client({
+            None: _page(["AAPL260204C00200000"], next_token="same"),
+            "same": _page(["AAPL260205C00200000"], next_token="same"),
+        })
+
+        research = await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        self.assertEqual(len(self._chain_calls(client)), 2)
+        self.assertFalse(research["AAPL"]["truncated"])
+
+    async def test_an_empty_page_breaks_the_loop(self):
+        client = self._client({
+            None: _page(["AAPL260204C00200000"], next_token="t2"),
+            "t2": _page([], next_token="t3"),
+        })
+
+        research = await snapshot.build_option_research(client, _research_config(), today=self.TODAY)
+
+        self.assertEqual(len(self._chain_calls(client)), 2)
+        self.assertEqual(len(research["AAPL"]["contracts"]), 1)
+
+    def test_chain_coverage_is_the_journal_shape(self):
+        options = {
+            "SPY": {"underlying_price": 767.0, "contracts": {"a": {}, "b": {}}, "pages": 8, "truncated": False, "max_dte": 45},
+            "QQQ": {"underlying_price": 717.0, "contracts": {}},
+        }
+
+        cov = snapshot.chain_coverage(options)
+
+        self.assertEqual(cov["SPY"], {"contracts": 2, "pages": 8, "max_dte": 45, "truncated": False})
+        self.assertEqual(cov["QQQ"], {"contracts": 0, "pages": None, "max_dte": None, "truncated": False})
+
+
 PRICE_SNAPSHOT = {
     "options": {
         "AAPL": {
@@ -409,6 +565,30 @@ class QuoteOptionMidTest(unittest.IsolatedAsyncioTestCase):
         self.assertIsNone(await snapshot.quote_option_mid(client, "SPY260904P00766000"))
 
 
+class BuildOpenOrdersTest(unittest.IsolatedAsyncioTestCase):
+    async def test_normalises_the_brokers_strings(self):
+        out = await snapshot.build_open_orders(FakeMCPClient({"get_orders": OPEN_ORDERS_RESPONSE}))
+        self.assertEqual(out[0], {
+            "id": "6b4e2f3a-0000-4000-8000-000000000001",
+            "client_order_id": "hb-20260901-120017-QQQ260903P00709000-buy",
+            "symbol": "QQQ260903P00709000", "side": "buy", "qty": 4.0, "filled_qty": 0.0,
+            "order_type": "limit", "limit_price": 3.56, "submitted_at": "2026-09-01T16:00:17.123456Z",
+            "instrument": "option",
+        })
+        # a market order has no limit; created_at stands in for submitted_at;
+        # an entry with no symbol is dropped rather than crashing the cycle
+        self.assertEqual((out[1]["limit_price"], out[1]["filled_qty"], out[1]["instrument"], out[1]["submitted_at"]),
+                         (None, 4.0, "stock", "2026-09-01T16:05:00Z"))
+        self.assertEqual(len(out), 2)
+
+    async def test_a_failed_lookup_is_none_not_an_empty_list(self):
+        def boom(arguments):
+            raise RuntimeError("MCP down")
+
+        self.assertIsNone(await snapshot.build_open_orders(FakeMCPClient({"get_orders": boom})))
+        self.assertIsNone(await snapshot.build_open_orders(FakeMCPClient({"get_orders": {"data": "Error calling tool"}})))
+
+
 class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
     def _client(self, positions=STOCK_POSITION_RESPONSE):
         return FakeMCPClient(
@@ -418,6 +598,7 @@ class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
                 "get_all_positions": positions,
                 "get_stock_latest_quote": STOCK_QUOTE_RESPONSE,
                 "get_option_chain": OPTION_CHAIN_RESPONSE,
+                "get_orders": NO_OPEN_ORDERS_RESPONSE,
             }
         )
 
@@ -441,6 +622,27 @@ class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
             self._client(positions=EMPTY_POSITIONS_RESPONSE), _research_config(), now=now
         )
         json.dumps(snap)  # must not raise
+
+    async def test_open_orders_ride_on_the_account(self):
+        """#171: 'checked, none' is [] and 'could not check' is None - the
+        prompt and the funnel treat them differently."""
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)
+        client = self._client()
+        client.responses["get_orders"] = OPEN_ORDERS_RESPONSE
+        snap = await snapshot.build_snapshot(client, _research_config(), now=now)
+        self.assertEqual([o["symbol"] for o in snap["account"]["open_orders"]], ["QQQ260903P00709000", "AAPL"])
+        self.assertEqual(("get_orders", {"status": "open", "nested": True}), next(c for c in client.calls if c[0] == "get_orders"))
+
+        snap = await snapshot.build_snapshot(self._client(), _research_config(), now=now)
+        self.assertEqual(snap["account"]["open_orders"], [])
+
+        def fail(arguments):
+            raise RuntimeError("MCP down")
+
+        client = self._client()
+        client.responses["get_orders"] = fail
+        snap = await snapshot.build_snapshot(client, _research_config(), now=now)
+        self.assertIsNone(snap["account"]["open_orders"])
 
     async def test_empty_account_has_empty_positions_list_not_a_crash(self):
         now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)

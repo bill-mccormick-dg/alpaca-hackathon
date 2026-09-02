@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 400" width="640" height="400" role="img" aria-label="Payoff of a long option: a flat maximum loss below the strike, then profit rising without limit above it">
+<style>
+  .sp-t { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #eaf3fd; font-size: 19px; font-weight: 600; }
+  .sp-d { font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; fill: #a6c0dc; font-size: 17px; }
+  .sp-m { font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace; fill: #a6c0dc; font-size: 16px; }
+</style>
+<line x1="70" y1="170" x2="600" y2="170" stroke="#31567a" stroke-dasharray="5 5"/><path d="M70,300 L300,300 L300,170 L70,170 Z" fill="#ff6b6b" fill-opacity=".12"/><path d="M70,300 L300,300 L600,80" fill="none" stroke="#4fd1b0" stroke-width="4.5" stroke-linejoin="round" stroke-linecap="round"/><line x1="300" y1="60" x2="300" y2="316" stroke="#a6c0dc" stroke-opacity=".5" stroke-dasharray="4 5"/><text class="sp-m" x="310" y="344" text-anchor="start">strike</text><text class="sp-d" x="82" y="282" text-anchor="start" style="fill:#ff6b6b">max loss = the premium paid</text><text class="sp-t" x="600" y="66" text-anchor="end" style="fill:#4fd1b0">upside</text><text class="sp-m" x="70" y="44" text-anchor="start">profit</text></svg>

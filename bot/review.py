@@ -48,7 +48,7 @@ def _rejection_key(detail: str) -> str:
     d = str(detail or "").lower()
     for key in ("not in underlyings whitelist", "exceeds max_position_usd", "max_positions", "max_contracts_per_order",
                 "days to expiration", "entries not allowed", "cannot sell", "invalid", "qty must be", "price must be",
-                "not a valid occ"):
+                "not a valid occ", "already resting", "expired"):
         if key in d:
             return key
     return d[:60] or "unknown"
@@ -65,6 +65,15 @@ def decision_audit(records: list[dict]) -> dict:
 
     rej_by_rule = Counter(_rejection_key(r.get("detail")) for r in rejected)
     rej_by_symbol = Counter(r.get("symbol") for r in rejected)
+    # One verbatim detail per rule (#155). The key is a grouping label, and
+    # on 2026-08-31 the reviewer read 'price must be' as limit prices too
+    # aggressive to fill, when the detail was 'price must be positive' - the
+    # funnel could not price the contract at all - and recommended widening
+    # the strike band for a bug that was already fixed. Count by the key,
+    # reason from the example.
+    rej_examples: dict[str, str] = {}
+    for r in rejected:
+        rej_examples.setdefault(_rejection_key(r.get("detail")), str(r.get("detail") or "")[:200])
 
     usage_in = sum(int((r.get("usage") or {}).get("prompt_tokens") or 0) for r in decisions)
     usage_out = sum(int((r.get("usage") or {}).get("completion_tokens") or 0) for r in decisions)
@@ -74,6 +83,26 @@ def decision_audit(records: list[dict]) -> dict:
 
     exits = [r for r in submitted if r.get("exit")]
     exit_reasons = Counter(str(r.get("reason") or "").split(" ")[0] for r in exits)
+
+    # Prior citations (#172): did the model's reasons quote numbers it was
+    # given? None for the whole day means no cycle carried the field (older
+    # journals) - distinct from "audited, all clean".
+    cites = [(r.get("ts"), r["citations"]) for r in decisions if isinstance(r.get("citations"), dict)]
+    audited = [(ts, c) for ts, c in cites if not c.get("skipped")]
+    citations_checked = sum(int(c.get("checked") or 0) for _, c in audited) if cites else None
+    citation_examples = [
+        {"ts": ts, "symbol": u.get("symbol"), "quoted": u.get("quoted"), "kind": kind,
+         "nearest": f"{(u.get('nearest') or {}).get('label')} {(u.get('nearest') or {}).get('value')}"}
+        for ts, c in audited for kind in ("unsupported", "misattributed") for u in (c.get(kind) or [])
+    ]
+
+    # Exit claims contradicted by the account (#188): fabricated forced-close
+    # urgency, or an above/below-prior-close claim the tape disproves.
+    exit_claim_examples = [
+        {"ts": r.get("ts"), "symbol": u.get("symbol"), "kind": u.get("kind"),
+         "quoted": u.get("quoted"), "fact": u.get("fact")}
+        for r in decisions for u in (r.get("exit_claims") or [])
+    ]
 
     return {
         "decisions": len(decisions),
@@ -86,6 +115,7 @@ def decision_audit(records: list[dict]) -> dict:
         "dry_run": len(dry),
         "rejected": len(rejected),
         "rejections_by_rule": dict(rej_by_rule.most_common(REJECTION_TOP_N)),
+        "rejection_examples": {rule: rej_examples[rule] for rule, _ in rej_by_rule.most_common(REJECTION_TOP_N)},
         "rejections_by_symbol": dict(rej_by_symbol.most_common(REJECTION_TOP_N)),
         "errors": len(errors),
         "error_samples": [f"{r.get('where') or r.get('symbol')}: {str(r.get('detail'))[:120]}" for r in errors[:5]],
@@ -95,6 +125,13 @@ def decision_audit(records: list[dict]) -> dict:
         "tokens_out": usage_out,
         "latency_avg_sec": round(sum(latencies) / len(latencies), 2) if latencies else None,
         "latency_max_sec": round(max(latencies), 2) if latencies else None,
+        "citations_checked": citations_checked,
+        "citations_unsupported": sum(1 for u in citation_examples if u["kind"] == "unsupported") if cites else None,
+        "citations_misattributed": sum(1 for u in citation_examples if u["kind"] == "misattributed") if cites else None,
+        "citations_skipped_cycles": sum(1 for _, c in cites if c.get("skipped")) if cites else None,
+        "citation_examples": citation_examples[:8],
+        "exit_claims_flagged": len(exit_claim_examples),
+        "exit_claim_examples": exit_claim_examples[:8],
     }
 
 
@@ -199,9 +236,26 @@ def render_markdown(d: dict) -> str:
                  f"{a['rejected']} rejected, {a['errors']} errors, {a['dry_run']} dry-run")
     if a["rejections_by_rule"]:
         lines.append(f"- **rejections by rule**: {a['rejections_by_rule']}  (a rule rejecting the same idea all day is a prompt/config bug)")
+        for rule, example in (a.get("rejection_examples") or {}).items():
+            lines.append(f"  - `{rule}` in full: \"{example}\"")
         lines.append(f"- rejections by symbol: {a['rejections_by_symbol']}")
     if a["error_samples"]:
         lines.append("- errors: " + " | ".join(a["error_samples"]))
+    if a.get("citations_checked") is not None:
+        skipped = f", {a['citations_skipped_cycles']} cycle(s) skipped (research tools ran)" if a.get("citations_skipped_cycles") else ""
+        lines.append(f"- **prior citations**: {a['citations_checked']} checked, {a['citations_unsupported']} unsupported, "
+                     f"{a.get('citations_misattributed') or 0} misattributed{skipped}"
+                     "  (unsupported: a figure that appears nowhere in the prior the model was given; misattributed: another "
+                     "underlying's figure quoted as this one's - judge the decision on the journalled prior, not the quote)")
+        for u in a.get("citation_examples") or []:
+            what = "nearest real number" if u.get("kind") == "unsupported" else "actually"
+            lines.append(f"  - {str(u['ts'])[11:16]} {u['symbol']} quoted \"{u['quoted']}\" - {what}: {u['nearest']}")
+    if a.get("exit_claims_flagged"):
+        lines.append(f"- **exit claims contradicted by the account**: {a['exit_claims_flagged']}"
+                     "  (fabricated_urgency: a sell citing a forced close/backstop days before any code exit "
+                     "could fire; wrong_direction: an above/below-prior-close claim the tape disproves - #188)")
+        for u in a.get("exit_claim_examples") or []:
+            lines.append(f"  - {str(u['ts'])[11:16]} {u['symbol']} said \"{u['quoted']}\" but {u['fact']}")
     lines.append(f"- models: {a['models']}; {a['tokens_in']:,} in / {a['tokens_out']:,} out tokens; "
                  f"latency avg {a['latency_avg_sec']}s max {a['latency_max_sec']}s; truncated outputs {a['truncated_outputs']}"
                  + (f"; est. cost ${d['cost_usd']}" if d.get("cost_usd") is not None else ""))
@@ -215,6 +269,11 @@ def render_markdown(d: dict) -> str:
             for source, today in (ps.get("today") or {}).items():
                 run = (ps.get("running") or {}).get(source) or {}
                 lines.append(f"- {source}: today {today}, running {run.get('mean')} over {run.get('days')} day(s)")
+            withheld = ps.get("withheld") or []
+            for source, mean in (ps.get("withheld_today") or {}).items():
+                reasons = sorted({str(r.get("suppressed")) for r in withheld if r.get("source") == source})
+                lines.append(f"- withheld {source}: today {mean} - shadow-graded, not in the means above "
+                             f"(withheld for: {'; '.join(reasons)})")
 
     if d.get("config_changes"):
         lines += ["", "## Config seen today"]
@@ -227,5 +286,9 @@ def render_markdown(d: dict) -> str:
             lines.append(f"- {str(r['ts'])[11:16]} ({r['count']}): `{r['raw']}`")
 
     if d.get("recommendation"):
-        lines += ["", "## Model's read of the day (advisory)", "", d["recommendation"]]
+        # Name the reviewer: the docs promise it is not the model that traded,
+        # and for two days it silently was (#177). A claim in the header is
+        # one a reader can check against the config block above.
+        by = f", by {d['review_model']}" if d.get("review_model") else ""
+        lines += ["", f"## Model's read of the day (advisory{by})", "", d["recommendation"]]
     return "\n".join(lines) + "\n"
