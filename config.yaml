@@ -153,6 +153,13 @@ model_params_by_model:
   moonshotai/Kimi-K3:
     chat_template_kwargs:
       enable_thinking: true
+    # Measured on a real ~8k-token decision prompt (2026-09-02, official
+    # dry-run): thinking + answer took 3,545 completion tokens and 140s; at
+    # the fleet's 1500 the cycle forfeited (finish_reason=length, the
+    # answer never started). This rides the same per-model merge into the
+    # request body, so selecting K3 from the dashboard gets a workable
+    # budget without touching the fleet's max_tokens.
+    max_tokens: 6000
 
 
 # Transient model failures cost a whole cycle otherwise - the next attempt is
