@@ -79,7 +79,9 @@ cannot be silently forgotten.
 
 ## Before the final export
 
-Refresh the counts on slide 10 — they moved a lot in the last days:
+Refresh the counts on slides 13-15 — the test count appears twice (in the infra
+diagram, so via `scripts/render_diagrams.py`, and in the table on 14), and the PR
+and deploy counts on 15. They moved a lot in the last days:
 
 ```sh
 gh pr list --state merged --limit 300 --json number -q 'length'

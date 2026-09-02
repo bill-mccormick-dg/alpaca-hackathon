@@ -78,9 +78,9 @@ differ here, both hackathon requirements:
   is which.
 - **[Featherless.ai](https://featherless.ai)** (OpenAI-compatible) instead of
   the Claude CLI — an open-source model is a hackathon requirement. The judged
-  account trades on `moonshotai/Kimi-K2.6`, the two challengers on
-  `Qwen/Qwen3.8-Flash-Next` and `moonshotai/Kimi-K2-Instruct`, and the daily
-  critique comes from whichever of those did *not* trade that account. The
+  account trades on `Qwen/Qwen3.8-Flash-Next`, the two challengers on
+  `moonshotai/Kimi-K3` and `moonshotai/Kimi-K2.6`, and the daily critique
+  comes from a model that did *not* trade that account. The
   gates a model has to clear — tool calling, context, instruction adherence,
   a thinking-mode toggle, cost — and an honest account of how the incumbent
   actually got the seat are in
@@ -198,7 +198,7 @@ its own overrides file, and its own halt files — a challenger can never stop
 the official account, whether by breaching its daily-loss cutoff or by having
 its kill switch pressed. Only the CLI-only break-glass `flatten.py --halt
 --all-accounts` halts everything. `config-test.yaml` is the current challenger
-config (Qwen3.8-Flash-Next); run it with
+config (Kimi-K3); run it with
 `run_cycle.py --account test --config config-test.yaml`.
 
 | Command | What it does |

@@ -4,7 +4,7 @@
 
 **Team:** RazorsEdge — William P. McCormick / William C. McCormick · **Account:** `PA3VS39Y5LE2` ($100,000 paper) ·
 **Repo:** github.com/bill-mccormick-dg/alpaca-hackathon (MIT) · **Stack:** Alpaca
-MCP server, Featherless.ai (Kimi-K2.6 / Qwen3.8-Flash-Next), Python
+MCP server, Featherless.ai (Qwen3.8-Flash-Next / Kimi-K3), Python
 
 ## Thesis
 
@@ -49,7 +49,13 @@ fine-tune, is cheaper than everything we run and clears every mechanical gate.
 On the live prompt it proposed a 1-DTE contract in 3 of 3 runs, which the
 prompt forbids and the 14:50 backstop would close the same afternoon, and five
 actions against a four-position cap. Well-formed JSON, wrong content. It also
-exposed a real bug: the funnel permitted what the prompt forbade.
+exposed a real bug: the funnel permitted what the prompt forbade. The same
+gate then failed in production on a model we had deployed: running Kimi-K3 as
+a challenger trial, six of its first seven live cycles were forfeited because
+it *described* the research it meant to do instead of calling a tool, while
+Qwen3.8 answered the same prompt in 15s after six tool calls. That cut both
+ways and we fixed both — the model is not the one we score on, and the
+research loop had been hanging up on a model still willing to work.
 
 **The guardrails do not trust the model's arithmetic, and we check it.** Each
 cycle the model is handed a prediction-market prior (Kalshi's index-close

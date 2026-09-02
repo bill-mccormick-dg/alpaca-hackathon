@@ -718,6 +718,13 @@ Two later moves were equally undecided:
 - The `test` account's `Qwen/Qwen3.8-Flash-Next` arrived with the
   aggressive-challenger config, alongside changes to research tools, the
   learning loop and several knobs.
+- The whole lineup moved again on 2026-09-02
+  ([#205](https://github.com/bill-mccormick-dg/alpaca-hackathon/issues/205),
+  [#209](https://github.com/bill-mccormick-dg/alpaca-hackathon/issues/209)):
+  `official` to Qwen3.8-Flash-Next on published benchmark scores, `test` onto
+  Kimi-K3 as a qualification trial, `mixed` to K2.6. Benchmarks are a better
+  reason than none, and they are still not a measurement of this pipeline —
+  which is what the rest of this section is about.
 
 **The two-account A/B has therefore never isolated the model.** `official` and
 `test` differ in model *and* research tools *and* the learning loop *and*
@@ -755,23 +762,36 @@ re-checked rather than believed:
 
 | Seat | Model | Tools | Context | $ in/out per M |
 |---|---|---|---|---|
-| `official` trades (`config.yaml`) | `moonshotai/Kimi-K2.6` | yes | 262,144 | 0.77 / 3.50 |
-| `test` trades (`config-test.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 32,768 | 0.15 / 0.50 |
-| `mixed` trades (`config-variants/mixed.yaml`) | `moonshotai/Kimi-K2-Instruct` | yes | 32,768 | 0.60 / 2.50 |
-| Reviewer | computed per account from `review_model_preference` | — | — | — |
+| `official` trades (`config.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 32,768 | 0.15 / 0.50 |
+| `test` trades (`config-test.yaml`) | `moonshotai/Kimi-K3` | yes | 262,144 | 3.00 / 15.00 |
+| `mixed` trades (`config-variants/mixed.yaml`) | `moonshotai/Kimi-K2.6` | yes | 262,144 | 0.77 / 3.50 |
+| Reviewer | computed, or pinned — see [the reviewer table](#the-critique-comes-from-a-model-that-did-not-trade) | — | — | — |
+
+**This table drifts, and there is a test for it.** #215 documented a lineup,
+five config PRs landed while it was open, and it merged naming three models
+that by then traded nothing — the docs touch no config file, so nothing
+flagged it. `tests/test_docs_lineup.py` now parses this table and the reviewer
+one below and fails when either stops matching the configs.
 
 Two things that table does not say, which the script does:
 
-- **Availability is per-model and it moves.** On 2026-09-02 the other two
-  were `warm` but `Kimi-K2-Instruct` was `unregistered`: not loaded, so the
-  next call to it pays a cold start. K2-Instruct is the judged account's
-  *reviewer*, one call a day after the close, which is the seat where a cold
-  start costs least; in a trading seat that same tier is gate 5 failing. The
-  script prints the tier on every run, because it changes underneath you.
+- **Availability is per-model and it moves.** All three are `warm` as of
+  2026-09-02, but `Kimi-K2-Instruct` — which held a seat until that morning —
+  was `unregistered` the same day: not loaded, so the next call to it pays a
+  cold start. In a reviewer seat, one call a day after the close, that costs
+  least; in a trading seat it is gate 5 failing. The script prints the tier on
+  every run, because it changes underneath you.
 - **Advertised context is a lower bound, not a ceiling.** The 95,328-token
   research cycle ran on a model the catalog lists at 32,768, and Featherless
   answered it (`finish_reason=stop`). So context is a disqualifier at the
   bottom end and not a ranking anywhere else.
+
+- **Cheapness is not a property of the challenger seat.** It was true when
+  the challenger was Qwen3.8 against a Kimi incumbent, and it inverted: `test`
+  now runs K3 at $3.00/$15.00 against `official`'s Qwen3.8 at $0.15/$0.50, so
+  the challenger costs **20× the incumbent per input token**. Gate 7 asks that
+  a model be costed and affordable, not that it be the cheapest — one
+  avoidable bad fill costs more than a week of inference either way.
 
 Runtime overrides can move any account onto any model in `model_prices` from
 the dashboard, and they **expire at 16:00 ET**. The table above is git — what
@@ -843,6 +863,43 @@ reasoning and returns empty content, gate 6 exactly. A model rejected on
 availability is rejected *as of a date*, which is why the evidence lives in
 `scripts/verify_models.py` and not only in this paragraph.
 
+### Gate 4, measured on a model we deployed
+
+The Hawkish test was three samples on an off-hours prompt. On 2026-09-02 the
+same gate failed in production, on the challenger account, in market hours —
+and it is the clearest evidence in this repo that instruction adherence is the
+axis that matters.
+
+`test` ran `moonshotai/Kimi-K3` as a qualification trial (#206). Of its first
+seven live cycles: **one decision, six forfeits.** Every failure was identical
+in shape — the model *described* the research it was about to do instead of
+calling a tool:
+
+> "I have no positions and a clean slate. Before deciding, let me check the
+> intraday trend on the indices and scan for any catalysts, since the snapshot
+> alone only shows price vs prior close."
+
+No `tool_calls`, no JSON array, so `bot/decide.py` could only raise. Three
+retries per cycle, all prose, and the next attempt is the next cron slot ten
+minutes later. K3 clears every mechanical gate — tool use, 262k context, warm,
+priced — and lost 86% of its cycles anyway.
+
+Two things follow, and they point in opposite directions:
+
+- **The model was not the only thing at fault.** The research loop read "no
+  tool call" as "the model is answering now" and hung up on a model still
+  willing to work. It already knew the sentence to say — it sends "Answer now
+  with ONLY the JSON array" when the tool budget runs out — just not for this
+  case. #217 adds one bounded nudge. A gate-4 failure is worth chasing into
+  the code before it is charged to the model.
+- **It is still a gate-4 failure.** Qwen3.8-Flash-Next, on the same prompt and
+  the same account minutes later, ran six research tools and answered in 15s.
+  The prompt did not change; the model did.
+
+The honest reading: K3's trial measured the pipeline as much as the model, and
+the rerun with #217 in place is the one worth quoting. Recorded here rather
+than quietly rerun, because the first result is what the current code does.
+
 ### What would make us change
 
 In order of what would actually move us, not in order of how easy it is to
@@ -865,8 +922,9 @@ Cost breaks ties and does not decide: the whole day's inference is dollars, and
 one avoidable bad fill costs more than a week of it.
 
 **During the scoring week, the bar for switching the judged account is
-higher than any of the above.** Continuity beats an unvalidated improvement:
-#167 pinned K2.6 for exactly that reason.
+higher than any of the above.** Continuity beats an unvalidated improvement.
+#167 pinned K2.6 for exactly that reason, and #205 pinned the Sep 2 lineup so
+an expiring override could not silently revert the judged account overnight.
 
 ## Daily loop
 
@@ -882,29 +940,52 @@ The digest ends with an advisory read of the day and **one** recommended change.
 That paragraph is what the daily loop turns on, so where it comes from matters:
 a model reviewing its own reasoning tends to explain rather than challenge it.
 
-So `eod_review.py` asks a *different* model. The choice is computed, not
-configured — `bot/config.py::resolve_review_model()` walks
-`review_model_preference` in order and takes the first entry that is not this
-account's own `model`:
+So `eod_review.py` asks a *different* model. Unset,
+`bot/config.py::resolve_review_model()` walks `review_model_preference` in
+order and takes the first entry that is not this account's own `model`; an
+explicit `review_model` pins one instead:
 
-| Account | Trades on | Reviewed by |
-|---|---|---|
-| `official` | Kimi-K2.6 | **Kimi-K2-Instruct** |
-| `test` | Qwen3.8-Flash-Next | **Kimi-K2.6** |
-| `mixed` | Kimi-K2-Instruct | **Kimi-K2.6** |
+| Account | Trades on | Reviewed by | How |
+|---|---|---|---|
+| `official` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
+| `test` | Kimi-K3 | **Qwen3.8-Flash-Next** | pinned |
+| `mixed` | Kimi-K2.6 | **Qwen3.8-Flash-Next** | pinned |
 
-No account is ever its own reviewer, because the rule is computed rather than
-configured: when `official` was pinned to K2.6 its reviewer moved to
-K2-Instruct on its own, with no second edit. That is the whole point of
-resolving it at review time. It costs one call a day.
+No account currently reviews its own homework, and
+`tests/test_docs_lineup.py` asserts that against the configs on every run.
+
+**But the guard is weaker than "computed" makes it sound, and two of three
+accounts are outside it.** `resolve_review_model()` returns an explicit
+`review_model` *before* it ever compares against the trading model — the
+`!= model` check exists only on the computed path. So a pin is honoured even
+when it names the model that traded, and both challenger configs are pinned
+to the same model `official` trades. Nothing warns; the digest still arrives
+and still reads plausibly.
+
+It is a live trap rather than a theoretical one. Moving `test` off K3 on
+2026-09-02 set its model to Qwen3.8-Flash-Next and cleared the *override* —
+but the pin also lives in `config-test.yaml`, so for about thirty seconds the
+account was configured to grade its own homework. It was caught by
+`override.py show` before any cycle ran.
+
+Worse, the schedule can launder it: overrides expire at 16:00 ET and the
+review runs at 16:05 ET, so `reviewer_model()` resolves against a config the
+account may not have traded on. An account that traded all day on an
+overridden model can be reviewed by that same model while the check compares
+against git and passes. [#218](https://github.com/bill-mccormick-dg/alpaca-hackathon/issues/218)
+tracks both: refuse a pin equal to the trading model, and resolve against the
+models the journal says actually decided the day (`bot/review.py` already
+counts them in `audit["models"]`) rather than against `config["model"]`.
 
 **It is recomputed every time, deliberately.** The trading model is changeable
 at runtime from the dashboard. Had the reviewer been resolved once and stored,
 switching an account onto K2.6 would quietly leave it grading its own homework —
 the failure would be invisible, because the digest would still arrive and still
 read plausibly. Recomputing means the property holds without anyone maintaining
-it: switch `official` to K2.6 and the reviewer drops to K2-Instruct on the next
-run. `tests/test_config.py` pins exactly that transition.
+it: on the computed path, switching an account's model moves its reviewer on
+the next run with no second edit. `tests/test_config.py` pins exactly that
+transition — and note it is the *computed* path only, which is the hole #218
+describes above.
 
 Set `review_model` — in config, or as a runtime override, or from the
 dashboard's **Review model** selector — to pin one instead of computing it.
