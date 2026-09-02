@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 560" width="1280" height="560" role="img">
+<style>.t{font-family:Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#e6edf3}.d{font-family:Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;fill:#93a4b5}.m{font-family:ui-monospace, 'SF Mono', SFMono-Regular, Menlo, Consolas, monospace;fill:#93a4b5}</style>
+<rect width="1280" height="560" fill="#0f1720"/>
+<line x1="122" y1="452.0" x2="1160" y2="452.0" stroke="#2b3a4a" stroke-width="1" stroke-opacity="0.5"/>
+<text class="m" x="106" y="457.0" font-size="16" text-anchor="end">-5.00%</text>
+<line x1="122" y1="389.3" x2="1160" y2="389.3" stroke="#2b3a4a" stroke-width="1" stroke-opacity="0.5"/>
+<text class="m" x="106" y="394.3" font-size="16" text-anchor="end">-4.00%</text>
+<line x1="122" y1="326.7" x2="1160" y2="326.7" stroke="#2b3a4a" stroke-width="1" stroke-opacity="0.5"/>
+<text class="m" x="106" y="331.7" font-size="16" text-anchor="end">-3.00%</text>
+<line x1="122" y1="264.0" x2="1160" y2="264.0" stroke="#2b3a4a" stroke-width="1" stroke-opacity="0.5"/>
+<text class="m" x="106" y="269.0" font-size="16" text-anchor="end">-2.00%</text>
+<line x1="122" y1="201.3" x2="1160" y2="201.3" stroke="#2b3a4a" stroke-width="1" stroke-opacity="0.5"/>
+<text class="m" x="106" y="206.3" font-size="16" text-anchor="end">-1.00%</text>
+<line x1="122" y1="138.7" x2="1160" y2="138.7" stroke="#e6edf3" stroke-width="1.5" stroke-opacity="0.45" stroke-dasharray='5 4'/>
+<text class="m" x="106" y="143.7" font-size="16" text-anchor="end">+0.00%</text>
+<line x1="122" y1="76.0" x2="1160" y2="76.0" stroke="#2b3a4a" stroke-width="1" stroke-opacity="0.5"/>
+<text class="m" x="106" y="81.0" font-size="16" text-anchor="end">+1.00%</text>
+<text class="d" x="122.0" y="486" font-size="17" text-anchor="middle">Mon 31 Aug open</text>
+<text class="d" x="641.0" y="486" font-size="17" text-anchor="middle">Mon 31 Aug close</text>
+<text class="d" x="1160.0" y="486" font-size="17" text-anchor="middle">Tue 1 Sep close</text>
+<path d="M122.0,138.7 L641.0,166.9 L1160.0,125.5" fill="none" stroke="#31a58e" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="122.0" cy="138.7" r="6" fill="#31a58e" stroke="#0f1720" stroke-width="2"/>
+<circle cx="641.0" cy="166.9" r="6" fill="#31a58e" stroke="#0f1720" stroke-width="2"/>
+<circle cx="1160.0" cy="125.5" r="6" fill="#31a58e" stroke="#0f1720" stroke-width="2"/>
+<text class="t" x="1176.0" y="131.5" font-size="19" font-weight="700" fill="#31a58e">+0.21%</text>
+<path d="M122.0,138.7 L641.0,267.3 L1160.0,401.7" fill="none" stroke="#8a6ff0" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="122.0" cy="138.7" r="6" fill="#8a6ff0" stroke="#0f1720" stroke-width="2"/>
+<circle cx="641.0" cy="267.3" r="6" fill="#8a6ff0" stroke="#0f1720" stroke-width="2"/>
+<circle cx="1160.0" cy="401.7" r="6" fill="#8a6ff0" stroke="#0f1720" stroke-width="2"/>
+<text class="t" x="1176.0" y="407.7" font-size="19" font-weight="700" fill="#8a6ff0">-4.20%</text>
+<path d="M122.0,138.7 L641.0,141.3 L1160.0,80.1" fill="none" stroke="#bd7c2a" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+<circle cx="122.0" cy="138.7" r="6" fill="#bd7c2a" stroke="#0f1720" stroke-width="2"/>
+<circle cx="641.0" cy="141.3" r="6" fill="#bd7c2a" stroke="#0f1720" stroke-width="2"/>
+<circle cx="1160.0" cy="80.1" r="6" fill="#bd7c2a" stroke="#0f1720" stroke-width="2"/>
+<text class="t" x="1176.0" y="86.1" font-size="19" font-weight="700" fill="#bd7c2a">+0.93%</text>
+<rect x="130" y="32" width="26" height="4" rx="2" fill="#31a58e"/>
+<circle cx="143" cy="34" r="5.5" fill="#31a58e" stroke="#0f1720" stroke-width="2"/>
+<text class="d" x="166" y="40" font-size="17">official (judged)  $100,210</text>
+<rect x="402" y="32" width="26" height="4" rx="2" fill="#8a6ff0"/>
+<circle cx="415" cy="34" r="5.5" fill="#8a6ff0" stroke="#0f1720" stroke-width="2"/>
+<text class="d" x="438" y="40" font-size="17">test (challenger)  $95,803</text>
+<rect x="665" y="32" width="26" height="4" rx="2" fill="#bd7c2a"/>
+<circle cx="678" cy="34" r="5.5" fill="#bd7c2a" stroke="#0f1720" stroke-width="2"/>
+<text class="d" x="701" y="40" font-size="17">mixed (instrument A/B)  $100,152</text>
+<text class="d" x="118" y="538" font-size="16">percent change from each account's open on 31 August - dollar equity at the close in the key</text>
+</svg>
