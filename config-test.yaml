@@ -208,8 +208,15 @@ take_profit_pct: 60
 # min_hold_minutes ago is refused unless its drawdown exceeds
 # early_exit_drawdown_pct (headed for the stop anyway). Code exits
 # (stop/take-profit/DTE) are never gated. Both runtime-overridable.
-min_hold_minutes: 30
-early_exit_drawdown_pct: 25
+#
+# Off on the challenger (#222, #225): the guard sees early-vs-late, not
+# good-vs-bad, and on 2026-09-02 it blocked six of eleven model exits with
+# no regard to their reasoning. The prompt now hands the model what it said
+# when it closed a position (CLOSED TODAY); this account measures that
+# lever alone, so its exits are the model's and not the funnel's. official
+# and mixed keep 30 / 25.
+min_hold_minutes: 0
+early_exit_drawdown_pct: 1
 
 # Force-close any option contract with this many days to expiration or
 # fewer, at any cycle - never carry a contract into expiration day's close.

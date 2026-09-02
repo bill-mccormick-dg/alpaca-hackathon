@@ -176,6 +176,31 @@ class ExitClaimsTest(unittest.TestCase):
     def test_a_true_direction_claim_is_not_flagged(self):
         self.assertEqual(self.audit(sell("SPY stayed below prior close all afternoon")), [])
 
+    def test_a_price_before_below_is_a_claim_even_without_a_verb(self):
+        """#226: '227.55, below the prior close' slipped through because the
+        pattern wanted a verb. NVDA spot above its prior close here."""
+        flags = citations.audit_exit_claims([sell("NVDA 227.55, below the prior close - momentum gone", symbol="NVDA260909C00225000", underlying="NVDA")],
+                                            {}, {"NVDA": (227.55, 217.49)}, EXIT_CONFIG)
+        self.assertEqual([f["kind"] for f in flags], ["wrong_direction"])
+        self.assertIn("NVDA 227.55 is above prior close 217.49", flags[0]["fact"])
+
+    def test_a_stated_prior_close_that_is_not_the_real_one_is_flagged(self):
+        """The 2026-09-02 NVDA exit: 'below the prior close of 228.00' when
+        the real close was 217.49. Direction right, number invented."""
+        flags = citations.audit_exit_claims([sell("NVDA is below the prior close of 228.00, thesis broken", symbol="NVDA260909C00225000", underlying="NVDA")],
+                                            {}, {"NVDA": (216.00, 217.49)}, EXIT_CONFIG)
+        self.assertEqual([f["kind"] for f in flags], ["wrong_reference"])
+        self.assertEqual(flags[0]["fact"], "NVDA prior close is 217.49, not 228")
+
+    def test_a_correctly_stated_prior_close_is_not_flagged(self):
+        self.assertEqual(citations.audit_exit_claims([sell("SPY stayed below the prior close of 766.87")], {}, EXIT_SPOT_REF, EXIT_CONFIG), [])
+        self.assertEqual(citations.audit_exit_claims([sell("SPY stayed below the prior close of $767")], {}, EXIT_SPOT_REF, EXIT_CONFIG), [])
+
+    def test_the_prior_blocks_own_label_is_not_a_claim(self):
+        """'P(above prior close) 0.571' is the Kalshi line quoted back, not a
+        statement about the tape - the verb-or-price prefix is what keeps it out."""
+        self.assertEqual(citations.audit_exit_claims([sell("Kalshi P(above prior close) 0.571 supports upside")], {}, EXIT_SPOT_REF, EXIT_CONFIG), [])
+
     def test_a_genuinely_expiring_contract_may_cite_the_backstop(self):
         flags = citations.audit_exit_claims([sell("backstop closes this today")],
                                             {SPY_PUT: 1}, EXIT_SPOT_REF, EXIT_CONFIG)

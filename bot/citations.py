@@ -140,10 +140,21 @@ def audit(proposals: list[Proposal], prior: dict | None, tool_calls=None, tol: f
 EXPIRY_URGENCY = re.compile(r"forced\s+(?:close|exit|sale|expiry)|expiry\s+sale|backstop", re.IGNORECASE)
 
 # "market held above prior close" and kin - a direction claim measured
-# against a number the snapshot carries.
+# against a number the snapshot carries. A verb OR a price must precede
+# above/below: "227.55, below the prior close" is a claim (#226), while the
+# prior block's own label "P(above prior close) 0.571" is not, and the
+# prefix is what keeps the label from matching. An optional "of 228.00"
+# captures a STATED prior close, checked against the real one.
 DIRECTION_CLAIM = re.compile(
-    r"(?:held|holding|holds|stayed|staying|remains?|remained|is|was|closed?|trading)\s+"
-    r"(above|below)\s+(?:the\s+|its\s+|yesterday'?s\s+)?prior\s+close", re.IGNORECASE)
+    r"(?:(?:held|holding|holds|stayed|staying|remains?|remained|is|was|closed?|trading|now|sits?|sitting)\s+"
+    r"(?:(?:at\s+)?\$?\d[\d,]*\.?\d*,?\s+)?|\$?\d[\d,]*\.\d+,?\s+)"
+    r"(above|below)\s+(?:the\s+|its\s+|yesterday'?s\s+)?prior\s+close"
+    r"(?:\s+(?:of|at)\s+\$?(\d[\d,]*\.?\d*))?", re.IGNORECASE)
+
+# A stated prior close is wrong when it is off by more than this fraction of
+# the real one - wide enough to forgive rounding to the dollar, narrow enough
+# that 228.00 for 217.49 (4.8%) is caught.
+REFERENCE_TOLERANCE = 0.005
 
 
 def audit_exit_claims(proposals: list[Proposal], dte_by_symbol: dict[str, int],
@@ -159,6 +170,9 @@ def audit_exit_claims(proposals: list[Proposal], dte_by_symbol: dict[str, int],
       today or tomorrow, so the urgency is invented.
     - wrong_direction: any proposal claiming the underlying is above/below
       its prior close when the snapshot's spot says the opposite.
+    - wrong_reference: a stated prior close ("below the prior close of
+      228.00") that is not the real one - the 2026-09-02 NVDA exit cited
+      228.00 against a real 217.49, and the direction happened to be right.
     """
     horizon = max(int(config.get("eod_close_dte", 1)), int(config.get("expiry_close_dte", 0)))
     flags = []
@@ -175,12 +189,24 @@ def audit_exit_claims(proposals: list[Proposal], dte_by_symbol: dict[str, int],
         if pair:
             spot, ref = pair
             m = DIRECTION_CLAIM.search(reason)
+            if m and ref and m.group(2):
+                stated = _number(m.group(2))
+                if stated is not None and abs(stated - ref) > REFERENCE_TOLERANCE * ref:
+                    flags.append({"symbol": p.symbol, "kind": "wrong_reference", "quoted": m.group(0),
+                                  "fact": f"{p.whitelist_symbol} prior close is {ref:g}, not {stated:g}"})
             if m and spot and ref and spot != ref:
                 actually = "above" if spot > ref else "below"
                 if m.group(1).lower() != actually:
                     flags.append({"symbol": p.symbol, "kind": "wrong_direction", "quoted": m.group(0),
                                   "fact": f"{p.whitelist_symbol} {spot:g} is {actually} prior close {ref:g}"})
     return flags
+
+
+def _number(text: str) -> float | None:
+    try:
+        return float(str(text).replace(",", ""))
+    except ValueError:
+        return None
 
 
 def describe_exit_claims(flags: list[dict]) -> str:
