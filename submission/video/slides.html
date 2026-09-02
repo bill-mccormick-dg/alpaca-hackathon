@@ -198,7 +198,7 @@
 
 <section>
   <h2>Greeks: Alpaca's, ours as the backstop</h2>
-  <p class="sub">We spent three days sure the free feed carried none. It was wrong.</p>
+  <p class="sub">We spent three days believing Alpaca's free feed carried no Greeks. We were wrong.</p>
   <div class="split">
     <img class="spot" src="../images/spot-delta.svg" alt="Delta across strikes: an S-curve, with the at-the-money point at 0.50 and the chosen out-of-the-money point near 0.40">
     <div class="stack">
@@ -209,7 +209,7 @@
       </div>
       <div class="card">
         <p class="k t">Black-Scholes backstop</p>
-        <p>It covers the ~6% too thin to price, and every contract records which of the two it got.</p>
+        <p>Our bisection solve covers the ~6% too thin to price. Every contract records which of the two priced it.</p>
       </div>
     </div>
   </div>
@@ -253,8 +253,8 @@
 
 <section>
   <h2>…and then we grade it</h2>
-  <p class="sub">A prior nobody scores is decoration, so every night the ones the model was handed
-  are Brier-scored against what the market actually did.</p>
+  <p class="sub">A prior nobody scores is decoration. Every night, the probabilities the model was
+  handed are Brier-scored against what the market actually did.</p>
   <div class="split">
     <img class="spot" src="../images/spot-brier.svg" alt="A Brier score scale from zero to a quarter: the day's priors sit near zero, far from the coin-flip mark at 0.25">
     <div class="card">
@@ -324,8 +324,8 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
   <p class="sub">The journal streams to a browser at <b>bot.wpmccormick.pw</b>, published through a
   Cloudflare tunnel. There is no VPN and nothing to install.</p>
   <img src="../images/viewer.png" style="max-height:26vh;width:100%;object-fit:contain" alt="The live journal viewer: an order with the model's full stated reason for closing an underwater put, then the prediction-market priors and the cycle lines beneath it, colour-coded by account">
-  <p class="sub" style="margin-top:.9em">It found four bugs in two days, and none was a failing
-  test: in each case the code did exactly what it had been told.</p>
+  <p class="sub" style="margin-top:.9em">The viewer found four bugs in two days, and none was a
+  failing test: in each case the code did exactly what it had been told.</p>
   <div class="cards">
     <div class="card">
       <p class="k w">#174 &nbsp; #170</p>
