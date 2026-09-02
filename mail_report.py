@@ -44,6 +44,9 @@ from bot.risk import EASTERN, LOGS_DIR, RiskManager
 REPORT_KEYS = ("REPORT_EMAIL_TO", "REPORT_EMAIL_FROM", "REPORT_SMTP_HOST", "REPORT_SMTP_PORT")
 
 TRADE_COLUMNS = ("ts", "event", "side", "qty", "symbol", "price", "exit", "order_id", "reason")
+# The funnel's verdict (`detail`) beside the model's case (`reason`): a
+# rejection needs both, and it is the one column the body no longer shows.
+REJECTED_COLUMNS = ("ts", "symbol", "side", "qty", "price", "detail", "reason")
 CYCLE_COLUMNS = ("ts", "equity", "day_pnl", "positions", "halt")
 
 
@@ -100,8 +103,22 @@ def _rows(events, columns, keep, tz=None) -> str:
 
 
 def trades_csv(events, tz=None) -> str:
-    """Every order-shaped event, with the reason the model gave."""
-    return _rows(events, TRADE_COLUMNS, lambda r: r.get("event") in report.TRADE_EVENTS, tz)
+    """Every order-shaped event with the reason the model gave, and every
+    flatten close as its own `sell` row (event = the flatten's name, so an
+    automatic close is distinguishable from a model-proposed one). Until #221
+    a position closed by the daily-loss cutoff or the 14:50 backstop had its
+    buy in this file and no close - two NVDA buys that never ended."""
+    return _rows(report.trade_records(events), TRADE_COLUMNS, lambda r: True, tz)
+
+
+def rejected_csv(events, tz=None) -> str:
+    """Every order the funnel refused, with the rule that refused it. Its own
+    file rather than lines in the body (#229): a reader scanning for what
+    happened to money wants fills and closes; the rejections are for whoever
+    is tuning the prompt. Empty (no attachment) on a day with none."""
+    if not any(r.get("event") == "order_rejected" for r in events):
+        return ""
+    return _rows(events, REJECTED_COLUMNS, lambda r: r.get("event") == "order_rejected", tz)
 
 
 def cycles_csv(events, tz=None) -> str:
@@ -199,6 +216,7 @@ def summarize(events, account: str, halt: str = "none", tz=None) -> dict:
         "positions": latest.get("positions"),
         "cycles": len(cycles),
         "filled": sum(1 for t in trades if t["event"] == "order_submitted"),
+        "flattened": sum(1 for t in trades if t["event"] in report.FLATTEN_EVENTS),
         "rejected": sum(1 for t in trades if t["event"] == "order_rejected"),
         "dry_run": sum(1 for t in trades if t["event"] == "dry_run"),
         "errors": len(errors),
@@ -236,7 +254,8 @@ def body_text(s: dict, now: datetime) -> str:
         f"  Day P&L         {_money(s['day_pnl'])}",
         f"  Open positions  {s['positions'] if s['positions'] is not None else 'n/a'}",
         f"  Cycles today    {s['cycles']}",
-        f"  Orders          {s['filled']} filled, {s['rejected']} rejected, {s['dry_run']} dry-run",
+        (f"  Orders          {s['filled']} filled, {s['flattened']} flattened, {s['rejected']} rejected "
+         f"(see the rejected CSV), {s['dry_run']} dry-run"),
     ]
     if s["errors"] or s["retries"]:
         lines.append(f"  Model           {s['errors']} error(s), {s['retries']} retry/ies")
@@ -247,11 +266,15 @@ def body_text(s: dict, now: datetime) -> str:
     # All of today's trades, reasons unclipped (reason_chars=0): the 12-entry
     # and 400-char caps exist for Home Assistant's sensor limits, and in an
     # email they cut entries mid-sentence under a heading that says "today".
-    lines.append(report.render_trades_markdown(s["trades"], s["account"], reason_chars=0))
+    # Rejections are counted above and attached as their own CSV; in the body
+    # they buried the fills and closes under orders that never happened (#229).
+    happened = [t for t in s["trades"] if t["event"] != "order_rejected"]
+    lines.append(report.render_trades_markdown(happened, s["account"], reason_chars=0))
     lines += [
         "",
         "",
-        "Attached: trades (every order with the model's reasoning), cycles",
+        "Attached: trades (every fill and flatten close with the model's reasoning),",
+        "rejected (every order the guardrails refused, with the rule), cycles",
         "(the intra-day equity curve) and the multi-day equity log, as CSV.",
         "",
         "This is an automated read-only report. Nothing here can be replied to",
@@ -319,6 +342,7 @@ def run(args: argparse.Namespace) -> int:
     day = now.astimezone(EASTERN).date().isoformat()
     attachments = {
         f"trades-{day}-{args.account}.csv": trades_csv(events, tz=now.tzinfo),
+        f"rejected-{day}-{args.account}.csv": rejected_csv(events, tz=now.tzinfo),
         f"cycles-{day}-{args.account}.csv": cycles_csv(events, tz=now.tzinfo),
         f"equity-{args.account}.csv": equity_csv(),
     }

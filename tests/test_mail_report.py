@@ -29,6 +29,11 @@ FILL = {"ts": "2026-09-01T10:15:00-04:00", "event": "order_submitted", "side": "
 REJECT = {"ts": "2026-09-01T10:20:00-04:00", "event": "order_rejected", "side": "buy", "qty": 99,
           "symbol": "SPY", "price": 1.0, "reason": "exceeds cap"}
 EVENTS = [CYCLE, FILL, REJECT, {"ts": "x", "event": "decision", "count": 1}]
+FLATTEN = {"ts": "2026-09-01T10:40:11-04:00", "event": "daily_loss_flatten", "halt": True,
+           "attempted": ["NVDA260909C00220000", "QQQ260904P00708000"],
+           "closed": [{"symbol": "NVDA260909C00220000", "status": 200, "body": None},
+                      {"symbol": "QQQ260904P00708000", "status": 200, "body": None}],
+           "failed": [], "state": "closed", "message": "daily-loss cutoff: all positions closed"}
 
 
 def _parse(text):
@@ -53,6 +58,28 @@ class CsvTest(unittest.TestCase):
 
         self.assertNotIn("decision", symbols)
         self.assertNotIn("cycle_start", symbols)
+
+    def test_trades_csv_has_a_sell_row_for_every_flatten_close(self):
+        """#221: test on 2026-09-01 bought two NVDA contracts and the 2%
+        cutoff closed four positions at 10:40; the CSV showed the buys and
+        no closes."""
+        rows = _parse(mail_report.trades_csv([CYCLE, FILL, FLATTEN]))
+
+        self.assertEqual([(r["event"], r["side"], r["symbol"]) for r in rows], [
+            ("order_submitted", "buy", "NVDA260909C00220000"),
+            ("daily_loss_flatten", "sell", "NVDA260909C00220000"),
+            ("daily_loss_flatten", "sell", "QQQ260904P00708000"),
+        ])
+        self.assertEqual(rows[1]["qty"], "2")
+        self.assertEqual(rows[1]["exit"], "True")
+        self.assertEqual(rows[1]["reason"], "daily-loss cutoff: all positions closed")
+
+    def test_rejected_csv_carries_the_rule_and_is_empty_when_nothing_was_refused(self):
+        rows = _parse(mail_report.rejected_csv([CYCLE, FILL, dict(REJECT, detail="exceeds max_position_usd")]))
+
+        self.assertEqual(len(rows), 1)
+        self.assertEqual((rows[0]["symbol"], rows[0]["detail"], rows[0]["reason"]), ("SPY", "exceeds max_position_usd", "exceeds cap"))
+        self.assertEqual(mail_report.rejected_csv([CYCLE, FILL]), "")
 
     def test_cycles_csv_is_the_intraday_equity_curve(self):
         rows = _parse(mail_report.cycles_csv(EVENTS))
@@ -228,6 +255,22 @@ class MessageTest(unittest.TestCase):
 
         for i in range(15):
             self.assertIn(f"SYM{i}", body)
+
+    def test_rejections_are_counted_in_the_body_but_not_listed(self):
+        """#229: rejected orders buried the fills under orders that never
+        happened. They keep their count and move to their own CSV."""
+        body = self._message().get_body(preferencelist=("plain",)).get_content()
+
+        self.assertIn("1 filled, 0 flattened, 1 rejected (see the rejected CSV)", body)
+        self.assertIn("NVDA260909C00220000", body)
+        self.assertNotIn("rejected buy", body)
+        self.assertNotIn("exceeds cap", body)
+
+    def test_flatten_closes_are_listed_in_the_body(self):
+        body = self._message([CYCLE, FILL, FLATTEN]).get_body(preferencelist=("plain",)).get_content()
+
+        self.assertIn("FLATTENED (daily loss)", body)
+        self.assertIn("QQQ260904P00708000", body)
 
     def test_trade_times_render_on_the_callers_clock(self):
         """Journal timestamps are Eastern; the report passes the host's tz
