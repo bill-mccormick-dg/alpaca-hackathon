@@ -94,6 +94,53 @@ Its own journal (`logs/journal-<name>.jsonl`; the official account keeps
   halt, written after a breach of `daily_loss_cutoff_pct` flattens the
   account. Expires with the day; delete it to resume early.
 
+## The journal in a browser
+
+The zero-setup way to watch the bot think, and the first thing to give a new
+teammate or a judge: **https://bot.wpmccormick.pw**. Enter an email address,
+paste the one-time PIN Cloudflare sends, and the journal starts streaming.
+Sessions last six hours. The Access policy deliberately accepts any working
+email rather than a list of addresses - a judge cannot be pre-registered.
+
+What it shows, live: every cycle as it happens, the model's full reasoning, the
+orders and the rule behind each rejection. Controls are checkboxes for the three
+accounts, a toggle for tool-call and config chatter, and a date picker that
+replays an earlier day. There is nothing else - no halt, no override, no
+button that reaches the trading path at all.
+
+`journal_viewer.py` tails `logs/journal*.jsonl` and pushes them over
+server-sent events, bound to the LAN on :8300; `cloudflared` publishes that
+one port. It holds no credentials.
+
+### When it is broken
+
+| Symptom | Where to look |
+|---|---|
+| 502 after a successful login | the unit, not the tunnel: `systemctl status alpaca-hackathon-journal-viewer` |
+| The page loads but never updates | the unit is up but the source changed under it - see the restart note below |
+| Login loop, or "restricted to members" | Cloudflare Access dashboard state, not this repo |
+| Nothing loads at all | check Cloudflare's status page before debugging CT 108 |
+
+The login-methods trap is worth naming because it cost an evening: if the
+Access application is pinned to a single identity provider, the email
+one-time-PIN option disappears and *everyone* is locked out, including the
+person who owns the account. The fix is in the Cloudflare dashboard - turn
+"Accept all available identity providers" back on.
+
+**The viewer does not restart itself on deploy.** Unlike `mqtt_bridge.py` it has
+no source watcher, and `deploy.yml` has no restart step for it, so a change to
+`journal_viewer.py` sits on disk while the old code keeps serving. After any
+deploy that touches it:
+
+```sh
+systemctl restart alpaca-hackathon-journal-viewer
+```
+
+Deploy, tunnel and Access mechanics live in homenetwork's `alpaca-hackathon`
+and `cloudflared` roles; the Access login rules are dashboard state on purpose.
+The unit is gated on `journal_viewer.py` existing in the checkout, so an older
+deploy does not leave it flapping under `Restart=always`.
+
 ## Runtime overrides
 
 Two config layers with explicit precedence: `config.yaml` (git) is the base;

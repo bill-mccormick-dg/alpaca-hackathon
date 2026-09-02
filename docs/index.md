@@ -44,6 +44,10 @@ one before expiry. **The model never touches an order.**
   deploys every merge to `main` within a minute or two.
 - **Your machine**: `docker compose` (see Onboarding) for tests, dry-run cycles
   against your test account, and this docs site.
+- **Anywhere**: [bot.wpmccormick.pw](https://bot.wpmccormick.pw) - the journal
+  streaming live to a browser, published from CT 108 through a Cloudflare
+  tunnel. Email one-time PIN, read-only, nothing to install. It is the fastest
+  way to see what the agent is doing right now.
 
 Open work is on the [issue tracker](https://github.com/bill-mccormick-dg/alpaca-hackathon/issues),
 labelled `P1-monday` to `P4-later`.
