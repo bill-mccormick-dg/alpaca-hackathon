@@ -358,5 +358,12 @@ def render_markdown(d: dict) -> str:
         # and for two days it silently was (#177). A claim in the header is
         # one a reader can check against the config block above.
         by = f", by {d['review_model']}" if d.get("review_model") else ""
-        lines += ["", f"## Model's read of the day (advisory{by})", "", d["recommendation"]]
+        lines += ["", f"## Model's read of the day (advisory{by})", ""]
+        if d.get("review_pin_ignored"):
+            lines.append(f"_review_model pin `{d['review_pin_ignored']}` ignored: it traded today (#218)._")
+        if d.get("review_note"):
+            lines.append(f"_{d['review_note']}_")
+        if d.get("review_pin_ignored") or d.get("review_note"):
+            lines.append("")
+        lines.append(d["recommendation"])
     return "\n".join(lines) + "\n"

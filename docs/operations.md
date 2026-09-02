@@ -199,8 +199,10 @@ transport.
 The one knob whose normal state is *unset*. `eod_review.py` asks a model that
 did **not** trade the day for its advisory read, and
 `bot/config.py::resolve_review_model()` picks it: the first entry of
-`review_model_preference` that is not this account's own `model`, recomputed on
-every call. All three accounts currently review on `moonshotai/Kimi-K2.6`.
+`review_model_preference` that is not this account's own `model` and did not
+appear in the day's journal (the digest's per-model rows), recomputed on every
+call. `official` reviews on `moonshotai/Kimi-K2.6` (computed); `test` and
+`mixed` pin `Qwen/Qwen3.8-Flash-Next`.
 
 Recomputing rather than storing is what makes the property survive a dashboard
 model swap — switch an account onto its reviewer and the reviewer moves, instead
@@ -228,6 +230,15 @@ override.py --account official set review_model moonshotai/Kimi-K2-Instruct
 
 or pick it from the dashboard selector. Both expire at 16:00 ET like any other
 override; clear it and the computed default returns.
+
+**A pin is refused when it names a model that traded** (#218) — the account's
+current `model`, or any model in the day's journal. The review falls through
+to the preference list, the digest prints `review_model pin … ignored` above
+the critique, and the `eod_review` journal event carries `review_pin_ignored`.
+So changing an account's model is a one-key change even when its reviewer is
+pinned: the pin cannot turn into a self-review. The review runs at 16:05 ET,
+after overrides expire, which is why the comparison is against the journal
+and not against the config at that moment.
 
 **Hard risk caps are git-only on purpose** — position size, position count, the
 DTE window, the whitelist and the daily-loss cutoff cannot be raised at runtime

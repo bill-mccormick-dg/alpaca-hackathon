@@ -946,10 +946,14 @@ The digest ends with an advisory read of the day and **one** recommended change.
 That paragraph is what the daily loop turns on, so where it comes from matters:
 a model reviewing its own reasoning tends to explain rather than challenge it.
 
-So `eod_review.py` asks a *different* model. Unset,
-`bot/config.py::resolve_review_model()` walks `review_model_preference` in
-order and takes the first entry that is not this account's own `model`; an
-explicit `review_model` pins one instead:
+So `eod_review.py` asks a *different* model, and the rule is one line: **the
+reviewer is never a model that traded the day.** `bot/config.py::review_choice()`
+takes the set of models the journal says decided, erred or retried — the
+digest's per-model rows (#231) — plus the account's current `model`, and
+excludes all of them. An explicit `review_model` pin is honoured only when it
+passes that rule; otherwise it is refused, the digest says so in a line above
+the critique, the `eod_review` journal event carries `review_pin_ignored`, and
+the first entry of `review_model_preference` that did not trade is used instead.
 
 | Account | Trades on | Reviewed by | How |
 |---|---|---|---|
@@ -960,38 +964,31 @@ explicit `review_model` pins one instead:
 No account currently reviews its own homework, and
 `tests/test_docs_lineup.py` asserts that against the configs on every run.
 
-**But the guard is weaker than "computed" makes it sound, and two of three
-accounts are outside it.** `resolve_review_model()` returns an explicit
-`review_model` *before* it ever compares against the trading model — the
-`!= model` check exists only on the computed path. So a pin is honoured even
-when it names the model that traded, and both challenger configs are pinned
-to the same model `official` trades. Nothing warns; the digest still arrives
-and still reads plausibly.
+**Why the journal and not the config.** Until #218 the check compared the
+reviewer against `config["model"]` at review time, and a pin skipped the check
+entirely. Two holes, both live on 2026-09-02. Moving `test` off K3 set its model
+to Qwen3.8-Flash-Next and cleared the *override* — but the pin also lives in
+`config-test.yaml`, so for about thirty seconds the account was configured to
+grade its own homework, and nothing would have said so. And overrides expire at
+16:00 ET while the review runs at 16:05 ET, so an account that traded all day
+on an overridden model was checked against the git config it never ran:
+`test` traded that whole session on Qwen and its git pin *is* Qwen. Resolving
+against what the journal says traded closes both; the pin refusal is what
+makes a two-key change (model plus reviewer) into a one-key change again.
 
-It is a live trap rather than a theoretical one. Moving `test` off K3 on
-2026-09-02 set its model to Qwen3.8-Flash-Next and cleared the *override* —
-but the pin also lives in `config-test.yaml`, so for about thirty seconds the
-account was configured to grade its own homework. It was caught by
-`override.py show` before any cycle ran.
-
-Worse, the schedule can launder it: overrides expire at 16:00 ET and the
-review runs at 16:05 ET, so `reviewer_model()` resolves against a config the
-account may not have traded on. An account that traded all day on an
-overridden model can be reviewed by that same model while the check compares
-against git and passes. [#218](https://github.com/bill-mccormick-dg/alpaca-hackathon/issues/218)
-tracks both: refuse a pin equal to the trading model, and resolve against the
-models the journal says actually decided the day (`bot/review.py` already
-counts them in `audit["models"]`) rather than against `config["model"]`.
+When every preference entry traded too, the trading model reviews itself as
+the fallback — a same-model review beats no review — and the digest prints
+"same-model review" above the critique rather than letting the heading carry
+it alone.
 
 **It is recomputed every time, deliberately.** The trading model is changeable
 at runtime from the dashboard. Had the reviewer been resolved once and stored,
 switching an account onto K2.6 would quietly leave it grading its own homework —
 the failure would be invisible, because the digest would still arrive and still
 read plausibly. Recomputing means the property holds without anyone maintaining
-it: on the computed path, switching an account's model moves its reviewer on
-the next run with no second edit. `tests/test_config.py` pins exactly that
-transition — and note it is the *computed* path only, which is the hole #218
-describes above.
+it: switching an account's model moves its reviewer on the next run with no
+second edit, and a pin that names the new model is refused rather than
+honoured. `tests/test_config.py` pins both transitions.
 
 Set `review_model` — in config, or as a runtime override, or from the
 dashboard's **Review model** selector — to pin one instead of computing it.

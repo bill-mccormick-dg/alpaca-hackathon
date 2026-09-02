@@ -10,6 +10,7 @@ from bot.config import (
     load_config,
     model_params_for,
     resolve_review_model,
+    review_choice,
 )
 from bot.risk import EASTERN
 
@@ -126,6 +127,30 @@ class ResolveReviewModelTest(unittest.TestCase):
                "review_model_preference": list(self.PREF)}
 
         self.assertEqual(resolve_review_model(cfg), "c-model")
+
+    def test_a_pin_equal_to_the_trading_model_is_refused(self):
+        """#218: a pin returned before any comparison, so both challenger
+        configs could pin the model `official` trades and a dashboard swap
+        onto it produced a silent self-review."""
+        cfg = {"model": "c-model", "review_model": "c-model", "review_model_preference": list(self.PREF)}
+
+        self.assertEqual(resolve_review_model(cfg), "b-model")
+        self.assertEqual(review_choice(cfg), ("b-model", "c-model"))
+
+    def test_a_pin_that_traded_under_an_expired_override_is_refused(self):
+        """Overrides die at 16:00 ET and the review runs at 16:05, so the
+        config's `model` may not be what decided the day. The journal's
+        models are passed in, and every one of them is excluded."""
+        cfg = {"model": "k3", "review_model": "qwen", "review_model_preference": ["k26", "qwen", "k3"]}
+
+        self.assertEqual(resolve_review_model(cfg, traded={"qwen"}), "k26")
+        self.assertEqual(review_choice(cfg, traded={"qwen"}), ("k26", "qwen"))
+
+    def test_preference_entries_that_traded_are_skipped_too(self):
+        cfg = {"model": "k3", "review_model_preference": ["k26", "qwen"]}
+
+        self.assertEqual(resolve_review_model(cfg, traded={"k26", "k3"}), "qwen")
+        self.assertEqual(review_choice(cfg, traded={"k26", "qwen"}), (None, None))
 
     def test_none_when_every_preference_is_the_trading_model(self):
         cfg = {"model": "a-model", "review_model_preference": ["a-model"]}

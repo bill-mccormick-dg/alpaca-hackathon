@@ -28,13 +28,14 @@ Alpaca (`get_stock_snapshot` → `prevDailyBar.c`), not from the model's reason.
   Docs, tests, `scripts/`, `mail_report.py`, `bot/report.py` deploy any time.
   Merging frozen code inside the window fails the deploy job and leaves `main` undeployed — open the PR, merge after 15:15.
 - **Runtime overrides expire 16:00 ET; the EOD review runs 15:05 CT = 16:05 ET.**
-  The reviewer is resolved against a config the account may not have traded on.
-  To keep a `review_model` override through the review, set it `--until 17:00`.
+  A `review_model` override needs `--until 17:00` to be seen by the review; the
+  self-review check itself no longer depends on it (#218).
 - **`request_timeout_sec` is not overridable** (`bot/overrides.py::OVERRIDABLE_KEYS`).
   A dashboard model swap cannot carry its timeout. K3 needs ~140s; `config.yaml` has 60.
-- **A pinned `review_model` bypasses the self-review guard.** `resolve_review_model`
-  returns an explicit pin before comparing it to the trading model. Changing an
-  account's model is a two-key change when its reviewer is pinned (#218).
+- **The reviewer is resolved against the journal's models, not the config** (#218):
+  `review_choice(config, traded)` refuses a pin that names any model that traded and
+  falls through to the preference list. The 16:00 ET override expiry no longer matters
+  to the 16:05 review. `review_pin_ignored` on the `eod_review` event says when it fired.
 - **`min_hold_minutes` is effectively 30–40**: cycles run on a 10-minute cron grid,
   the hold counts from the fill. Don't widen it (#222).
 - **Every account's cron log is `logs/cron-<acct>.log`**; a cycle that exits at a
@@ -75,7 +76,6 @@ Alpaca (`get_stock_snapshot` → `prevDailyBar.c`), not from the model's reason.
 ## Open threads (Sep 2, 2026)
 
 - #216 Part 2 — replay journaled prompts, score constraint adherence (209 decisions exist); reopened Sep 2, scheduled Thu Sep 3 during the freeze
-- #218 — pinned reviewer bypasses the guard; resolve against `audit["models"]`
 - #221 — CSV misses flatten closes
 - #222 — model exits: 11 attempts / 6 blocked / 5 executed on Sep 2; two sound, three not
 - #226 — reasoning-scoring levers, in order
