@@ -300,7 +300,7 @@ def infra() -> str:
     s.append(box(28, 26, 352, 56, ["developer"], BORDER, sub="branch -> pull request"))
     s.append(band(28, 106, 352, 420, "GITHUB", EXT))
     s.append(path([(204, 82), (204, 99)], "a", DIM))
-    s.append(box(50, 150, 308, 76, ["CI - ubuntu-latest"], EXT, sub="ruff + 765 tests, no keys"))
+    s.append(box(50, 150, 308, 76, ["CI - ubuntu-latest"], EXT, sub="ruff + 795 tests, no keys"))
     s.append(box(50, 254, 308, 62, ["squash-merge to main"], BORDER))
     s.append(box(50, 344, 308, 96, ["freeze window"], GATE, sub="trading code, 08:20-15:15 CT", sw=2.5))
     s.append(label(204, 424, "hard fail - red X on main", color=STOP))
