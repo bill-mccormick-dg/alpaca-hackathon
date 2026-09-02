@@ -59,6 +59,25 @@ class PairRoundTripsTest(unittest.TestCase):
         self.assertEqual(t["hold_minutes"], 90.0)
         self.assertEqual(t["exit_reason"], trades.TAKE_PROFIT)
 
+    def test_fill_times_are_rendered_on_the_journal_clock(self):
+        """#231: Alpaca fills arrive in UTC, and the digest mixed 16:10 (fill)
+        with 12:10 (journal) for the same trade. Everything downstream -
+        entry_hour, DTE at entry, the serialized times - is Eastern now."""
+        from datetime import timezone
+
+        utc_buy = datetime(2026, 9, 1, 16, 10, tzinfo=timezone.utc)
+        trips, _ = trades.pair_round_trips([
+            {"symbol": CALL, "side": "buy", "qty": 1, "price": 2.0, "filled_at": utc_buy},
+            {"symbol": CALL, "side": "sell", "qty": 1, "price": 2.5, "filled_at": utc_buy + timedelta(minutes=30),
+             "reason": trades.MODEL},
+        ])
+        t = trips[0]
+        self.assertEqual(t["entry_hour"], 12)
+        self.assertEqual(t["entry_time"].isoformat(), "2026-09-01T12:10:00-04:00")
+        self.assertEqual(t["exit_time"].isoformat(), "2026-09-01T12:40:00-04:00")
+        self.assertEqual(t["hold_minutes"], 30.0)
+        self.assertEqual(t["dte_at_entry"], 3)
+
     def test_stock_pnl_has_no_multiplier(self):
         trips, _ = trades.pair_round_trips([fill("AAPL", "buy", 10, 150.0, 0), fill("AAPL", "sell", 10, 151.5, 30)])
         self.assertEqual(trips[0]["pnl"], 15.0)

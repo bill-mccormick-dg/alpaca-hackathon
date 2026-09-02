@@ -80,6 +80,37 @@ class DecisionAuditTest(unittest.TestCase):
         self.assertEqual(a["rejection_examples"], {"price must be": "price must be positive",
                                                    "not in underlyings whitelist": "TSLA not in underlyings whitelist"})
 
+    def test_a_model_that_only_errored_is_named_beside_its_errors(self):
+        """#231: six K3 cycles ended in a decide error and wrote no decision
+        event, so `models` never mentioned K3 and the errors reached the
+        reviewer unattributed - who recommended switching back to K3."""
+        records = [
+            rec("09:51:08", "error", where="decide", model="k3", detail="ValueError: no JSON array in model output"),
+            rec("10:02:00", "decide_retry", attempt=1, model="k3", detail="ReadTimeout"),
+            rec("10:12:40", "error", where="decide", model="k3", detail="ValueError: no JSON array in model output"),
+            rec("10:20:00", "error", where="holdings", detail="ReadTimeout"),
+            rec("11:00:05", "decision", raw="[]", count=0, model="qwen", usage={"prompt_tokens": 9000, "completion_tokens": 2},
+                latency_sec=2.0, finish_reason="stop"),
+            rec("11:10:05", "decision", raw="", count=0, model="qwen", usage={"prompt_tokens": 9000, "completion_tokens": 1500},
+                latency_sec=4.0, finish_reason="length"),
+        ]
+
+        a = review.decision_audit(records)
+
+        self.assertEqual(a["models"], {"qwen": 2})
+        self.assertEqual(a["by_model"]["k3"], {"decisions": 0, "errors": 2, "retries": 1, "truncated": 0,
+                                               "tokens_in": 0, "tokens_out": 0, "latency_avg_sec": None})
+        self.assertEqual(a["by_model"]["qwen"], {"decisions": 2, "errors": 0, "retries": 0, "truncated": 1,
+                                                 "tokens_in": 18000, "tokens_out": 1502, "latency_avg_sec": 3.0})
+        self.assertEqual(a["by_model"][review.NO_MODEL]["errors"], 1)
+        self.assertEqual(a["retries"], 1)
+        self.assertTrue(a["error_samples"][0].startswith("decide (k3): ValueError"), a["error_samples"])
+        self.assertEqual(a["error_samples"][2], "holdings: ReadTimeout")
+
+        md = review.render_markdown(review.build_digest(DAY, "test", records, {"trades": 0}, []))
+        self.assertIn("- `k3`: 0 decisions, 2 errors, 1 retries, 0 truncated", md)
+        self.assertIn("- `qwen`: 2 decisions, 0 errors, 0 retries, 1 truncated, avg 3.0s", md)
+
     def test_rejection_keys_drop_numbers(self):
         self.assertEqual(review._rejection_key("position value 5120.00 exceeds max_position_usd 5000"), "exceeds max_position_usd")
         self.assertEqual(review._rejection_key("already at max_positions (4)"), "max_positions")
@@ -96,6 +127,16 @@ class ConfigChangesAndCostTest(unittest.TestCase):
         self.assertAlmostEqual(review.estimate_cost_usd(a, {"m1": {"in": 1.0, "out": 10.0}}), 15100 / 1e6 + 842 / 1e6 * 10, places=4)
         self.assertIsNone(review.estimate_cost_usd(a, {"other": {"in": 1, "out": 1}}))
         self.assertIsNone(review.estimate_cost_usd(a, None))
+
+    def test_cost_is_billed_per_model_on_a_two_model_day(self):
+        records = [
+            rec("10:00:05", "decision", raw="[]", count=0, model="cheap", usage={"prompt_tokens": 1_000_000, "completion_tokens": 0},
+                latency_sec=1.0, finish_reason="stop"),
+            rec("10:10:05", "decision", raw="[]", count=0, model="dear", usage={"prompt_tokens": 1_000_000, "completion_tokens": 0},
+                latency_sec=1.0, finish_reason="stop"),
+        ]
+        a = review.decision_audit(records)
+        self.assertAlmostEqual(review.estimate_cost_usd(a, {"cheap": {"in": 1.0, "out": 0}, "dear": {"in": 20.0, "out": 0}}), 21.0, places=4)
 
 
 class DigestTest(unittest.TestCase):

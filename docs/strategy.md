@@ -930,7 +930,13 @@ an expiring override could not silently revert the judged account overnight.
 
 After each close: `eod_review.py` (the end-of-day digest) → read the digest → edit
 `strategy_notes` / exits / knobs → PR → CI → deploy → the next morning runs
-the new version. Promote the test-account challenger config (the two-account A/B) when it
+the new version. Read the digest's **per model** rows before its totals: a
+cycle that ends in a decide error writes no `decision` event, so a model that
+forfeited every cycle used to be invisible in the day's model count while its
+errors arrived unattributed — on 2026-09-02 the reviewer read six K3 forfeits
+as Qwen's and recommended reinstating K3 (#231). Each model now has its own
+row of decisions, errors, retries and truncations, every error sample names
+its model, and fill times from Alpaca are shown on the journal's Eastern clock. Promote the test-account challenger config (the two-account A/B) when it
 wins convincingly.
 
 
