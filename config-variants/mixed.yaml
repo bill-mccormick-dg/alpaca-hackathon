@@ -105,6 +105,8 @@ strategy_notes: |
     a forced close on expiry day for options. An open position is presumed
     valid until a stop, a take-profit, or a NAMED change in the evidence cited
     at entry - to exit early, say which number moved and in which direction.
+    DTE is not such a number: no expiry rule touches a position before the
+    date shown on it, so expiry pressure is never a reason to exit early.
     Sell only the exact symbol listed under POSITIONS YOU HOLD.
 
 # Model - the Featherless model id and sampling for the decide call. Also

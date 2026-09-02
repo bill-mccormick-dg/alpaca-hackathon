@@ -23,6 +23,21 @@ the reviewer read them from there. The reason strings are load-bearing
 downstream (digest, reviewer, email, feed, writeup), which is why this is
 worth a few lines per cycle even on a day the model quoted honestly.
 
+Since #188 (found by godmagick reading the fills, not the journal) the
+audit also grades EXIT reasons against facts the account can contradict.
+On 2026-09-01 the judged account sold a 7-DTE SPY put at -12% across four
+attempts; every reason cited expiry pressure that did not exist ("forced
+expiry sale", "forced close tomorrow", "backstop forces exit" - with
+expiry_close_dte=0 / eod_close_dte=1 no code path touches a 7-DTE contract
+for six more days), and the filled exit claimed the "market held above
+prior close" while SPY sat 0.73% BELOW it - the strike (760) conflated
+with the prior close (766.87). Meanwhile the evidence actually cited at
+entry had strengthened (Kalshi P(above prior) 0.11 -> 0.074). Two checks
+follow from that trade: `fabricated_urgency`, a sell citing a forced
+close/backstop when the contract's DTE puts it days beyond any code
+action; and `wrong_direction`, an above/below-prior-close claim the tape
+contradicts. Same posture as the prior audit: journal and digest only.
+
 Deliberately reporting only. The funnel keeps bounding what can be traded;
 prose is not an order parameter, and check_order does not grade rhetoric.
 """
@@ -115,6 +130,63 @@ def audit(proposals: list[Proposal], prior: dict | None, tool_calls=None, tol: f
                 # one on show: the 13:20 case - SPY's chain quoted for QQQ.
                 misattributed.append(entry)
     return {"checked": checked, "unsupported": unsupported, "misattributed": misattributed}
+
+
+# A sell reason claiming an imminent code-driven exit. Every one of #188's
+# four exit attempts matches: "forced expiry sale", "forced close tomorrow",
+# "forced close approaches", "backstop forces exit". Plain DTE/theta talk is
+# deliberately NOT matched - "theta decay accelerating" at 7 DTE is arguable
+# rhetoric, but a forced close that is days away is a checkable falsehood.
+EXPIRY_URGENCY = re.compile(r"forced\s+(?:close|exit|sale|expiry)|expiry\s+sale|backstop", re.IGNORECASE)
+
+# "market held above prior close" and kin - a direction claim measured
+# against a number the snapshot carries.
+DIRECTION_CLAIM = re.compile(
+    r"(?:held|holding|holds|stayed|staying|remains?|remained|is|was|closed?|trading)\s+"
+    r"(above|below)\s+(?:the\s+|its\s+|yesterday'?s\s+)?prior\s+close", re.IGNORECASE)
+
+
+def audit_exit_claims(proposals: list[Proposal], dte_by_symbol: dict[str, int],
+                      spot_ref: dict[str, tuple[float, float]], config: dict) -> list[dict]:
+    """Facts in a reason that the account itself contradicts (#188).
+
+    `dte_by_symbol` is DTE per held option symbol; `spot_ref` is
+    {underlying: (spot, prior_close)} in the underlying's own terms. Two
+    kinds of flag, each with the quoted phrase and the contradicting fact:
+
+    - fabricated_urgency: a SELL citing a forced close / backstop when the
+      contract sits beyond eod_close_dte + 1 - no code path can touch it
+      today or tomorrow, so the urgency is invented.
+    - wrong_direction: any proposal claiming the underlying is above/below
+      its prior close when the snapshot's spot says the opposite.
+    """
+    horizon = max(int(config.get("eod_close_dte", 1)), int(config.get("expiry_close_dte", 0)))
+    flags = []
+    for p in proposals:
+        reason = p.reason or ""
+        if p.side == "sell":
+            dte = dte_by_symbol.get(p.symbol)
+            if dte is not None and dte > horizon + 1:
+                m = EXPIRY_URGENCY.search(reason)
+                if m:
+                    flags.append({"symbol": p.symbol, "kind": "fabricated_urgency", "quoted": m.group(0),
+                                  "fact": f"{dte} DTE - no code exit for {dte - horizon} more day(s)"})
+        pair = spot_ref.get(p.whitelist_symbol)
+        if pair:
+            spot, ref = pair
+            m = DIRECTION_CLAIM.search(reason)
+            if m and spot and ref and spot != ref:
+                actually = "above" if spot > ref else "below"
+                if m.group(1).lower() != actually:
+                    flags.append({"symbol": p.symbol, "kind": "wrong_direction", "quoted": m.group(0),
+                                  "fact": f"{p.whitelist_symbol} {spot:g} is {actually} prior close {ref:g}"})
+    return flags
+
+
+def describe_exit_claims(flags: list[dict]) -> str:
+    """One line for the terminal / digest."""
+    bits = [f"{f['symbol']} said \"{f['quoted']}\" but {f['fact']}" for f in flags]
+    return f"exit claims contradicted by the account: {len(flags)} - " + "; ".join(bits)
 
 
 def describe(result: dict | None) -> str:

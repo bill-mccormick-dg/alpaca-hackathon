@@ -45,7 +45,12 @@ How long a position can actually live, which is not the same as the expiration w
 code closes any option once it has {expiry_close_dte} day(s) to expiration, and an end-of-day \
 backstop closes anything with {eod_close_dte} day(s) or fewer left. So a contract you buy at \
 {eod_close_dte} DTE or nearer will be sold the same afternoon regardless of how it is doing - \
-choose an expiration that gives your thesis room to play out, or do not open the position.
+choose an expiration that gives your thesis room to play out, or do not open the position. \
+The reverse holds too: a contract further out than that is under NO expiry pressure - code \
+will not touch it for days, and each held position below states the first date an expiry rule \
+can. Never cite DTE, theta, a "forced close" or the backstop as a reason to sell before that \
+date; the stop-loss and take-profit own the marks, and an early exit needs a NAMED change in \
+the evidence stated at entry.
 
 Below is the account state and, per whitelisted underlying, its current price and the \
 {contracts_per_underlying} option contracts nearest the money within the tradeable \

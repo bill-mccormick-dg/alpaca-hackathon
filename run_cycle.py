@@ -37,6 +37,7 @@ from bot.featherless import DEFAULT_MODEL, FeatherlessClient
 from bot.flatten import flatten_all
 from bot.identity import check_account_identity
 from bot.models import AccountState, OpenOrder, Position
+from bot.occ import parse_occ_symbol
 from bot.orders import INCOMPLETE
 from bot.report import trades_payload
 from bot.retry import RetryBudget, call_with_retry, summarize
@@ -95,10 +96,11 @@ async def learning_block(client: AlpacaMCPClient, config: dict, snap: dict, now:
         return ""
 
 
-def holdings_block(snap: dict, prior: dict | None) -> str:
+def holdings_block(snap: dict, prior: dict | None, config: dict | None = None, today=None) -> str:
     """POSITIONS YOU HOLD / RESTING ORDERS for the prompt (bot/holdings.py;
-    #170, #173): the held symbols with the reason and prior they were opened
-    on, and the prior now. Always rendered - a flat account gets the one-line
+    #170, #173, #188): the held symbols with the reason and prior they were
+    opened on, the prior now, and the code exits with the first date an
+    expiry rule can act. Always rendered - a flat account gets the one-line
     "none" so a sell is unmistakably a naked short. The journal walk is what
     can fail; then the positions still print, just without their history."""
     account = snap.get("account") or {}
@@ -111,7 +113,7 @@ def holdings_block(snap: dict, prior: dict | None) -> str:
             context = holdings.entry_context(positions, history)
         except Exception as exc:  # noqa: BLE001 - context is advisory; the list of holdings is not
             journal.log("error", where="holdings", detail=describe_error(exc))
-    return holdings.render_positions_block(positions, open_orders, context, prior)
+    return holdings.render_positions_block(positions, open_orders, context, prior, config, today)
 
 
 def account_from_snapshot(snap: dict) -> AccountState:
@@ -324,7 +326,7 @@ async def run(args: argparse.Namespace) -> int:
             return 0
 
         outcomes = await learning_block(client, config, snap, now)
-        positions_block = holdings_block(snap, prior)
+        positions_block = holdings_block(snap, prior, config, now.date())
 
         # Measured 21% of cycles losing their decision to a transient model
         # failure (issue #85). Without a retry the slot is simply forfeited -
@@ -371,10 +373,31 @@ async def run(args: argparse.Namespace) -> int:
         cited = citations.audit(proposals, prior, decision.tool_calls)
         if cited and cited.get("unsupported"):
             print(f"WARNING: {citations.describe(cited)}", file=sys.stderr)
+        # And do exit reasons state facts the account contradicts - a forced
+        # close that is days away, or an above/below-prior-close claim the
+        # tape disproves? (#188, found by godmagick)
+        dtes = {}
+        for sym, pos in acct.positions.items():
+            if pos.instrument == "option":
+                try:
+                    dtes[sym] = (parse_occ_symbol(sym).expiration - now.date()).days
+                except ValueError:
+                    pass
+        spot_ref = {}
+        for und, block in (snap.get("options") or {}).items():
+            spot = (block or {}).get("underlying_price")
+            entry = (prior or {}).get(und)
+            ref = (entry.get("chain") or {}).get("reference_close") if isinstance(entry, dict) else None
+            if spot and ref:
+                spot_ref[und] = (float(spot), float(ref))
+        exit_claims = citations.audit_exit_claims(proposals, dtes, spot_ref, config)
+        if exit_claims:
+            print(f"WARNING: {citations.describe_exit_claims(exit_claims)}", file=sys.stderr)
         journal.log(
             "decision",
             raw=raw,
             citations=cited,
+            exit_claims=exit_claims or None,
             count=len(proposals),
             model=decision.model,
             usage=decision.usage,
@@ -404,11 +427,21 @@ async def run(args: argparse.Namespace) -> int:
         # Entry times for the min-hold guard: the last submitted BUY per
         # symbol today, from the journal. Read once per cycle, not per
         # proposal - and only the model's sells are guarded; exits.py and
-        # flatten.py never pass this way.
+        # flatten.py never pass this way. blocked_today counts the guard's
+        # own refusals per symbol (#188): the 2026-09-01 SPY put was
+        # re-proposed three cycles running against an identical rejection,
+        # then sold the moment the leash expired - the repeat count makes
+        # the pattern visible to the model and the digest.
         entries_today = {}
-        for rec in journal.read_events(events=("order_submitted",)):
-            if rec.get("side") == "buy" and rec.get("symbol"):
-                entries_today[rec["symbol"]] = rec.get("ts")
+        blocked_today: dict[str, int] = {}
+        for rec in journal.read_events(events=("order_submitted", "order_rejected")):
+            sym = rec.get("symbol")
+            if not sym:
+                continue
+            if rec.get("event") == "order_submitted" and rec.get("side") == "buy":
+                entries_today[sym] = rec.get("ts")
+            elif rec.get("event") == "order_rejected" and str(rec.get("detail") or "").startswith("model exit blocked"):
+                blocked_today[sym] = blocked_today.get(sym, 0) + 1
 
         for p in proposals:
             # #170: a sell naming a neighbouring strike of the one contract
@@ -420,7 +453,8 @@ async def run(args: argparse.Namespace) -> int:
             resolved = {"resolved_from": as_written} if resolution else {}
             if resolution:
                 print(f"RESOLVED {resolution}")
-            block = early_exit_block(p, acct.positions.get(p.symbol), entries_today.get(p.symbol), config, now)
+            block = early_exit_block(p, acct.positions.get(p.symbol), entries_today.get(p.symbol), config, now,
+                                     blocked_before=blocked_today.get(p.symbol, 0))
             if block:
                 journal.log("order_rejected", detail=block, side=p.side, qty=p.qty,
                             symbol=p.symbol, instrument=p.instrument, price=None, reason=p.reason, **resolved)

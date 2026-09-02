@@ -39,7 +39,7 @@ EARLY_EXIT_DRAWDOWN_PCT = 25.0
 
 
 def early_exit_block(proposal, position, entered_ts: str | None, config: dict,
-                     now: datetime) -> str | None:
+                     now: datetime, blocked_before: int = 0) -> str | None:
     """Why a MODEL-proposed sell of a just-opened position should be refused,
     or None to allow it. The code-exit paths (exits.py's stop/take-profit/DTE
     and flatten.py) never come through here.
@@ -50,6 +50,17 @@ def early_exit_block(proposal, position, entered_ts: str | None, config: dict,
     anti-churn strategy notes, once straight through them, the second time
     dressed in the permitted "thesis change" wording. The stop exists so the
     model does not have to react to marks; this makes that mechanical.
+
+    `blocked_before` (#188, found by godmagick): how many model exits the
+    guard has already refused for this symbol today. On 2026-09-01 the
+    judged account proposed the same SPY-put exit at 15:00, 15:10 and 15:20
+    - blocked all three times - then sold at 15:30 the moment the leash
+    expired, at -12% instead of the -7% of the first attempt. The guard
+    delayed the exit without ever dissuading it, because its rejection read
+    the same every cycle. Naming the repeat count in the detail puts the
+    pattern in front of the model (rejections reach the next cycle's
+    learning block) and in the digest, where three identical refusals in a
+    row are a prompt problem, not three coincidences.
 
     Fail-open on missing data, deliberately: no entry timestamp today means
     the position is from a prior session (held overnight - selling it is not
@@ -76,11 +87,16 @@ def early_exit_block(proposal, position, entered_ts: str | None, config: dict,
     if drawdown is not None and drawdown > threshold:
         # Well on its way to the stop anyway - let the model out.
         return None
+    repeat = (
+        f"; this exit has already been refused {blocked_before} time(s) today - "
+        f"re-proposing it without naming what changed is churn, not a thesis change"
+        if blocked_before else ""
+    )
     return (
         f"model exit blocked: opened {held_min:.0f} min ago (min_hold_minutes={min_hold:.0f}) "
         f"and drawdown {f'{drawdown:.1f}%' if drawdown is not None else 'unknown'} "
         f"<= early_exit_drawdown_pct={threshold:.0f} - the stop/take-profit own marks; "
-        f"sell again after the hold or let the leash work"
+        f"sell again after the hold or let the leash work{repeat}"
     )
 
 
