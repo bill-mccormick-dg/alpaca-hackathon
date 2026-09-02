@@ -57,6 +57,18 @@ class RecentTradesTest(unittest.TestCase):
         self.assertEqual((t["side"], t["qty"], t["symbol"]), ("buy", 2, "NVDA260909C00220000"))
         self.assertIn("Bullish", t["reason"])
 
+    def test_a_stamped_model_reaches_the_reader(self):
+        """The proposal funnel stamps `model` on its order events; the trade
+        line shows the short name so 'who decided this' reads off the line.
+        Code exits carry no model, and the line stays clean."""
+        t = report.recent_trades([dict(FILL, model="moonshotai/Kimi-K3")])[0]
+        self.assertEqual(t["model"], "moonshotai/Kimi-K3")
+        self.assertIn("[Kimi-K3]", report._trade_line(t))
+
+        bare = report.recent_trades([FILL])[0]
+        self.assertEqual(bare["model"], "")
+        self.assertNotIn("[", report._trade_line(bare).splitlines()[0])
+
     def test_survives_a_malformed_timestamp(self):
         t = report.recent_trades([dict(FILL, ts="not-a-date")])[0]
 
