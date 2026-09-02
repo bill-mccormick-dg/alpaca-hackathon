@@ -20,7 +20,9 @@ judges.
 ## Pre-flight (do in this order Thu evening or Fri morning)
 
 - [ ] Repo flipped to **public** (`gh repo edit bill-mccormick-dg/alpaca-hackathon --visibility public`) and `LICENSE` present
-- [ ] Video uploaded (MP4, ≤ 5:00, target 3–5 min), link opens **logged out**
+- [ ] Video uploaded (MP4, ≤ 5:00, target 3–5 min, **≤ 300 MB** — lablab's
+      stated cap; 5 min of 1080p H.264 screen content fits easily, a
+      high-bitrate or ProRes export does not), link opens **logged out**
 - [ ] Slides exported (PDF or Google Slides link, view access for anyone with the link)
 - [ ] Cover image uploaded (`submission/cover.png`, 1600×900)
 - [ ] Account ID below matches the official account exactly
@@ -80,7 +82,16 @@ MIT licensed and original to the event; pre-kickoff infrastructure is disclosed 
 
 **Public GitHub repository**: https://github.com/bill-mccormick-dg/alpaca-hackathon
 
-**Demo application URL**: N/A — autonomous agent, no UI required (per FAQ)
+**Demo application platform**: self-hosted (Proxmox LXC); the journal viewer is
+published through a Cloudflare tunnel
+
+**Demo application URL**: N/A — autonomous agent, no UI required (per FAQ).
+The live journal viewer at <https://bot.wpmccormick.pw> is the closest thing,
+but it is behind an email one-time PIN, so it is not a link a judge can open.
+
+**Additional information** (free-text field on step 3): scaling beyond the
+event — the risk funnel and the journal are broker-agnostic; what is
+Alpaca-specific is the MCP client and the option-chain shape.
 
 **Video presentation**: (YouTube unlisted link — fill after Thu's close)
 

@@ -90,5 +90,5 @@ that one."*
       Home Assistant shots fit the whole dashboard in frame by themselves
 - [ ] Don't click inside the deck while narrating - it advances on any click
 - [ ] QuickTime/OBS 1080p; mic level check; notifications off
-- [ ] Export H.264/AAC MP4; check length <= 5:00
+- [ ] Export H.264/AAC MP4; check length <= 5:00 **and size <= 300 MB**
 - [ ] Upload YouTube (unlisted); test the link logged out; paste into METADATA.md
