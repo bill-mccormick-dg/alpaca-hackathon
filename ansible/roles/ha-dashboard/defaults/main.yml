@@ -38,19 +38,13 @@ ha_dashboard_title: "AI Day Trader"
 ha_dashboard_url_path: alpaca-hackathon
 ha_dashboard_icon: mdi:chart-line
 
-# A second, READ-ONLY dashboard for remote teammates (issue #87), reached
-# over Tailscale. It renders the same state sensors plus the intra-day trade
-# log and the end-of-day digest, and deliberately contains no switch/button
-# entity: Home Assistant has no per-entity permissions for non-admin users,
-# so anything on a dashboard they can open, they can operate. Mark the
-# operational dashboard above admin-only when this is in use - see
-# ansible/README.md "Remote team access".
-ha_team_dashboard_enabled: true
+# The second, READ-ONLY dashboard for remote teammates (issue #87) is
+# RETIRED (#145): its trade-log and end-of-day cards moved onto the
+# operational dashboard, and remote teammates read the journal viewer
+# (bot.wpmccormick.pw) instead. These two vars survive only so the role can
+# remove the file a previous converge deployed.
 ha_team_dashboard_filename: dashboards/alpaca_hackathon_team.yaml
 ha_team_dashboard_dest: "{{ ha_config_dir }}/{{ ha_team_dashboard_filename }}"
-ha_team_dashboard_title: "AI Day Trader — team view"
-ha_team_dashboard_url_path: alpaca-hackathon-team
-ha_team_dashboard_icon: mdi:account-eye
 
 # Automations ARE safe to auto-register: automations.yaml is a flat list,
 # so appending a marked, idempotent block never collides with existing

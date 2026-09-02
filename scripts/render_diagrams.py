@@ -199,7 +199,7 @@ def journal() -> str:
           "read-only: no controls at all"]),
         (360, EXT, "the dashboard", "Home Assistant", "MQTT auto-discovery",
          ["journal.log() -> fire-and-forget", "equity, P&L, halt, last decision",
-          "operator view: kill switch + knobs", "team view over Tailscale: read-only",
+          "kill switch + knobs, per-account", "sections layout: phone-friendly",
           "phone: problems only, never fills"]),
         (670, GATE, "the inbox", "Hourly email", "mail_report.py",
          ["trades with the model's full reason", "CSVs attached, host local time",

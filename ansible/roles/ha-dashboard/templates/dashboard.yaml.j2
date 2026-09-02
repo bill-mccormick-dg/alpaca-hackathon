@@ -1,14 +1,22 @@
 # {{ ansible_managed }}
 # Home Assistant YAML-mode dashboard for the alpaca-hackathon bot(s).
-# Entities come from two publishers: bot/mqtt.py (the read-only state
-# sensors, published by run_cycle.py each cycle) and mqtt_bridge.py (the
-# kill-switch button + tunable-knob controls, published once at bridge
-# startup - see mqtt_bridge.py's discovery_payloads()). Rows, each one a
-# horizontal-stack with one column per account in ha_accounts: 1 kill
-# switches, 2 state, 3 Day P&L history, 4 tunable knobs. Every card
-# carries its account's label, so there is no separate heading row and no
-# intro blurb - the sidebar title already says what this dashboard is.
-# The cross-account equity comparison chart is deliberately left off.
+# Entities come from two publishers: bot/mqtt.py (the read-only state and
+# report sensors, published by run_cycle.py each cycle) and mqtt_bridge.py
+# (the kill-switch + tunable-knob controls, published once at bridge
+# startup - see mqtt_bridge.py's discovery_payloads()).
+#
+# Layout is a `sections` view - HA's responsive grid - with ONE SECTION PER
+# ACCOUNT (#145). The old panel + horizontal-stack layout was structurally
+# desktop-only: horizontal-stack never wraps, so a phone squeezed the three
+# account columns into ~125px slivers and the kill switch was barely
+# tappable - an operational bug, not a cosmetic one. Sections render
+# side-by-side on a desktop (max_columns) and reflow to whole accounts
+# stacked on a phone, which is exactly what the stacks faked, minus the
+# phone failure. Core cards only - no HACS/card_mod dependencies.
+#
+# The former read-only "team" dashboard (issue #87) is retired (#145); its
+# trade-log and end-of-day report cards now live at the bottom of each
+# account's section here.
 #
 # Entity ids: HA derives entity_id from device+entity name and ignores
 # object_id, so these must match bot/mqtt.py's ENTITY_PREFIX scheme
@@ -19,21 +27,24 @@ views:
   - title: Trading
     path: {{ ha_dashboard_url_path }}
     icon: {{ ha_dashboard_icon }}
-    type: panel
-    cards:
-      - type: vertical-stack
+    type: sections
+    max_columns: 3
+    sections:
+{% for acct in ha_accounts %}
+      - type: grid
         cards:
-          # Kill switches come first so they're always reachable in an
-          # emergency without scrolling past state cards. Each tile names
-          # its own account.
+          - type: heading
+            heading: {{ acct.label }}
+            heading_style: title
+          # The kill switch comes first so it's always reachable in an
+          # emergency without scrolling past state cards.
           #
           # The control is a SWITCH (mqtt_bridge.py publishes it as one), so
           # it shows the account's real halt state rather than being a
           # stateless press. A tile's `color` only applies while the entity
           # is active, and YAML-mode Lovelace has no templated colour, so
           # the states are three mutually-exclusive conditional cards -
-          # exactly one renders. They live in a vertical-stack per account
-          # so the hidden ones can't collapse the row's columns.
+          # exactly one renders.
           #
           # The conditions key on the halt SENSOR, not the switch: the
           # sensor carries the full string (none / halting / resuming /
@@ -47,157 +58,144 @@ views:
           # Each halts ONLY its own account; the global "halt everything" is
           # CLI-only by design (flatten.py --halt --all-accounts), so nothing
           # here can stop the judged account.
-          - type: horizontal-stack
-            cards:
-{% for acct in ha_accounts %}
-              - type: vertical-stack
-                cards:
-                  # Trading -> GREEN. Tap halts, with a confirm.
-                  - type: conditional
-                    conditions:
-                      - condition: state
-                        entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
-                        state: "none"
-                    card:
-                      type: tile
-                      entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
-                      name: {{ acct.label }} — trading
-                      icon: mdi:play-circle
-                      color: green
-                      hide_state: true
-                      tap_action:
-                        action: toggle
-                        confirmation:
-                          text: >-
-                            Flatten {{ acct.label }}'s positions and halt
-                            {{ acct.label }}? Other accounts keep trading.
-                  # In flight -> AMBER, not tappable. Resolves by itself
-                  # when the bridge republishes the settled state.
-                  - type: conditional
-                    conditions:
-                      - condition: state
-                        entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
-                        state:
-                          - halting
-                          - resuming
-                    card:
-                      type: tile
-                      entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
-                      name: {{ acct.label }} — working…
-                      icon: mdi:progress-clock
-                      color: amber
-                      hide_state: false
-                      tap_action:
-                        action: none
-                  # Halted -> RED. Tap resumes, with a confirm. A daily-loss
-                  # or global halt also shows red, but the bridge refuses to
-                  # clear those from the dashboard and republishes the real
-                  # state, so the tile stays red.
-                  - type: conditional
-                    conditions:
-                      - condition: state
-                        entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
-                        state:
-                          - manual
-                          - daily_loss
-                          - global
-                    card:
-                      type: tile
-                      entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
-                      name: {{ acct.label }} — HALTED
-                      icon: mdi:stop-circle
-                      color: red
-                      hide_state: true
-                      tap_action:
-                        action: toggle
-                        confirmation:
-                          text: >-
-                            Resume trading on {{ acct.label }}? This only
-                            clears a manual halt - a daily-loss or global
-                            halt still has to be cleared on the host.
-{% endfor %}
+          # Trading -> GREEN. Tap halts, with a confirm.
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
+                state: "none"
+            card:
+              type: tile
+              entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
+              name: {{ acct.label }} — trading
+              icon: mdi:play-circle
+              color: green
+              hide_state: true
+              tap_action:
+                action: toggle
+                confirmation:
+                  text: >-
+                    Flatten {{ acct.label }}'s positions and halt
+                    {{ acct.label }}? Other accounts keep trading.
+          # In flight -> AMBER, not tappable. Resolves by itself
+          # when the bridge republishes the settled state.
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
+                state:
+                  - halting
+                  - resuming
+            card:
+              type: tile
+              entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
+              name: {{ acct.label }} — working…
+              icon: mdi:progress-clock
+              color: amber
+              hide_state: false
+              tap_action:
+                action: none
+          # Halted -> RED. Tap resumes, with a confirm. A daily-loss
+          # or global halt also shows red, but the bridge refuses to
+          # clear those from the dashboard and republishes the real
+          # state, so the tile stays red.
+          - type: conditional
+            conditions:
+              - condition: state
+                entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
+                state:
+                  - manual
+                  - daily_loss
+                  - global
+            card:
+              type: tile
+              entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_kill_switch
+              name: {{ acct.label }} — HALTED
+              icon: mdi:stop-circle
+              color: red
+              hide_state: true
+              tap_action:
+                action: toggle
+                confirmation:
+                  text: >-
+                    Resume trading on {{ acct.label }}? This only
+                    clears a manual halt - a daily-loss or global
+                    halt still has to be cleared on the host.
 
-          - type: horizontal-stack
-            cards:
-{% for acct in ha_accounts %}
-              - type: entities
-                title: {{ acct.label }} — state
-                icon: mdi:robot
-                entities:
-                      - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_equity
-                        name: Equity
-                      - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_day_pnl
-                        name: Day P&L
-                      - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_positions
-                        name: Open positions
-                      - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
-                        name: Halt state
-                      - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_last_decision
-                        name: Last decision
-{% endfor %}
+          - type: entities
+            title: State
+            icon: mdi:robot
+            entities:
+              - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_equity
+                name: Equity
+              - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_day_pnl
+                name: Day P&L
+              - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_positions
+                name: Open positions
+              - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_halt
+                name: Halt state
+              - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_last_decision
+                name: Last decision
 
-          - type: horizontal-stack
-            cards:
-{% for acct in ha_accounts %}
-              - type: history-graph
-                title: {{ acct.label }} — Day P&L
-                hours_to_show: 24
-                entities:
-                  - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_day_pnl
-{% endfor %}
+          - type: history-graph
+            title: Day P&L
+            hours_to_show: 24
+            entities:
+              - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_day_pnl
 
-          - type: horizontal-stack
-            cards:
-{% for acct in ha_accounts %}
-              - type: entities
-                title: {{ acct.label }} — controls
-                entities:
-                  - entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_predictions_enabled
-                    name: Kalshi prior (predictions)
-                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_temperature
-                    name: Temperature
-                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_research_contracts_per_underlying
-                    name: Research contracts/underlying
-                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_option_strike_band_pct
-                    name: Strike band %
-                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_stop_loss_pct
-                    name: Stop loss %
-                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_take_profit_pct
-                    name: Take profit %
-                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_eod_close_dte
-                    name: EOD close DTE
-                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_min_hold_minutes
-                    name: Min hold (minutes)
-                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_early_exit_drawdown_pct
-                    name: Early exit drawdown %
-{% endfor %}
+          - type: entities
+            title: Controls
+            entities:
+              - entity: switch.{{ ha_entity_prefix }}_{{ acct.id }}_predictions_enabled
+                name: Kalshi prior (predictions)
+              - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_temperature
+                name: Temperature
+              - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_research_contracts_per_underlying
+                name: Research contracts/underlying
+              - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_option_strike_band_pct
+                name: Strike band %
+              - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_stop_loss_pct
+                name: Stop loss %
+              - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_take_profit_pct
+                name: Take profit %
+              - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_eod_close_dte
+                name: EOD close DTE
+              - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_min_hold_minutes
+                name: Min hold (minutes)
+              - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_early_exit_drawdown_pct
+                name: Early exit drawdown %
 
           # --- AI knobs (#136): what the agent thinks with, in one place ---
           # The model selectors, the token budget, and what the models are
-          # actually costing. The two token sensors publish once bot/mqtt.py
-          # ships them (#136 stage 2); until then those rows show
-          # "entity not found", which is honest.
-          - type: horizontal-stack
-            cards:
-{% for acct in ha_accounts %}
-              - type: entities
-                title: {{ acct.label }} — AI
-                entities:
-                  - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_model
-                    name: Model
-                  - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_review_model
-                    name: Review model
-                  - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_max_tokens
-                    name: Max tokens
-                  - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_tokens_today
-                    name: Tokens today
-                  - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_tokens_total
-                    name: Tokens all time
-{% endfor %}
+          # actually costing.
+          - type: entities
+            title: AI
+            entities:
+              - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_model
+                name: Model
+              - entity: select.{{ ha_entity_prefix }}_{{ acct.id }}_review_model
+                name: Review model
+              - entity: number.{{ ha_entity_prefix }}_{{ acct.id }}_max_tokens
+                name: Max tokens
+              - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_tokens_today
+                name: Tokens today
+              - entity: sensor.{{ ha_entity_prefix }}_{{ acct.id }}_tokens_total
+                name: Tokens all time
 
           # --- live journal feed (#134) ----------------------------------
-{% for acct in ha_accounts %}
+          # The markdown rides in a JSON attribute because HA caps a
+          # sensor's state at 255 characters - see bot/report.py.
           - type: markdown
-            title: {{ acct.label }} — live journal
+            title: Live journal
             content: "{% raw %}{{ state_attr('sensor.{% endraw %}{{ ha_entity_prefix }}_{{ acct.id }}_journal_feed{% raw %}', 'markdown') or '_No events yet._' }}{% endraw %}"
+
+          # --- intra-day trade log (from the retired team view) ----------
+          - type: markdown
+            title: Trades today
+            content: "{% raw %}{{ state_attr('sensor.{% endraw %}{{ ha_entity_prefix }}_{{ acct.id }}_recent_trades{% raw %}', 'markdown') or '_Waiting for the first cycle._' }}{% endraw %}"
+
+          # --- end-of-day digest -----------------------------------------
+          - type: markdown
+            title: End of day
+            content: "{% raw %}{{ state_attr('sensor.{% endraw %}{{ ha_entity_prefix }}_{{ acct.id }}_eod_summary{% raw %}', 'markdown') or '_No digest yet today._' }}{% endraw %}"
 {% endfor %}

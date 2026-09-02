@@ -152,7 +152,7 @@ async def run(args: argparse.Namespace) -> int:
 
     def end_cycle(**fields) -> None:
         """Journal cycle_end, and refresh the day's trades for the Home
-        Assistant / team view first (#87).
+        Assistant report cards first (#87, #145).
 
         Every exit path goes through here on purpose. The first version of
         this hooked only the exits-only early return, so a NORMAL cycle - the
