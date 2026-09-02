@@ -27,7 +27,7 @@ import sys
 from datetime import datetime
 
 from bot import journal, mqtt, overrides, prior_scores, review
-from bot.config import load_config, resolve_review_model
+from bot.config import load_config, model_params_for, resolve_review_model
 from bot.credentials import load_credentials, validate_account
 from bot.featherless import DEFAULT_MODEL, FeatherlessClient
 from bot.report import eod_payload
@@ -139,8 +139,9 @@ async def model_recommendation(config: dict, creds: dict, digest: dict) -> tuple
         digest=json.dumps(slim, default=str),
     )
     kwargs = {"max_tokens": 600, "temperature": 0.3}
-    if isinstance(config.get("model_params"), dict):
-        kwargs.update(config["model_params"])
+    # Keyed on the REVIEWER, not the trading model - the two differ by
+    # design, and a per-model param (#206) must follow the model called.
+    kwargs.update(model_params_for(config, model))
     response = await client.chat([{"role": "user", "content": prompt}], **kwargs)
     return (response["choices"][0]["message"].get("content") or "").strip(), model
 
