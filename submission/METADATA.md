@@ -29,7 +29,11 @@ judges.
 ## Form state (what is actually left)
 
 - [x] **Step 1 — Basic Information**: title (41/50), short description
-      (237/255), long description (893/2000), categories (Finance, Coding),
+      (237/255), long description (1977/2000 — **REPLACE what is in the
+      form**: as of 2026-09-02 the live form held `alpaca-trader`'s copy,
+      a different project — 12 names, 15-min snapshot, flatten-before-
+      close, a shadow benchmark that does not exist here, and no mention
+      of options or MCP, both track requirements), categories (Finance, Coding),
       track (Options Alpha Agents), technologies (Alpaca, Featherless,
       GitHub Copilot, Anthropic Claude) — all filled.
 - [ ] **Step 1 — social post links are still empty.** Five fields, and the
@@ -54,23 +58,20 @@ Autobelay - long premium, short leash
 An autonomous options agent on Alpaca's MCP server. An open-source model (Featherless) researches live bars, chains and news, then proposes defined-risk premium trades; deterministic code sizes, stops, and closes every one before expiry.
 ```
 
-**Long description**
+**Long description** (<= 2000 chars; this is 1977)
 ```
-Autobelay is an autonomous options-trading agent built for the Alpaca AI Trading Agents Hackathon. An auto belay is the climbing-gym device that catches a falling climber with nobody holding the other end; here the brake is deterministic code. Its one-line thesis: buy defined-risk, short-dated options premium on the five most liquid names when an open-source model sees a concrete reason; deterministic code sizes every trade, stops it, and closes it before expiry - the model never touches an order.
+Autobelay is an autonomous options-trading agent. An auto belay catches a falling climber with nobody holding the other end; here the brake is deterministic code. Thesis: buy defined-risk, short-dated options premium on the five most liquid names when an open-source model sees a concrete reason - code sizes every trade, stops it, and closes it before expiry. The model never touches an order.
 
-How a cycle works (every 10 minutes during market hours, from cron):
-1. Deterministic exits run first: any contract on its expiry day is closed, and any position past its stop-loss or take-profit is closed. Code decides when a trade is done, not the model.
-2. A snapshot is built through Alpaca's official MCP server: account, positions, the clock, and for each whitelisted underlying a 12-contract menu drawn from a chain paginated across the whole 2-45 day expiration window - the at-the-money and a roughly 0.40-delta strike per side across three expiries, so the model can choose strike distance and not just direction. Alpaca's own implied volatility and Greeks are used where the feed supplies them, which is about 94% of contracts; Black-Scholes on our side is the backstop for the rest, and each contract records which it got.
-3. The model (Kimi-K2 / Qwen3.8 on Featherless.ai) may call a small set of read-only research tools - recent bars, a stock snapshot, specific option contracts, news - up to six times, then must answer with a JSON array of proposals. Every tool call is journaled.
-4. Every proposal passes through one risk gate that never negotiates: symbol whitelist, per-position notional cap, max positions, contracts-per-order cap, expiration window (entries only - a held contract stays sellable to expiry), open orders counted as committed exposure, entry cutoff time, and a daily-loss cutoff that flattens and halts. Rejections are journaled with the rule that refused them.
-5. Only our own code calls Alpaca's order tools. There is no path from the model to an order.
+Every 10 minutes: (1) deterministic exits run first - stop-loss, take-profit, expiry-day close. (2) A snapshot is built through Alpaca's official MCP server: account, positions, and per underlying a 12-contract menu - at-the-money and roughly 0.40-delta per side across three expiries - with Alpaca's IV and Greeks. (3) The model may call read-only research tools, then must answer with JSON proposals. Open-source models on Featherless, one per account: Qwen3.8-Flash-Next on the judged account, Kimi-K3 and Kimi-K2.6 on the challengers. (4) One risk gate that never negotiates: whitelist, notional cap, position count, expiration window, entry cutoff, daily-loss halt. Only our own code calls Alpaca's order tools.
 
-Operations: a self-hosted CI runner deploys every merge to the trading host; a JSONL journal records every decision, order, rejection, exit, tool call and the exact config (hash + active overrides) each cycle ran with; an end-of-day review reconstructs round trips from Alpaca's fills, groups rejections by rule, appends an equity curve, and has the model write a one-change recommendation for tomorrow. Strategy knobs live in config with runtime overrides that expire at the close, so a day's lesson becomes tomorrow's config in minutes. Two more paper accounts run variant configs against the same live market for A/B evidence, and the prediction-market priors the model is handed are Brier-scored nightly against what the market actually did - the inputs are graded, not just the model.
+The interesting part is the accounting. Every decision, order, rejection and exit is journaled with the model that made it and the config it ran under. The model's prose is audited against its own inputs: quoted figures are checked against the prior it was shown, and exit reasons against the account - a sell citing a forced close days before any code exit could fire is flagged. The prediction-market priors it is handed are Brier-scored nightly, so the inputs are graded too. The end-of-day critique comes from a model that did not trade that day, so no account grades its own homework.
 
-Everything is MIT licensed and original to the event; the hosting, deploy pipeline and secrets plumbing were set up before kickoff and are disclosed in the README.
+The trading is autonomous; the risk envelope is human: runtime knobs expire at the close, hard caps need a pull request, and nothing at runtime can widen what the bot may lose.
+
+MIT licensed and original to the event; pre-kickoff infrastructure is disclosed in the README.
 ```
 
-**Technology tags**: Alpaca, Alpaca MCP Server, Featherless AI, Kimi K2, Qwen3, Python, Model Context Protocol, GitHub Actions, Ansible, Proxmox, Docker
+**Technology tags**: Alpaca, Alpaca MCP Server, Featherless AI, Qwen3, Kimi K3, Kimi K2.6, Python, Model Context Protocol, GitHub Actions, Ansible, Proxmox, Docker
 
 **Category tags**: Trading agents, Options, Autonomous agents, Fintech, Open-source models
 
