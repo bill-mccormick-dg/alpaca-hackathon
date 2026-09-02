@@ -90,6 +90,25 @@
   .hero { width:auto; height:auto; max-height:38vh; max-width:100%; border:none;
     border-radius:20px; margin:1.1em auto 0; align-self:center; }
 
+  /* A screenshot used WHOLE, as the slide's ground rather than as a figure on
+     it. The image is absolutely positioned, so it bleeds past the section's
+     padding and contributes nothing to the height fit_slides.py measures - the
+     text column alone decides whether the slide fits. A scrim fades it into
+     the deck's own background on the right and along the bottom, which is what
+     keeps the overlaid text and the page footer readable; the fade stops are
+     rgba(6,18,31,0), not `transparent`, because `transparent` is
+     rgba(0,0,0,0) and interpolating to it greys the middle of the gradient. */
+  section.shot > img.bleed { position:absolute; left:0; top:0; height:100%;
+    width:auto; max-width:none; max-height:none; border:none; border-radius:0;
+    align-self:auto; }
+  section.shot > .scrim { position:absolute; inset:0; background:
+    linear-gradient(90deg, rgba(6,18,31,0) 42%, rgba(6,18,31,.86) 48%, var(--bg2) 52%),
+    linear-gradient(0deg, var(--bg2) 7%, rgba(6,18,31,0) 26%); }
+  /* Starts where the scrim is already solid: the Official column ends at 42%
+     of the page and its numbers are the point of the screenshot, so the fade
+     may not begin before them. */
+  section.shot > .over { position:relative; margin-left:53%; }
+
   /* Injected into every slide by the script below, so it prints too. */
   .pagefoot { position:absolute; left:7vw; right:7vw; bottom:3.6vh;
     display:flex; align-items:center; font-size:.5em; color:var(--dim); }
@@ -135,7 +154,7 @@
   section:nth-of-type(3) { font-size:0.799em; }
   section:nth-of-type(10) { font-size:0.909em; }
   section:nth-of-type(11) { font-size:0.942em; }
-  section:nth-of-type(12) { font-size:0.818em; }
+  section:nth-of-type(12) { font-size:0.750em; }
   section:nth-of-type(13) { font-size:0.897em; }
   section:nth-of-type(16) { font-size:0.862em; }
   @media print {
@@ -145,8 +164,8 @@
     section:nth-of-type(10) svg { max-height:509px; }
     section:nth-of-type(11) img { max-height:377px; }
     section:nth-of-type(11) svg { max-height:528px; }
-    section:nth-of-type(12) img { max-height:327px; }
-    section:nth-of-type(12) svg { max-height:458px; }
+    section:nth-of-type(12) img { max-height:300px; }
+    section:nth-of-type(12) svg { max-height:420px; }
     section:nth-of-type(13) img { max-height:359px; }
     section:nth-of-type(13) svg { max-height:502px; }
     section:nth-of-type(16) img { max-height:345px; }
@@ -358,15 +377,11 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
   </div>
 </section>
 
-<section>
-  <h2>Home Assistant, over MQTT</h2>
-  <!-- The screenshot is pinned to its own pixel size inline, which beats both the
-       print block's 360px image cap and anything fit_slides.py generates. That is
-       deliberate: shrinking this image is what made it unreadable (#230), so the
-       fitter is left only the type to scale. Beside it, not above it - the cards
-       take the width the portrait crop does not want. -->
-  <div class="split" style="grid-template-columns:auto 1fr; align-items:start; margin-top:.7em">
-    <img src="../images/ha-dashboard-state.png" style="width:auto; height:auto; max-height:424px; max-width:100%" alt="The Official account's state card in Home Assistant, mid-session: equity 99,552.71 USD, day P&amp;L -655.10 USD, two open positions, halt state none, last decision hold">
+<section class="shot">
+  <img class="bleed" src="../images/ha-dashboard.png" alt="The operational Home Assistant dashboard mid-session: the Official and Test columns side by side, each with its trading tile, a state card - equity 99,552.71 USD, day P&amp;L -655.10 USD, two open positions, halt state none, last decision hold - a day-P&amp;L graph and the controls beneath it">
+  <div class="scrim"></div>
+  <div class="over">
+    <h2>Home Assistant, over MQTT</h2>
     <table>
       <tr><th>Kill switch</th><td>flatten and halt, <b>that account only</b> — stopping all three stays CLI-only</td></tr>
       <tr><th>State</th><td>equity, day P&amp;L, open positions, halt state, last decision</td></tr>
