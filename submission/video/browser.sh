@@ -32,8 +32,8 @@ STATE=${STATE:-${TMPDIR:-/tmp}/alpaca-video-window}
 BOUNDS=${BOUNDS:-0, 0, 1600, 1000}
 
 # tab order is fixed; `show` looks a name up in it
-TABS=(deck viewer ha ha-team actions)
-URLS=("$DECK" "$VIEWER" "$HA/alpaca-hackathon" "$HA/alpaca-hackathon-team" "$REPO_URL/actions/workflows/deploy.yml")
+TABS=(deck viewer ha actions)
+URLS=("$DECK" "$VIEWER" "$HA/alpaca-hackathon" "$REPO_URL/actions/workflows/deploy.yml")
 
 osa() { osascript "$@" 2>&1; }
 front() { osa -e 'tell application "System Events" to get name of first process whose frontmost is true'; }

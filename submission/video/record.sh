@@ -42,7 +42,6 @@ STEPS=(
   "shot|4|the kill switch"
   "web|viewer|the live journal viewer, and the four bugs it caught"
   "web|ha|Home Assistant: the operator dashboard"
-  "web|ha-team|Home Assistant: the read-only team dashboard"
   "shot|5 7|the end-of-day digest, then what is actually deployed"
   "web|actions|the deploy history, green all week and one red X"
   "deck|18|results"
