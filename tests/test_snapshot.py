@@ -616,6 +616,27 @@ class BuildSnapshotTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(snap["options"]["AAPL"]["underlying_price"], 200.0)
         self.assertIn("AAPL260204C00200000", snap["options"]["AAPL"]["contracts"])
 
+    async def test_prior_close_rides_on_every_underlying(self):
+        """#226 lever 1: yesterday's close for the exit-claim audit, fetched
+        for the whole whitelist in one call rather than only for SPY/QQQ."""
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)
+        client = self._client()
+        client.responses["get_stock_snapshot"] = {"snapshots": {"AAPL": {"prevDailyBar": {"c": 198.25, "h": 201.0}}}}
+        snap = await snapshot.build_snapshot(client, _research_config(), now=now)
+
+        self.assertEqual(snap["options"]["AAPL"]["prior_close"], 198.25)
+        self.assertEqual(("get_stock_snapshot", {"symbols": "AAPL", "feed": "iex"}),
+                         next(c for c in client.calls if c[0] == "get_stock_snapshot"))
+
+    async def test_a_failed_prior_close_fetch_costs_nothing(self):
+        """FakeMCPClient raises on an unknown tool: the key is simply absent
+        and the snapshot is otherwise identical."""
+        now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)
+        snap = await snapshot.build_snapshot(self._client(), _research_config(), now=now)
+
+        self.assertNotIn("prior_close", snap["options"]["AAPL"])
+        self.assertEqual(snap["options"]["AAPL"]["underlying_price"], 200.0)
+
     async def test_snapshot_is_json_serializable(self):
         now = datetime(2026, 1, 15, 12, 0, tzinfo=EASTERN)
         snap = await snapshot.build_snapshot(

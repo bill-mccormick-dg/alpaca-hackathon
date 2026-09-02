@@ -36,8 +36,9 @@ Alpaca (`get_stock_snapshot` → `prevDailyBar.c`), not from the model's reason.
   `review_choice(config, traded)` refuses a pin that names any model that traded and
   falls through to the preference list. The 16:00 ET override expiry no longer matters
   to the 16:05 review. `review_pin_ignored` on the `eod_review` event says when it fired.
-- **`min_hold_minutes` is effectively 30–40**: cycles run on a 10-minute cron grid,
-  the hold counts from the fill. Don't widen it (#222).
+- **`min_hold_minutes` is effectively 30–40 on `official`/`mixed`**: cycles run on a
+  10-minute cron grid, the hold counts from the fill. Don't widen it (#222). `test` runs
+  with the guard off (0 / 1) since Sep 3 so its exits are the model's alone.
 - **Every account's cron log is `logs/cron-<acct>.log`**; a cycle that exits at a
   gate ("outside trading window", `trade_start` 09:45 ET) writes there and nothing
   to the journal. An empty journal at 09:40 ET is not a fault.
@@ -52,10 +53,11 @@ Alpaca (`get_stock_snapshot` → `prevDailyBar.c`), not from the model's reason.
   tool_use, context, plan, price, **tier** (`/v1/models/{id}` → `availability.tier`;
   `unregistered` = cold start). Exits non-zero only for configured models.
 - `bot/citations.py::audit` is **skipped whenever research tools ran** — so it never
-  runs on `test`. `audit_exit_claims` always runs, but `spot_ref` is built only from
-  the chain prior's `reference_close`, which `snapshot.py` fetches **only for SPY/QQQ**;
-  NVDA/AAPL/MSFT can never get a direction check. And `DIRECTION_CLAIM` needs a verb —
-  "227.55, below the prior close" doesn't match. Both gaps are on #226.
+  runs on `test`. `audit_exit_claims` always runs: `spot_ref` comes from the snapshot's
+  `prior_close` for every whitelisted underlying (chain `reference_close` as fallback),
+  `DIRECTION_CLAIM` takes a verb or a price before above/below, and a stated prior close
+  is checked (`wrong_reference`). Extending the citation audit to tool results is #226
+  lever 2, still open.
 - The emailed trades CSV and body list flatten closes as `sell` rows with the flatten's
   name as `event` and no price (`closed[]` has none) — `trade_report.py` reads fills
   from Alpaca and is authoritative. Rejections are a separate `rejected-<day>.csv`.
@@ -78,7 +80,7 @@ Alpaca (`get_stock_snapshot` → `prevDailyBar.c`), not from the model's reason.
 
 - #216 Part 2 — replay journaled prompts, score constraint adherence (209 decisions exist); reopened Sep 2, scheduled Thu Sep 3 during the freeze
 - #222 — model exits: 11 attempts / 6 blocked / 5 executed on Sep 2; two sound, three not
-- #226 — reasoning-scoring levers, in order
+- #226 — reasoning-scoring levers: lever 1 shipped Sep 2; 2–6 open
 - PRs behind the freeze: #217 (K3 nudge), #225 (CLOSED TODAY block)
 
 ## Where things are

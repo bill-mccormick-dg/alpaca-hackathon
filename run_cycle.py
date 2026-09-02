@@ -392,8 +392,13 @@ async def run(args: argparse.Namespace) -> int:
         spot_ref = {}
         for und, block in (snap.get("options") or {}).items():
             spot = (block or {}).get("underlying_price")
-            entry = (prior or {}).get(und)
-            ref = (entry.get("chain") or {}).get("reference_close") if isinstance(entry, dict) else None
+            # The snapshot's own prior close for every underlying (#226); the
+            # chain prior's reference_close is the SPY/QQQ-only fallback that
+            # used to be the sole source, which left NVDA/AAPL/MSFT unchecked.
+            ref = (block or {}).get("prior_close")
+            if not ref:
+                entry = (prior or {}).get(und)
+                ref = (entry.get("chain") or {}).get("reference_close") if isinstance(entry, dict) else None
             if spot and ref:
                 spot_ref[und] = (float(spot), float(ref))
         exit_claims = citations.audit_exit_claims(proposals, dtes, spot_ref, config)

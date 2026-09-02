@@ -365,6 +365,17 @@ prompt's last sentence above — quote or name, never restate — is the cheap
 half; the audit is how we know whether the model's prose can be trusted on a
 given day, which after day 2 it could.
 
+A second, narrower check runs on every cycle whether or not tools ran:
+`audit_exit_claims` reads the *facts* in a reason that the account itself can
+contradict. A sell citing a forced close or backstop on a contract days from
+any code exit is `fabricated_urgency` (#188); a claim that the underlying
+"held above" or "sits below" its prior close when the tape says the opposite
+is `wrong_direction`; and a *stated* prior close ("below the prior close of
+228.00") that is not the real one is `wrong_reference`. The snapshot carries
+yesterday's close for every whitelisted underlying, so the check covers NVDA,
+AAPL and MSFT and not only the two names with a prediction-market prior — the
+gap that let the 2026-09-02 NVDA exit cite 228.00 against a real 217.49 (#226).
+
 ### When it is withheld
 
 A range market that has barely traded still quotes every bucket, and the
@@ -1198,8 +1209,10 @@ positions block existed, the treatment for ten-minute exits was a leash
 ago is refused unless the position is already down more than
 `early_exit_drawdown_pct` of its premium — the stop and take-profit own the
 marks; the model's early exit has to wait out the hold. Code exits never pass
-through it. Both are runtime knobs, and both stay: the block above removes the
-reason to churn, the leash bounds it if the model churns anyway.
+through it. Both are runtime knobs. On `official` and `mixed` they stay at
+30 / 25; on `test` they are 0 / 1 — off — since 2026-09-03 (#222): the guard
+sees early-vs-late, not good-vs-bad, and the challenger measures the prompt's
+CLOSED TODAY block (#225) without the funnel deciding which exits count.
 
 **How positions end — `stop_loss_pct`, `take_profit_pct`, `eod_close_dte`.**
 The first two are checked at the top of every cycle *before* the model is

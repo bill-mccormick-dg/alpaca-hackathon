@@ -329,6 +329,31 @@ def _serialize_account(account: AccountState, open_orders: list[dict] | None = N
     }
 
 
+async def attach_prior_close(client: AlpacaMCPClient, config: dict, options: dict) -> None:
+    """Yesterday's close for every whitelisted underlying, one call, stored as
+    `prior_close` beside `underlying_price` (#226 lever 1).
+
+    It used to be fetched only for the prediction series (SPY/QQQ) and only
+    as the chain prior's reference, so the exit-claim audit could check
+    "held above prior close" on SPY and never on NVDA - which is where the
+    2026-09-02 "below the prior close of 228.00" (real: 217.49) went
+    unflagged. Advisory data only: a failure here leaves the key absent and
+    the cycle exactly as it was. The prompt's menu (bot/decide.py) reads
+    `underlying_price` and `contracts` and nothing else from this block."""
+    symbols = [u for u in (config.get("underlyings") or []) if u in options]
+    if not symbols:
+        return
+    try:
+        result = _data(await client.call_tool("get_stock_snapshot", {"symbols": ",".join(symbols), "feed": "iex"}))
+        snaps = result.get("snapshots") or result
+        for sym in symbols:
+            bar = ((snaps.get(sym) or {}) if isinstance(snaps, dict) else {}).get("prevDailyBar") or {}
+            if bar.get("c"):
+                options[sym]["prior_close"] = float(bar["c"])
+    except Exception:  # noqa: BLE001 - audit input, never worth a cycle
+        return
+
+
 async def build_snapshot(client: AlpacaMCPClient, config: dict, now: datetime | None = None) -> dict:
     """Everything the decision loop needs for one cycle, in one
     JSON-serializable dict — this is what eventually gets embedded in the
@@ -339,6 +364,7 @@ async def build_snapshot(client: AlpacaMCPClient, config: dict, now: datetime | 
     account = await build_account_state(client)
     open_orders = await build_open_orders(client)
     options = await build_option_research(client, config, today=now.date())
+    await attach_prior_close(client, config, options)
 
     predictions = {}
     if config.get("predictions_enabled"):
@@ -357,13 +383,16 @@ async def build_snapshot(client: AlpacaMCPClient, config: dict, now: datetime | 
             # The ETF's OWN previous close, never Kalshi's: that reference is
             # the S&P 500 INDEX level (~7712), and these strikes are SPY the
             # ETF (~766). Percent moves line up across the two; levels never.
-            reference = None
-            try:
-                result = _data(await client.call_tool("get_stock_snapshot", {"symbols": sym, "feed": "iex"}))
-                bar = ((result.get("snapshots") or result).get(sym) or {}).get("prevDailyBar") or {}
-                reference = float(bar["c"]) if bar.get("c") else None
-            except Exception:  # noqa: BLE001 - a prior is never worth a cycle
-                reference = None
+            # attach_prior_close() fetched it for every underlying above; the
+            # per-symbol call remains as the fallback for a partial answer.
+            reference = (options.get(sym) or {}).get("prior_close")
+            if reference is None:
+                try:
+                    result = _data(await client.call_tool("get_stock_snapshot", {"symbols": sym, "feed": "iex"}))
+                    bar = ((result.get("snapshots") or result).get(sym) or {}).get("prevDailyBar") or {}
+                    reference = float(bar["c"]) if bar.get("c") else None
+                except Exception:  # noqa: BLE001 - a prior is never worth a cycle
+                    reference = None
             chain = chain_summary(contracts, reference)
             if chain:
                 predictions.setdefault(sym, {})["chain"] = chain
