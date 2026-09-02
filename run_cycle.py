@@ -457,7 +457,8 @@ async def run(args: argparse.Namespace) -> int:
                                      blocked_before=blocked_today.get(p.symbol, 0))
             if block:
                 journal.log("order_rejected", detail=block, side=p.side, qty=p.qty,
-                            symbol=p.symbol, instrument=p.instrument, price=None, reason=p.reason, **resolved)
+                            symbol=p.symbol, instrument=p.instrument, price=None, reason=p.reason,
+                            model=decision.model, **resolved)
                 print(f"REJECTED {p.side} {p.qty} {p.symbol}: {block}")
                 continue
             price = price_for_proposal(snap, p)
@@ -483,9 +484,17 @@ async def run(args: argparse.Namespace) -> int:
                     client, risk, acct, price, p, dry_run=args.dry_run, now=now
                 )
             label = f"{p.side} {p.qty} {p.symbol}"
+            # `model` on every proposal-funnel order event, so "which model
+            # made this trade" is read straight off the record instead of
+            # joined to the same cycle's decision by timestamp - the join
+            # breaks exactly on the days it matters, when the model changed
+            # mid-session (2026-08-31: 32 of 33 decisions on an override).
+            # Code exits (stop/take-profit/expiry) stay unstamped: no model
+            # decided those, and the absence says so.
             fields = {
                 "side": p.side, "qty": p.qty, "symbol": p.symbol, "instrument": p.instrument,
-                "price": price, "price_source": price_source, "reason": p.reason, **resolved,
+                "price": price, "price_source": price_source, "reason": p.reason,
+                "model": decision.model, **resolved,
             }
             if r.status == execute.ZERO_QTY:
                 continue
