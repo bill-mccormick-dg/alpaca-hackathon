@@ -265,7 +265,7 @@ journaled it did not happen.
 | `order_canceled` | one of the bot's own entry buys was still resting from an earlier cycle and the new cycle cancelled it (`ok`, the broker's text when it could not) — #171 |
 | `decide_retry` | a transient model failure was retried inside the cycle |
 | `identity_refused` / `identity_unverified` | the broker's account number did not match the account asked for |
-| `daily_loss_halt`, `daily_loss_flatten`, `flatten`, `manual_halt` | trading stopped, and why |
+| `daily_loss_halt`, `daily_loss_flatten`, `flatten`, `manual_halt` | trading stopped, and why. A flatten's `closed[]` lists the contracts it closed; the email, its trades CSV and the HA trade card expand that into one `sell` row per contract (#221) |
 | `override_set` / `override_cleared` | a runtime knob changed |
 | `error` | anything else, with where and the detail — `where: open_orders` means the resting-order lookup failed and that cycle sized on holdings alone |
 | `predictions` | the Kalshi prior the model was handed that cycle — the numbers **and** whether they were withheld |

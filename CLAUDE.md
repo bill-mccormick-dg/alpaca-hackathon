@@ -56,8 +56,9 @@ Alpaca (`get_stock_snapshot` → `prevDailyBar.c`), not from the model's reason.
   the chain prior's `reference_close`, which `snapshot.py` fetches **only for SPY/QQQ**;
   NVDA/AAPL/MSFT can never get a direction check. And `DIRECTION_CLAIM` needs a verb —
   "227.55, below the prior close" doesn't match. Both gaps are on #226.
-- The emailed trades CSV (`mail_report.py`) **omits every flatten-closed position**
-  (#221). `trade_report.py` reads fills from Alpaca and is correct.
+- The emailed trades CSV and body list flatten closes as `sell` rows with the flatten's
+  name as `event` and no price (`closed[]` has none) — `trade_report.py` reads fills
+  from Alpaca and is authoritative. Rejections are a separate `rejected-<day>.csv`.
 - `scripts/fit_slides.py` needs Chrome; a re-cut PDF of an unchanged deck differs by
   exactly 8 bytes (CreationDate/ModDate) — don't commit that.
 
@@ -76,7 +77,6 @@ Alpaca (`get_stock_snapshot` → `prevDailyBar.c`), not from the model's reason.
 ## Open threads (Sep 2, 2026)
 
 - #216 Part 2 — replay journaled prompts, score constraint adherence (209 decisions exist); reopened Sep 2, scheduled Thu Sep 3 during the freeze
-- #221 — CSV misses flatten closes
 - #222 — model exits: 11 attempts / 6 blocked / 5 executed on Sep 2; two sound, three not
 - #226 — reasoning-scoring levers, in order
 - PRs behind the freeze: #217 (K3 nudge), #225 (CLOSED TODAY block)

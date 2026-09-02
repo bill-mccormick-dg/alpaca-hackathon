@@ -22,6 +22,12 @@ from datetime import datetime
 # The journal events that represent something actually happening to money,
 # in the order a reader cares about them.
 TRADE_EVENTS = ("order_submitted", "order_rejected", "order_error", "dry_run")
+# A flatten closes positions without an order event per contract: its closes
+# live in a `closed[]` array on one record (bot/flatten.py). Expanded into
+# trade-shaped rows by trade_records() so the email, the CSV and the HA card
+# show the close as well as the open (#221).
+FLATTEN_EVENTS = ("flatten", "daily_loss_flatten")
+FLATTEN_LABEL = {"flatten": "FLATTENED", "daily_loss_flatten": "FLATTENED (daily loss)"}
 
 # HA's hard limit on a sensor's state string.
 MAX_STATE_CHARS = 255
@@ -53,16 +59,66 @@ def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 1].rstrip() + "…"
 
 
+def flatten_rows(record: dict, last_buy_qty: dict | None = None) -> list[dict]:
+    """One trade-shaped record per contract a flatten closed.
+
+    `closed[]` carries symbol and status only - no quantity, price or order
+    id (bot/flatten.py, bot/orders.py) - so the row says WHAT closed and WHY
+    (the flatten's message: the expiring-only backstop, the daily-loss
+    cutoff, the kill switch), never at what price. `qty` is the journal's
+    last submitted buy for that symbol when the caller tracked one. Fills
+    stay authoritative: trade_report.py reads them from Alpaca and pairs
+    the round trips; this exists so a reader of the hourly email does not
+    see two NVDA buys that apparently never closed (#221)."""
+    if record.get("event") not in FLATTEN_EVENTS:
+        return []
+    rows = []
+    for entry in record.get("closed") or []:
+        symbol = entry.get("symbol") if isinstance(entry, dict) else entry
+        if not symbol:
+            continue
+        rows.append(
+            {
+                "ts": record.get("ts"),
+                "event": record["event"],
+                "side": "sell",
+                "qty": (last_buy_qty or {}).get(symbol),
+                "symbol": symbol,
+                "price": None,
+                "exit": True,
+                "order_id": "",
+                "reason": str(record.get("message") or record.get("state") or ""),
+            }
+        )
+    return rows
+
+
+def trade_records(events) -> list[dict]:
+    """Every journal record that moved money, in journal order: the order
+    events as written, and each flatten expanded into one row per closed
+    contract. The single filter behind the email body, the CSV, the HA
+    trade card and the viewer's trade list, so they cannot disagree."""
+    out, last_buy_qty = [], {}
+    for record in events:
+        event = record.get("event")
+        if event in TRADE_EVENTS:
+            if event == "order_submitted" and record.get("side") == "buy" and record.get("symbol"):
+                last_buy_qty[record["symbol"]] = record.get("qty")
+            out.append(record)
+        elif event in FLATTEN_EVENTS:
+            out.extend(flatten_rows(record, last_buy_qty))
+    return out
+
+
 def recent_trades(events, limit: int = DEFAULT_TRADE_LIMIT, tz=None) -> list[dict]:
-    """The most recent trade-shaped journal events, newest last.
+    """The most recent trade-shaped journal events, newest last - orders and
+    flatten closes alike (trade_records).
 
     `events` is any iterable of journal records - the caller decides whether
     that is today's or a wider window."""
     trades = []
-    for record in events:
+    for record in trade_records(events):
         event = record.get("event")
-        if event not in TRADE_EVENTS:
-            continue
         trades.append(
             {
                 "time": _fmt_time(record.get("ts"), tz),
@@ -93,6 +149,7 @@ def _trade_line(t: dict, reason_chars: int = REASON_CHARS) -> str:
         "order_rejected": "rejected",
         "order_error": "ERROR",
         "dry_run": "dry-run",
+        **FLATTEN_LABEL,
     }.get(t["event"], t["event"])
     qty = f"x{t['qty']}" if t.get("qty") is not None else ""
     price = f" @ ${float(t['price']):.2f}" if t.get("price") is not None else ""
@@ -129,11 +186,14 @@ def trades_summary(trades: list[dict]) -> str:
     if not trades:
         return "no trades"
     filled = sum(1 for t in trades if t["event"] == "order_submitted")
+    flattened = sum(1 for t in trades if t["event"] in FLATTEN_EVENTS)
     rejected = sum(1 for t in trades if t["event"] == "order_rejected")
     dry = sum(1 for t in trades if t["event"] == "dry_run")
     parts = []
     if filled:
         parts.append(f"{filled} filled")
+    if flattened:
+        parts.append(f"{flattened} flattened")
     if rejected:
         parts.append(f"{rejected} rejected")
     if dry:

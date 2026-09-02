@@ -35,6 +35,41 @@ REJECT_PRICED = _event(
 DRY = _event("dry_run", side="buy", qty=1, symbol="QQQ", price=2.5, reason="rehearsal")
 
 
+FLATTEN = _event(
+    "daily_loss_flatten", halt=True, expiring_only=False,
+    attempted=["NVDA260909C00220000", "SPY260909P00762000"],
+    closed=[{"symbol": "NVDA260909C00220000", "status": 200, "body": None},
+            {"symbol": "SPY260909P00762000", "status": 200, "body": None}],
+    failed=[], remaining=[], state="closed", message="daily-loss cutoff: all positions closed",
+)
+
+
+class FlattenRowsTest(unittest.TestCase):
+    """#221: a flatten closes positions with no order event per contract, so
+    every position closed by the daily-loss cutoff or the 14:50 backstop had
+    its buy in the trade list and no close."""
+
+    def test_a_flatten_becomes_one_sell_row_per_closed_contract(self):
+        rows = report.trade_records([FILL, FLATTEN])
+
+        self.assertEqual([r["event"] for r in rows], ["order_submitted", "daily_loss_flatten", "daily_loss_flatten"])
+        nvda = rows[1]
+        self.assertEqual((nvda["side"], nvda["symbol"], nvda["qty"], nvda["exit"]), ("sell", "NVDA260909C00220000", 2, True))
+        self.assertIsNone(nvda["price"])
+        self.assertEqual(nvda["reason"], "daily-loss cutoff: all positions closed")
+        self.assertIsNone(rows[2]["qty"])  # no buy journaled for SPY today
+
+    def test_an_empty_backstop_flatten_adds_nothing(self):
+        self.assertEqual(report.trade_records([_event("flatten", attempted=[], closed=[])]), [])
+
+    def test_the_card_labels_a_flatten_close(self):
+        trades = report.recent_trades([FILL, FLATTEN])
+        md = report.render_trades_markdown(trades)
+
+        self.assertIn("FLATTENED (daily loss) (exit) sell x2 `NVDA260909C00220000`", md)
+        self.assertEqual(report.trades_summary(trades), "1 filled, 2 flattened")
+
+
 class RecentTradesTest(unittest.TestCase):
     def test_keeps_only_trade_shaped_events(self):
         events = [_event("cycle_start"), FILL, _event("config"), _event("tool_call"), REJECT]
