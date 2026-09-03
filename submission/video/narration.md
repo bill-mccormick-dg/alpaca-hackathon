@@ -16,6 +16,45 @@ underneath its last sentences. `cuts.txt` splits it 72/28; nothing to do while
 reading, just don't pause between "writes the critique" and "Then it ships
 itself".
 
+## What still needs recording
+
+As of the 4:50.3 cut. Timestamps are where each block sits in it, so you can
+listen to the two marked *verify* rather than re-record them blind.
+
+| Block | Where it is | State |
+|---|---|---|
+| 1 Title | 0:00 | done |
+| 2 thesis | 0:10 | done |
+| 3 one cycle | 0:28 | done |
+| 4 shot 1 | 0:49 | done |
+| 5 shot 2 | 1:18 | **verify** - does it end with the prose-audit sentence? |
+| 6 Greeks | 2:08 | done - the shortened take |
+| 7 grading the prior | 2:17 | done |
+| 8 kill switch | 2:38 | **verify** - does it end with the autonomy sentence? |
+| 9 viewer | 2:55 | done - narrated live on the clip |
+| 10 Home Assistant | 3:48 | done - narrated live on the clip |
+| 11 digest, then deploy | 4:12 | **REDO** - says "seven hundred and sixty-five"; it is 795 |
+| 12 Results | 4:38 | **not recorded** - and cannot be written until Thursday's close |
+| 13 thanks | 4:45 | **not recorded** |
+
+**Block 11 is the certain one.** The count was corrected in this file after that
+take was recorded, so the audio and the script now disagree. Re-recording it
+fixes two pictures at once - it carries the deploy-history clip under its last
+sentences as well as the digest.
+
+**Blocks 5 and 8 are a *verify*, not a *redo*, and the reason is honest
+uncertainty.** The #202 sentences - the prose audit in 5, the autonomy position
+in 8 - were added to this file on a branch, and the checkout you recorded from
+may have been showing the older text. Their lengths do not settle it either way:
+you read slower than the `say` estimate on some blocks and faster on others, so
+17.8s for block 8 sits exactly between the with-it and without-it estimates.
+Listening to those two timestamps is the only way to know. If they are missing,
+those are the two sentences #202 says are the difference between the machinery
+scoring and not.
+
+Nothing else needs touching. Blocks 9 and 10 are the browser recordings' own
+audio, so they can only change by re-recording the screen with them.
+
 The alternative is to perform the whole thing in one pass:
 `bash submission/video/record.sh` walks this order for you - ssh for the
 terminal shots, Chrome for the slides and the pages - and waits on each one

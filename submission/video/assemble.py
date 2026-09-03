@@ -401,6 +401,14 @@ def build_segment(row: Row, blocks: dict[str, Block], slides: dict[str, Path]) -
 
 
 def concat(segs: list[Path]) -> None:
+    # A segment from a longer previous cut list is not harmless clutter: it sits
+    # in the same directory as the ones about to be joined, and the only reason
+    # it does not end up in the film is that order.txt is rewritten from the
+    # current plan every time. Delete it rather than rely on that.
+    keep = {s.name for s in segs}
+    for old in (BUILD / "segments").glob("*.mp4"):
+        if old.name not in keep:
+            old.unlink()
     # Beside the segments, not above them: the concat demuxer resolves each
     # `file` against the list's own directory, not the working directory.
     listing = BUILD / "segments" / "order.txt"
