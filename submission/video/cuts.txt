@@ -13,7 +13,12 @@
 #   row    | kind  | source        | in    | out   | narr | share | note
 #
 # kind:
-#   slide  source is a page of ../slides.pdf, rendered at 144dpi = 1920x1080
+#   slide  a slide of ../slides.pdf, named by a distinctive piece of its title
+#          rather than its number, and resolved through SLIDES.md. #244 inserted
+#          a slide at 8 and moved Results from 18 to 19 while this branch was
+#          open; SLIDES.md and README-export.md both index by number and nothing
+#          guards either, so this one does not index by number. A title that no
+#          longer matches exactly one slide is an error, not a wrong picture.
 #   shot   source is build/shots/<name>.mp4, rendered by tapes/make.sh (vhs)
 #   clip   source is footage/<name>.mov - screen recordings, see footage/README
 #
@@ -29,13 +34,13 @@
 # audio for that block exists yet - that is what --scratch and a silent rough
 # cut run on.
 
-01 | slide | 1          | -    | -    | 01 | 1.0  | title
-02 | slide | 2          | -    | -    | 02 | 1.0  | the thesis in one sentence
-03 | slide | 3          | -    | -    | 03 | 1.0  | one cycle: the runtime diagram
+01 | slide | Title      | -    | -    | 01 | 1.0  | title
+02 | slide | thesis     | -    | -    | 02 | 1.0  | the thesis in one sentence
+03 | slide | One cycle  | -    | -    | 03 | 1.0  | one cycle: the runtime diagram
 04 | shot  | shot1      | -    | -    | 04 | 1.0  | a live cycle on CT 108
 05 | shot  | shot2      | -    | -    | 05 | 1.0  | what the model was shown, and what it did
-06 | slide | 4          | -    | -    | 06 | 1.0  | Greeks: Alpaca's, Black-Scholes as the backstop
-07 | slide | 7          | -    | -    | 07 | 1.0  | ...and then we grade the prior
+06 | slide | Greeks     | -    | -    | 06 | 1.0  | Greeks: Alpaca's, Black-Scholes as the backstop
+07 | slide | then we grade it | -    | -    | 07 | 1.0  | ...and then we grade the prior
 08 | shot  | shot4      | -    | -    | 08 | 1.0  | the kill switch
 # The viewer recording has the Chrome overflow menu open across 33-42s. The
 # journal is static there anyway (recorded after the close, nothing arriving),
@@ -45,5 +50,5 @@
 11 | clip  | ha         | 1.0  | 30.0 | 10 | 1.0  | Home Assistant: the operator dashboard
 12 | shot  | shot57     | -    | -    | 11 | 0.72 | the end-of-day digest, then what is deployed
 13 | clip  | actions    | 2.0  | 27.0 | 11 | 0.28 | the deploy history, green all week
-14 | slide | 18         | -    | -    | 12 | 1.0  | results
-15 | slide | 19         | -    | -    | 13 | 1.0  | thanks
+14 | slide | Results    | -    | -    | 12 | 1.0  | results
+15 | slide | thanks     | -    | -    | 13 | 1.0  | thanks

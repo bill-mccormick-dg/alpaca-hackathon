@@ -65,7 +65,7 @@ HOLD=0.8
 SHOTS=(
   "shot1|1|0.05|100|official|a live cycle: gates, snapshot, the model, then the risk gate"
   "shot2|2|0.90|60|test|last_cycle.py - what the judged account was shown, and what it did"
-  "shot4|4|0.50|90|test|the kill switch, verified against the broker"
+  "shot4|4|1.60|120|test|the kill switch, verified against the broker"
   "shot57|5 7|0.35|75|test|the end-of-day digest, then what is actually deployed"
 )
 

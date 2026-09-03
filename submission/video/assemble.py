@@ -28,6 +28,7 @@ and pdftoppm (brew install ffmpeg poppler).
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import shutil
@@ -38,6 +39,7 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 SLIDES_PDF = HERE.parent / "slides.pdf"
+SLIDES_MD = HERE.parent / "SLIDES.md"
 NARRATION_MD = HERE / "narration.md"
 CUTS = HERE / "cuts.txt"
 FOOTAGE = HERE / "footage"
@@ -217,13 +219,50 @@ def plan(rows: list[Row], blocks: dict[str, Block]) -> None:
 # ------------------------------------------------------------------ segments
 
 
+SLIDE_TITLE = re.compile(r"^(\d+)\. \*\*(.+?)\*\*", re.M)
+
+
+def slide_number(key: str) -> int:
+    """Find the one slide whose title contains `key`.
+
+    cuts.txt names slides by title because numbers move: #244 inserted a slide
+    at 8 and pushed Results from 18 to 19 mid-branch. SLIDES.md is regenerated
+    from the deck, so it is the index to ask - and a key that matches none, or
+    more than one, stops the build instead of quietly cutting to the wrong
+    picture.
+    """
+    titles = SLIDE_TITLE.findall(SLIDES_MD.read_text())
+    if not titles:
+        die(f"no slide titles found in {SLIDES_MD}")
+    hits = [(int(n), s) for n, s in titles if key.lower() in s.lower()]
+    if len(hits) == 1:
+        return hits[0][0]
+    if not hits:
+        die(f"cuts.txt names slide '{key}', which matches no title in SLIDES.md")
+    named = ", ".join(f"{n} ({s})" for n, s in hits)
+    die(f"cuts.txt names slide '{key}', which is ambiguous - matches {named}")
+    raise AssertionError  # unreachable; die() exits
+
+
 def render_slides(pages: set[int]) -> dict[int, Path]:
+    """Render each page once, cached on the deck's *contents*.
+
+    Not on its mtime: `git checkout` and `git stash pop` rewrite mtimes, and a
+    deck that arrives that way looks older than the pictures made from an
+    entirely different version of it. That is not hypothetical - it served a
+    stale page 19 from the 19-slide deck after #244 made it 20, and the wrong
+    slide went into the cut without a word. A content hash cannot do that.
+    """
     d = BUILD / "slides"
     d.mkdir(parents=True, exist_ok=True)
+    tag = hashlib.md5(SLIDES_PDF.read_bytes()).hexdigest()[:8]
+    for old in d.glob("slide-*.png"):
+        if tag not in old.name:
+            old.unlink()        # a page from a deck we no longer have
     out = {}
     for p in sorted(pages):
-        png = d / f"slide-{p:02d}.png"
-        if not png.exists() or png.stat().st_mtime < SLIDES_PDF.stat().st_mtime:
+        png = d / f"slide-{p:02d}-{tag}.png"
+        if not png.exists():
             run(["pdftoppm", "-png", "-r", str(SLIDE_DPI), "-f", str(p), "-l", str(p),
                  "-singlefile", str(SLIDES_PDF), str(png.with_suffix(""))])
         out[p] = png
@@ -239,14 +278,14 @@ def audio_args(row: Row, blocks: dict[str, Block]) -> tuple[list[str], str]:
     return (["-ss", f"{row.offset:.3f}", "-t", f"{row.secs:.3f}", "-i", str(a)], "1:a")
 
 
-def build_segment(row: Row, blocks: dict[str, Block], slides: dict[int, Path]) -> Path:
+def build_segment(row: Row, blocks: dict[str, Block], slides: dict[str, Path]) -> Path:
     seg = BUILD / "segments" / f"{row.n}.mp4"
     seg.parent.mkdir(parents=True, exist_ok=True)
     T = row.secs
     ain, alabel = audio_args(row, blocks)
 
     if row.kind == "slide":
-        vin = ["-loop", "1", "-t", f"{T:.3f}", "-i", str(slides[int(row.source)])]
+        vin = ["-loop", "1", "-t", f"{T:.3f}", "-i", str(slides[row.source])]
         vf = f"{VF_FIT},fps={FPS},format=yuv420p"
     else:
         src = (FOOTAGE / f"{row.source}.mov" if row.kind == "clip"
@@ -330,7 +369,10 @@ def report(rows: list[Row], blocks: dict[str, Block]) -> float:
         if src is not None and not src.exists():
             how = "tapes/make.sh" if r.kind == "shot" else f"record it into {FOOTAGE.name}/"
             missing = f"  \033[31m<- blank card: no footage, {how}\033[0m"
-        print(f"{r.n}  {r.kind:5} {r.source:10} {r.secs:5.1f}s  {voice} {r.note}{missing}")
+        shown = r.source
+        if r.kind == "slide":
+            shown = f"{r.source[:11]}"
+        print(f"{r.n}  {r.kind:5} {shown:11} {r.secs:5.1f}s  {voice} {r.note}{missing}")
         total += r.secs
     m, s = divmod(total, 60)
     over = "  \033[31mOVER THE 5:00 CAP\033[0m" if total > CAP_SECONDS else ""
@@ -368,12 +410,13 @@ def main() -> None:
         wanted = {x.strip() for x in args.only.split(",")}
         rows = [r for r in rows if r.n in wanted]
 
-    slides = render_slides({int(r.source) for r in rows if r.kind == "slide"})
+    slides = {r.source: slide_number(r.source) for r in rows if r.kind == "slide"}
+    pngs = render_slides(set(slides.values()))
     print("\n\033[1mbuilding\033[0m")
     segs = []
     for r in rows:
         print(f"  {r.n} {r.note}")
-        segs.append(build_segment(r, blocks, slides))
+        segs.append(build_segment(r, blocks, {k: pngs[v] for k, v in slides.items()}))
     if args.only:
         print(f"\nsegments only ({args.only}); drop --only for the full cut")
         return
