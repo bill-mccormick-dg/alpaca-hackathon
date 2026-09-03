@@ -136,10 +136,11 @@ a human deletes it.
 cycle arriving, then a blocked line. Narrate this one live, over the recording -
 its audio is the take. The previous one crackled and ran 53s against a 40s slot,
 which is what #248 cut it down from.)*
-It has earned its keep. In two days of watching this scroll past, we found four
-bugs — none of them a failing test, because in every case the code did exactly
-what we had told it to. All four are fixed and deployed before the market open
-next day.
+Everything you just saw is also a web page — and it is read-only; it cannot halt
+or trade. It has earned its keep: in two days of watching this scroll past, we
+found four bugs — none of them a failing test, because in every case the code did
+exactly what we had told it to. All four are fixed and deployed before the market
+open next day.
 
 **[4:16 — browser: Home Assistant — 24s]** *(director: the operator dashboard)*
 The same journal publishes over MQTT, fire-and-forget, so a broker being down
