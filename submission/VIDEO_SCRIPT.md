@@ -31,7 +31,13 @@ python3 submission/video/assemble.py --check      # what exists, what is missing
 bash    submission/video/tapes/make.sh            # render the terminal shots
 python3 submission/video/assemble.py --scratch    # a watchable cut, macOS `say` standing in
 python3 submission/video/assemble.py --open       # the real thing
+python3 submission/video/assemble.py --stamp      # put the real offsets back in narration.md
 ```
+
+`--stamp` rewrites narration.md's `[m:ss — label — Ns]` headings from the cut it
+just planned. Run it after anything that changes a length. They were kept by hand
+until #248, by which point they were forty seconds out and still being read as if
+they meant something.
 
 **Every row's length comes from its narration block's audio** ([`cuts.txt`](video/cuts.txt)
 is the cut list; a clip is speed-fitted within 0.5x-2.0x and then frozen on its

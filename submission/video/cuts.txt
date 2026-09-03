@@ -33,7 +33,9 @@
 # one block (11 does: the digest, then the deploy history under its tail); their
 # shares are fractions of that block and must sum to 1.
 #
-# narr `self` means the clip was narrated live and carries its own sound. Those
+# `self` in the share column means the clip was narrated live and carries its own
+# sound. Such a row still names its block - the heading is what --stamp writes
+# the real offsets back into - but takes its audio from the clip. Those
 # rows play at native speed and set their own length from where the talking
 # starts and stops - audio and picture are one recording, and speed-fitting a
 # talking screen recording to a separate voice file desynchronises the words
@@ -52,8 +54,8 @@
 07 | slide | then we grade it | - | -  | grading-the-prior | 1.0 | ...and then we grade the prior
 08 | slide | grade what it says | - | - | grading-what-it-says | 1.0 | the citations and exit-claims audits (#247)
 09 | shot  | shot4      | -    | -    | kill-switch | 1.0 | the kill switch
-10 | clip  | viewer     | -    | -    | self | 1.0 | the live viewer, and the four bugs it caught
-11 | clip  | ha         | -    | -    | self | 1.0 | Home Assistant: the operator dashboard
+10 | clip  | viewer     | -    | -    | live viewer | self | the live viewer, and the four bugs it caught
+11 | clip  | ha         | -    | -    | Home Assistant | self | Home Assistant: the operator dashboard
 12 | shot  | shot57     | -    | -    | shot-5-then-shot-7 | 0.72 | the end-of-day digest, then what is deployed
 13 | clip  | actions    | 2.0  | 27.0 | shot-5-then-shot-7 | 0.28 | the deploy history, green all week
 14 | slide | Results    | -    | -    | results | 1.0 | results

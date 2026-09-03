@@ -31,6 +31,9 @@ and a clean run to work.
 
 ## What still needs recording
 
+(The timestamps that used to be in this table were wrong by up to 40 seconds -
+see #248. They are gone rather than guessed at.)
+
 | Block | File | State |
 |---|---|---|
 | 1 title | `title` | done |
@@ -42,13 +45,13 @@ and a clean run to work.
 | 7 grading the prior | `grading-the-prior` | done |
 | 8 grading what it says | `grading-what-it-says` | **not recorded** - new in #247 |
 | 9 kill switch | `kill-switch` | done - verify it ends with the autonomy sentence |
-| 10 viewer | - | done - narrated live on the clip |
+| 10 viewer | - | **REDO** - crackle, and cut to ~20s (#248) |
 | 11 Home Assistant | - | done - narrated live on the clip |
 | 12 digest, then deploy | `shot-5-then-shot-7` | **REDO** - says "seven hundred and sixty-five" |
 | 13 results | `results` | **not recorded** - needs Thursday's close |
 | 14 thanks | `thanks` | **not recorded** |
 
-Six takes. Block 12's says *nearly eight hundred* now rather than a figure: the
+Seven takes. Block 12's says *nearly eight hundred* now rather than a figure: the
 count was 765 on Monday and 795 today, it will move again before Thursday, and a
 number spoken into a video cannot be corrected the way a number in a file can.
 "Nearly eight hundred" is true across that range and still reads as a
@@ -57,14 +60,14 @@ about rigour.
 
 ---
 
-**[0:00 — slide 1, title — 8s]**
+**[0:00 — slide 1, title — 11s]**
 Autobelay: long premium, short leash. An autonomous options agent on Alpaca's
 MCP server, built this week for the Alpaca AI Trading Agents Hackathon. An auto
 belay is the device in a climbing gym that catches you with nobody holding the
 other end. Here the brake is deterministic code, and the model never touches an
 order.
 
-**[0:08 — slide 2, thesis — 24s]**
+**[0:11 — slide 2, thesis — 17s]**
 One sentence: buy defined-risk, short-dated options premium on the most liquid
 names when an open-source model can name a reason — and let deterministic code
 size it, stop it, and close it before expiry. Open model proposes; code
@@ -72,21 +75,21 @@ disposes. The trading is autonomous — nobody approves an order. The risk
 *envelope* is not: the caps and the two-percent daily cutoff live in git, and
 every knob you can reach at runtime expires at the close.
 
-**[0:32 — slide 3, one cycle — 20s]**
+**[0:28 — slide 3, one cycle — 21s]**
 Every ten minutes: gates, a snapshot through Alpaca's MCP server, and code's
 own exit rules run *before* the model is asked anything. The model gets one
 box. It returns JSON. Its proposals and code's own exit sells go through the
 same `check_order`, which rejects and never negotiates — and everything either
 of them does lands in the journal.
 
-**[0:52 — shot 1, live cycle — 35s]** *(director: `demo.sh` on CT 108)*
+**[0:49 — shot 1, live cycle — 30s]** *(director: `demo.sh` on CT 108)*
 Here is a real cycle on a live paper account. Equity and positions from the
 broker. The model may investigate first — bars, a snapshot, news, read-only
 Alpaca tools, six calls at most, every one journaled. Then it answers: a JSON
 array, or an empty one, which is a hold and a perfectly good decision. What it
 proposes goes to the gate.
 
-**[1:27 — shot 2, `last_cycle.py` — 30s]** *(director: hold on this screen; it
+**[1:19 — shot 2, `last_cycle.py` — 50s]** *(director: hold on this screen; it
 is the densest thing in the video)*
 This is one cycle from the judged account — the inputs, and what came of them.
 
@@ -103,19 +106,19 @@ rather than something unearned.
 Bottom: the decision, and the order — with the reason it gave, quoting those
 same numbers back.
 
-**[1:57 — slide 4, Greeks — 8s]**
+**[2:09 — slide 4, Greeks — 9s]**
 About those contracts: Alpaca's snapshot carries Greeks on ninety-four percent
 of the chain, our Black-Scholes solve is the *backstop* for the rest, and every
 contract says which it got — so the model knows which numbers are rough.
 
-**[2:05 — slide 7, grading the prior — 20s]**
+**[2:18 — slide 7, grading the prior — 20s]**
 A prior nobody scores is decoration, so every night we Brier-score the exact
 probabilities the model was handed against what the market did. Yesterday:
 Kalshi four thousandths, the chain eight — against twenty-five hundredths for a
 coin flip. One day, and a day with a clear direction. The point is that we grade
 the inputs, not just the model.
 
-**[2:25 — slide 8, grading what it says — 20s]**
+**[2:38 — slide 8, grading what it says — 28s]**
 And we grade what it *says*. Every percentage the model quotes in a reason is
 checked against the prior it was actually handed, and every exit reason against
 the account. Tuesday: twenty-two figures quoted, twenty-two exact. The same
@@ -124,28 +127,21 @@ expiry close that no code path would produce for another six days — and the ex
 that filled called the strike the prior close. All of it journaled, all of it in
 the digest, and all of it *reporting only*: prose is not an order parameter.
 
-**[2:45 — shot 4, kill switch — 22s]** *(director: `demo.sh`)*
+**[3:06 — shot 4, kill switch — 17s]** *(director: `demo.sh`)*
 The leash. One command closes everything — cancelled, settled, closed, verified
 against the broker — and writes a halt file. The next cycle refuses to run until
 a human deletes it.
 
-**[3:07 — browser: the live viewer — 40s]** *(director: `bot.wpmccormick.pw`;
-show a cycle arriving, then a blocked line, then the date picker)*
-Everything you just saw is also a web page. The journal streams to a browser
-over server-sent events, published through a Cloudflare tunnel with an email
-one-time PIN — no VPN, nothing to install. It is read-only; it cannot halt or
-trade.
-
+**[3:24 — browser: the live viewer — 53s]** *(director: `bot.wpmccormick.pw`; show a
+cycle arriving, then a blocked line. Narrate this one live, over the recording -
+its audio is the take. The previous one crackled and ran 53s against a 40s slot,
+which is what #248 cut it down from.)*
 It has earned its keep. In two days of watching this scroll past, we found four
 bugs — none of them a failing test, because in every case the code did exactly
-what we had told it to. The feed cut the model's reasoning mid-word. Trying to
-close a thirteen-hundred-dollar winner, the model named a neighbouring strike,
-three cycles running. An unfilled limit order sat invisible, and ten minutes
-later the same idea was bought again next door. And a ten-minute-old position
-was proposed for exit on a weakening thesis, when every number it had cited had
-moved in its favour. All four are fixed and deployed.
+what we had told it to. All four are fixed and deployed before the market open
+next day.
 
-**[3:47 — browser: Home Assistant — 15s]** *(director: the operator dashboard)*
+**[4:16 — browser: Home Assistant — 24s]** *(director: the operator dashboard)*
 The same journal publishes over MQTT, fire-and-forget, so a broker being down
 never touches a trading cycle. Home Assistant discovers the sensors on its own:
 equity, day P&L, halt state, the last decision, per account. This dashboard has
@@ -154,7 +150,7 @@ has none. The phone gets problems only — never fills. What it does buzz about
 is silence: no cycle for twenty-five minutes, the one failure a dashboard
 cannot show.
 
-**[4:02 — shot 5 then shot 7 — 25s]** *(director: `demo.sh`)*
+**[4:40 — shot 5 then shot 7 — 26s]** *(director: `demo.sh`)*
 At the close, one command rebuilds every round trip from Alpaca's fills, groups
 the rejections by the rule that refused them, and scores the priors. A different
 model — one that did not trade the day — writes the critique. Then it ships
@@ -162,11 +158,11 @@ itself: CI runs nearly eight hundred tests on every pull request, a
 runner on the container deploys the merge in about a minute, and a freeze window
 hard-fails any trading-code merge while the market is open.
 
-**[4:27 — slide 19, results — 15s]**
+**[5:07 — slide 19, results — 6s]**
 (Fill after Thursday's close.) From Monday's open to Thursday's close the judged
 account went ___. ___ round trips. What didn't work: ___.
 
-**[4:42 — slide 20, thanks — 8s]**
+**[5:13 — slide 20, thanks — 5s]**
 MIT licensed, in the repo. Thanks to Alpaca, lablab.ai and Featherless.
 
 ---
