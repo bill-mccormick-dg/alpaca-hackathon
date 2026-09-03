@@ -20,7 +20,7 @@
 #          guards either, so this one does not index by number. A title that no
 #          longer matches exactly one slide is an error, not a wrong picture.
 #   shot   source is build/shots/<name>.mp4, rendered by tapes/make.sh (vhs)
-#   clip   source is footage/<name>.mov - screen recordings, see footage/README
+#   clip   source is footage/<name>.<mp4|mov|...> - screen recordings
 #
 # in/out are seconds into the source; `-` means the whole thing. A clip is
 # speed-fitted to its target length within 0.5x-2.0x, then frozen on its last
@@ -42,13 +42,11 @@
 06 | slide | Greeks     | -    | -    | 06 | 1.0  | Greeks: Alpaca's, Black-Scholes as the backstop
 07 | slide | then we grade it | -    | -    | 07 | 1.0  | ...and then we grade the prior
 08 | shot  | shot4      | -    | -    | 08 | 1.0  | the kill switch
-# The viewer recording has the Chrome overflow menu open across 33-42s. The
-# journal is static there anyway (recorded after the close, nothing arriving),
-# so the splice costs nothing and the menu never appears.
-09 | clip  | viewer     | 1.5  | 32.5 | 09 | 0.45 | the live journal viewer
-10 | clip  | viewer     | 42.0 | 72.0 | 09 | 0.55 | ...and the four bugs it caught
-11 | clip  | ha         | 1.0  | 30.0 | 10 | 1.0  | Home Assistant: the operator dashboard
-12 | shot  | shot57     | -    | -    | 11 | 0.72 | the end-of-day digest, then what is deployed
-13 | clip  | actions    | 2.0  | 27.0 | 11 | 0.28 | the deploy history, green all week
-14 | slide | Results    | -    | -    | 12 | 1.0  | results
-15 | slide | thanks     | -    | -    | 13 | 1.0  | thanks
+# One continuous take now, so no splice: the first viewer recording had the
+# Chrome overflow menu open across 33-42s and had to be cut around.
+09 | clip  | viewer     | 1.0  | 53.0 | 09 | 1.0  | the live viewer, and the four bugs it caught
+10 | clip  | ha         | 0.5  | 33.5 | 10 | 1.0  | Home Assistant: the operator dashboard
+11 | shot  | shot57     | -    | -    | 11 | 0.72 | the end-of-day digest, then what is deployed
+12 | clip  | actions    | 2.0  | 27.0 | 11 | 0.28 | the deploy history, green all week
+13 | slide | Results    | -    | -    | 12 | 1.0  | results
+14 | slide | thanks     | -    | -    | 13 | 1.0  | thanks

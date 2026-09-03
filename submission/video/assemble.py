@@ -51,10 +51,22 @@ W, H, FPS = 1920, 1080, 30
 CAP_SECONDS = 300.0          # the hackathon's hard cap
 CAP_BYTES = 300 * 1024 * 1024
 AUDIO_EXTS = (".mp3", ".m4a", ".wav", ".aiff", ".aif", ".caf", ".flac")
+# Whatever the screen recorder produced. QuickTime writes .mov, the Home
+# Assistant and viewer retakes arrived as .mp4; cuts.txt should not have to care.
+CLIP_EXTS = (".mp4", ".mov", ".m4v", ".mkv", ".webm")
 # How far a clip may be sped up or slowed down to meet its target before we stop
 # stretching and freeze the last frame instead. Beyond 2x, screen recordings
 # stop reading as footage and start reading as a mistake.
 SPEED_MIN, SPEED_MAX = 0.5, 2.0
+
+# Every take starts with the reach for the record button and ends with the reach
+# back. Across nine blocks that was eleven seconds - more than the amount this
+# cut is over by - and it is also why the joins sounded slack. So each block's
+# lead-in and run-out are normalised to a fixed breath rather than left as
+# whatever the hand did. Words are never trimmed: the silence threshold is well
+# below speech, and what is kept is padded back out.
+LEAD_PAD, TAIL_PAD = 0.15, 0.30
+SILENCE_DB, SILENCE_MIN = -38, 0.25
 
 # Rendering every slide at 144dpi turns slides.pdf's 960x540pt page into exactly
 # 1920x1080 - no resampling, so the deck's text stays as sharp as the PDF is.
@@ -105,6 +117,7 @@ class Block:
     label: str
     secs: float          # the scripted length, used when no audio exists yet
     text: str
+    _span: tuple[float, float] | None = None
 
     def audio(self) -> Path | None:
         for ext in AUDIO_EXTS:
@@ -113,6 +126,36 @@ class Block:
                 return p
         p = BUILD / "scratch" / f"{self.id}.aiff"
         return p if p.exists() else None
+
+    def span(self) -> tuple[float, float]:
+        """(start, length) of this block's audio, dead air at the ends removed."""
+        if self._span is None:
+            a = self.audio()
+            self._span = voiced_span(a) if a else (0.0, self.secs)
+        return self._span
+
+
+def voiced_span(path: Path) -> tuple[float, float]:
+    r = subprocess.run(
+        ["ffmpeg", "-v", "info", "-i", str(path), "-af",
+         f"silencedetect=n={SILENCE_DB}dB:d={SILENCE_MIN}", "-f", "null", "-"],
+        capture_output=True, text=True,
+    )
+    total = duration(path)
+    marks = re.findall(r"silence_(start|end): (-?[0-9.]+)", r.stderr or "")
+    head = 0.0
+    for kind, at in marks:                      # a silence that begins at 0 is lead-in
+        if kind == "start" and float(at) < 0.05:
+            nxt = marks[marks.index((kind, at)) + 1:]
+            if nxt and nxt[0][0] == "end":
+                head = float(nxt[0][1])
+        break
+    tail = total
+    if marks and marks[-1][0] == "start":       # a silence never closed is run-out
+        tail = float(marks[-1][1])
+    start = max(0.0, head - LEAD_PAD)
+    end = min(total, tail + TAIL_PAD)
+    return (start, max(0.5, end - start))
 
 
 # **[1:20 — shot 2, `last_cycle.py` — 45s]**  ...and the body until the next one.
@@ -203,9 +246,7 @@ def plan(rows: list[Row], blocks: dict[str, Block]) -> None:
         b = blocks.get(r.narr)
         if b is None:
             die(f"cuts.txt row {r.n} names narration block {r.narr}, which does not exist")
-        a = b.audio()
-        total = duration(a) if a else b.secs
-        r.secs = total * r.share
+        r.secs = b.span()[1] * r.share
     seen: dict[str, float] = {}
     for r in rows:
         r.offset = seen.get(r.narr, 0.0)
@@ -271,11 +312,13 @@ def render_slides(pages: set[int]) -> dict[int, Path]:
 
 def audio_args(row: Row, blocks: dict[str, Block]) -> tuple[list[str], str]:
     """Input args and the filter label for this row's slice of its block."""
-    a = blocks[row.narr].audio()
+    b = blocks[row.narr]
+    a = b.audio()
     if a is None:
         return (["-f", "lavfi", "-t", f"{row.secs:.3f}",
                  "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"], "1:a")
-    return (["-ss", f"{row.offset:.3f}", "-t", f"{row.secs:.3f}", "-i", str(a)], "1:a")
+    return (["-ss", f"{b.span()[0] + row.offset:.3f}", "-t", f"{row.secs:.3f}",
+             "-i", str(a)], "1:a")
 
 
 def build_segment(row: Row, blocks: dict[str, Block], slides: dict[str, Path]) -> Path:
@@ -288,8 +331,7 @@ def build_segment(row: Row, blocks: dict[str, Block], slides: dict[str, Path]) -
         vin = ["-loop", "1", "-t", f"{T:.3f}", "-i", str(slides[row.source])]
         vf = f"{VF_FIT},fps={FPS},format=yuv420p"
     else:
-        src = (FOOTAGE / f"{row.source}.mov" if row.kind == "clip"
-               else BUILD / "shots" / f"{row.source}.mp4")
+        src = source_of(row)
         if not src.exists():
             run(["ffmpeg", "-y", "-v", "error",
                  "-f", "lavfi", "-t", f"{T:.3f}",
@@ -344,9 +386,17 @@ def concat(segs: list[Path]) -> None:
 
 
 def source_of(row: Row) -> Path | None:
-    """Where this row's picture comes from, or None if it is a still."""
+    """Where this row's picture comes from, or None if it is a still.
+
+    For a clip, the first extension that exists - and failing that the .mp4
+    name, so the "no footage" message names something you can go and create.
+    """
     if row.kind == "clip":
-        return FOOTAGE / f"{row.source}.mov"
+        for e in CLIP_EXTS:
+            p = FOOTAGE / f"{row.source}{e}"
+            if p.exists():
+                return p
+        return FOOTAGE / f"{row.source}{CLIP_EXTS[0]}"
     if row.kind == "shot":
         return BUILD / "shots" / f"{row.source}.mp4"
     return None

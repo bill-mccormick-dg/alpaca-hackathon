@@ -73,12 +73,12 @@ against the prior the model was actually shown, and the count of unsupported
 ones is on this screen. We audit the model's prose, not just its trades — and it
 has caught fabricated numbers on the judged account.
 
-**[2:05 — slide, Greeks — 18s]**
-About those contracts. We spent three days believing Alpaca's free feed carried
-no Greeks and solving implied volatility ourselves. That was wrong: the
-snapshot carries them on ninety-four percent of the chain. So we use Alpaca's,
-and our Black-Scholes solve is the *backstop* for the rest — every contract
-says which it got, so the model knows which numbers are rough.
+**[2:05 — slide, Greeks — 10s]** *(shortened: this is the cut below, taken. The
+full version is in the git history if the timing ever allows it back.)*
+About those contracts: we spent three days solving implied volatility ourselves
+before noticing that Alpaca's snapshot already carries Greeks on ninety-four
+percent of the chain — so we use theirs, ours is the *backstop* for the rest,
+and every contract says which it got.
 
 **[2:23 — slide, grading the prior — 20s]**
 A prior nobody scores is decoration, so every night we Brier-score the exact
@@ -141,9 +141,12 @@ MIT licensed, in the repo. Thanks to Alpaca, lablab.ai and Featherless.
 
 ## If it runs long
 
-In order, the first things to cut: the Greeks slide to one sentence (−10s), then
-the pagination detail in shot 2 down to "one page is three days on SPY; now it
-paginates" (−8s; it has already been trimmed once).
+The Greeks slide is **already cut** to one sentence (−11s), because with nine
+blocks recorded the projection was 5:09 against a 5:00 cap. Re-record block 6;
+everything else stands.
+
+If it is still long after that, next is the pagination detail in shot 2, down to
+"one page is three days on SPY; now it paginates" (−8s; already trimmed once).
 
 Do not cut the four bugs — it is the only part of the video that shows the
 *loop* working rather than the system running. Do not cut the prose audit in
