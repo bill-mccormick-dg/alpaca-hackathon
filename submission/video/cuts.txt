@@ -30,6 +30,12 @@
 # one block (11 does: the digest, then the deploy history under its tail); their
 # shares are fractions of that block and must sum to 1.
 #
+# narr `self` means the clip was narrated live and carries its own sound. Those
+# rows play at native speed and set their own length from where the talking
+# starts and stops - audio and picture are one recording, and speed-fitting a
+# talking screen recording to a separate voice file desynchronises the words
+# from the thing they are pointing at.
+#
 # `secs` fallbacks live in narration.md's own headings and are used only when no
 # audio for that block exists yet - that is what --scratch and a silent rough
 # cut run on.
@@ -44,8 +50,8 @@
 08 | shot  | shot4      | -    | -    | 08 | 1.0  | the kill switch
 # One continuous take now, so no splice: the first viewer recording had the
 # Chrome overflow menu open across 33-42s and had to be cut around.
-09 | clip  | viewer     | 1.0  | 53.0 | 09 | 1.0  | the live viewer, and the four bugs it caught
-10 | clip  | ha         | 0.5  | 33.5 | 10 | 1.0  | Home Assistant: the operator dashboard
+09 | clip  | viewer     | -    | -    | self | 1.0 | the live viewer, and the four bugs it caught
+10 | clip  | ha         | -    | -    | self | 1.0 | Home Assistant: the operator dashboard
 11 | shot  | shot57     | -    | -    | 11 | 0.72 | the end-of-day digest, then what is deployed
 12 | clip  | actions    | 2.0  | 27.0 | 11 | 0.28 | the deploy history, green all week
 13 | slide | Results    | -    | -    | 12 | 1.0  | results

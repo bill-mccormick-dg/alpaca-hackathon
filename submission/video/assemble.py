@@ -137,7 +137,7 @@ class Block:
 
 def voiced_span(path: Path) -> tuple[float, float]:
     r = subprocess.run(
-        ["ffmpeg", "-v", "info", "-i", str(path), "-af",
+        ["ffmpeg", "-v", "info", "-i", str(path), "-vn", "-af",
          f"silencedetect=n={SILENCE_DB}dB:d={SILENCE_MIN}", "-f", "null", "-"],
         capture_output=True, text=True,
     )
@@ -224,6 +224,17 @@ class Row:
     secs: float = 0.0       # filled in once the narration is known
     offset: float = 0.0     # where in a shared block this row's audio starts
 
+    @property
+    def self_voiced(self) -> bool:
+        """The clip was narrated live and carries its own sound.
+
+        Its audio and its picture are one recording, so this row is never
+        speed-fitted, trimmed to a separate voice file, or frozen: doing any of
+        those to a talking screen recording puts the words out of sync with what
+        they are describing. It plays at native speed and sets its own length.
+        """
+        return self.narr == "self"
+
 
 def read_cuts() -> list[Row]:
     rows = []
@@ -243,15 +254,26 @@ def read_cuts() -> list[Row]:
 def plan(rows: list[Row], blocks: dict[str, Block]) -> None:
     """Give every row a length, and every shared block a split."""
     for r in rows:
+        if r.self_voiced:
+            src = source_of(r)
+            if not src.exists():
+                die(f"row {r.n} is narrated in its own clip, but {src} is missing")
+            if r.tin is not None and r.tout is not None:
+                r.offset, r.secs = r.tin, r.tout - r.tin
+            else:
+                r.offset, r.secs = voiced_span(src)
+            continue
         b = blocks.get(r.narr)
         if b is None:
             die(f"cuts.txt row {r.n} names narration block {r.narr}, which does not exist")
         r.secs = b.span()[1] * r.share
     seen: dict[str, float] = {}
     for r in rows:
+        if r.self_voiced:
+            continue
         r.offset = seen.get(r.narr, 0.0)
         seen[r.narr] = r.offset + r.secs
-    for nid, tot in seen.items():
+    for nid in seen:
         shares = sum(r.share for r in rows if r.narr == nid)
         if abs(shares - 1.0) > 0.01:
             die(f"narration block {nid}: shares sum to {shares}, not 1.0")
@@ -312,6 +334,8 @@ def render_slides(pages: set[int]) -> dict[int, Path]:
 
 def audio_args(row: Row, blocks: dict[str, Block]) -> tuple[list[str], str]:
     """Input args and the filter label for this row's slice of its block."""
+    if row.self_voiced:
+        return ([], "0:a")
     b = blocks[row.narr]
     a = b.audio()
     if a is None:
@@ -337,6 +361,16 @@ def build_segment(row: Row, blocks: dict[str, Block], slides: dict[str, Path]) -
                  "-f", "lavfi", "-t", f"{T:.3f}",
                  "-i", f"color=c={MISSING}:s={W}x{H}:r={FPS}", *ain,
                  "-map", "0:v", "-map", alabel, "-t", f"{T:.3f}",
+                 "-c:v", "libx264", "-preset", "medium", "-crf", "20",
+                 "-pix_fmt", "yuv420p",
+                 "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
+                 "-movflags", "+faststart", str(seg)])
+            return seg
+        if row.self_voiced:
+            run(["ffmpeg", "-y", "-v", "error",
+                 "-ss", f"{row.offset:.3f}", "-t", f"{T:.3f}", "-i", str(src),
+                 "-filter:v", f"{VF_FIT},fps={FPS},format=yuv420p",
+                 "-map", "0:v", "-map", "0:a", "-t", f"{T:.3f}",
                  "-c:v", "libx264", "-preset", "medium", "-crf", "20",
                  "-pix_fmt", "yuv420p",
                  "-c:a", "aac", "-b:a", "192k", "-ar", "48000", "-ac", "2",
@@ -406,6 +440,11 @@ def report(rows: list[Row], blocks: dict[str, Block]) -> float:
     print(f"\n\033[1m{'#':>2}  {'kind':5} {'source':10} {'len':>6}  {'voice':7} what\033[0m")
     total = 0.0
     for r in rows:
+        if r.self_voiced:
+            voice = "\033[32min-clip\033[0m"
+            print(f"{r.n}  {r.kind:5} {r.source:11} {r.secs:5.1f}s  {voice}  {r.note}")
+            total += r.secs
+            continue
         b = blocks[r.narr]
         a = b.audio()
         if a is None:
@@ -487,7 +526,7 @@ def main() -> None:
         print("\n\033[33mstill blank\033[0m - these rows are a flat card, not footage:")
         for r in gaps:
             print(f"  {r.n} {r.kind:5} {r.source:8} {r.note}")
-    if any(blocks[r.narr].audio() and
+    if any(not r.self_voiced and blocks[r.narr].audio() and
            blocks[r.narr].audio().parent.name == "scratch" for r in rows):
         print("\n\033[33mstand-in voice\033[0m - some blocks are macOS `say`, not a recording")
     if args.open:
