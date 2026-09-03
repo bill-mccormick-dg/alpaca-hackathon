@@ -245,10 +245,14 @@ class Row:
     tin: float | None
     tout: float | None
     narr: str
-    share: float
+    share: str
     note: str
     secs: float = 0.0       # filled in once the narration is known
     offset: float = 0.0     # where in a shared block this row's audio starts
+
+    @property
+    def weight(self) -> float:
+        return 1.0 if self.self_voiced else float(self.share)
 
     @property
     def self_voiced(self) -> bool:
@@ -259,7 +263,7 @@ class Row:
         those to a talking screen recording puts the words out of sync with what
         they are describing. It plays at native speed and sets its own length.
         """
-        return self.narr == "self"
+        return self.share == "self"
 
 
 def read_cuts() -> list[Row]:
@@ -272,8 +276,7 @@ def read_cuts() -> list[Row]:
         if len(f) != 8:
             die(f"cuts.txt: expected 8 fields, got {len(f)}: {line}")
         num = lambda s: None if s == "-" else float(s)
-        rows.append(Row(f[0], f[1], f[2], num(f[3]), num(f[4]), f[5],
-                        float(f[6]), f[7]))
+        rows.append(Row(f[0], f[1], f[2], num(f[3]), num(f[4]), f[5], f[6], f[7]))
     return rows
 
 
@@ -289,7 +292,7 @@ def plan(rows: list[Row], blocks: dict[str, Block]) -> None:
             else:
                 r.offset, r.secs = voiced_span(src)
             continue
-        r.secs = blocks[r.narr].span()[1] * r.share
+        r.secs = blocks[r.narr].span()[1] * r.weight
     seen: dict[str, float] = {}
     for r in rows:
         if r.self_voiced:
@@ -297,7 +300,7 @@ def plan(rows: list[Row], blocks: dict[str, Block]) -> None:
         r.offset = seen.get(r.narr, 0.0)
         seen[r.narr] = r.offset + r.secs
     for nid in seen:
-        shares = sum(r.share for r in rows if r.narr == nid)
+        shares = sum(r.weight for r in rows if r.narr == nid)
         if abs(shares - 1.0) > 0.01:
             die(f"narration block {nid}: shares sum to {shares}, not 1.0")
 
@@ -467,6 +470,36 @@ def source_of(row: Row) -> Path | None:
     return None
 
 
+def stamp(rows: list[Row], blocks: dict[str, Block]) -> None:
+    """Rewrite narration.md's headings with where each block actually lands.
+
+    They were hand-kept, and by #248 they were up to forty seconds out - every
+    re-record and every inserted block invalidates all of them downstream, and
+    nothing noticed. The offsets are not knowledge anyone should have to hold:
+    this function is the same arithmetic the film is built from.
+    """
+    at: dict[str, tuple[float, float]] = {}
+    t = 0.0
+    for r in rows:
+        start, length = at.get(r.narr, (t, 0.0))
+        at[r.narr] = (start, length + r.secs)
+        t += r.secs
+    md = NARRATION_MD.read_text()
+    for key, (start, length) in at.items():
+        b = blocks[key]
+        m, s = divmod(round(start), 60)
+        old = re.search(rf"^\*\*\[[^\]]*?{re.escape(b.label)}[^\]]*?\]\*\*",
+                        md, re.MULTILINE)
+        if not old:
+            print(f"  \033[33mskip\033[0m no heading matched {b.label!r}")
+            continue
+        md = md.replace(old.group(0),
+                        f"**[{m}:{s:02d} — {b.label} — {length:.0f}s]**", 1)
+        print(f"  {m}:{s:02d}  {length:5.1f}s  {b.label}")
+    NARRATION_MD.write_text(md)
+    print(f"\n{NARRATION_MD} restamped from this cut")
+
+
 def report(rows: list[Row], blocks: dict[str, Block]) -> float:
     print(f"\n\033[1m{'#':>2}  {'kind':5} {'source':10} {'len':>6}  {'voice':7} what\033[0m")
     total = 0.0
@@ -507,6 +540,8 @@ def main() -> None:
                     help="fill missing blocks with a macOS `say` stand-in voice")
     ap.add_argument("--open", action="store_true", help="open the result when done")
     ap.add_argument("--only", help="build just these rows, comma separated")
+    ap.add_argument("--stamp", action="store_true",
+                    help="rewrite narration.md's headings with the real offsets")
     args = ap.parse_args()
 
     for tool in ("ffmpeg", "ffprobe", "pdftoppm"):
@@ -519,8 +554,7 @@ def main() -> None:
     rows = read_cuts()
     # Keyed by the name cuts.txt uses, so `blocks[r.narr]` reads the same as
     # before while the lookup itself is now by heading rather than position.
-    blocks = {r.narr: find_block(r.narr, blist)
-              for r in rows if not r.self_voiced}
+    blocks = {r.narr: find_block(r.narr, blist) for r in rows}
     for b in blocks.values():
         b.id = next(k for k, v in blocks.items() if v is b)
     if args.scratch:
@@ -529,6 +563,10 @@ def main() -> None:
     plan(rows, blocks)
     total = report(rows, blocks)
 
+    if args.stamp:
+        print("\n\033[1mrestamping narration.md\033[0m")
+        stamp(rows, blocks)
+        return
     if args.check:
         return
     if args.only:
