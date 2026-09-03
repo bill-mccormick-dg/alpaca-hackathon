@@ -487,7 +487,7 @@ def stamp(rows: list[Row], blocks: dict[str, Block]) -> None:
     md = NARRATION_MD.read_text()
     for key, (start, length) in at.items():
         b = blocks[key]
-        m, s = divmod(int(round(start)), 60)
+        m, s = divmod(round(start), 60)
         old = re.search(rf"^\*\*\[[^\]]*?{re.escape(b.label)}[^\]]*?\]\*\*",
                         md, re.MULTILINE)
         if not old:
