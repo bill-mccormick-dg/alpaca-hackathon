@@ -31,6 +31,13 @@ HA_ZOOM=${HA_ZOOM:-0.62}          # fits the state rows, graphs and controls at 
 export PAUSE=${PAUSE:-1}
 
 # step | kind | argument | what the narration is doing over it
+#
+# The deck steps are slide NUMBERS, and numbers move: #244 inserted the rhetoric
+# audit at 8 and pushed Results from 18 to 19, which pointed the last two steps
+# at the wrong slides (#246). Steps 1-7 are before the insertion and were fine.
+# cuts.txt solved this for the assembled path by naming slides instead; driving
+# Chrome by keystroke cannot, so this list has to be checked against SLIDES.md
+# whenever the deck gains or loses a slide.
 STEPS=(
   "deck|1|title - 8s"
   "deck|2|the thesis in one sentence"

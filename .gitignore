@@ -18,3 +18,13 @@ ansible/inventory.ini
 # output, not sources, so they stay out of the repo.
 submission/slides-placeholder.pdf
 submission/video/placeholder.*
+# The video is assembled from parts (submission/video/assemble.py). These three
+# are inputs or output, not sources: build/ and the generated tapes are
+# reproducible from slides.pdf, demo.sh and cuts.txt, and footage/ is 46MB of
+# screen recording that gets redone whenever the screen changes.
+#
+# narration/ is deliberately NOT here. A voice take is the one part of this that
+# cannot be regenerated from anything in the repo, and it is a few megabytes.
+submission/video/build/
+submission/video/footage/
+submission/video/tapes/generated/

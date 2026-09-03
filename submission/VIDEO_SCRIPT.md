@@ -8,7 +8,54 @@ each command and pauses for you. This file is the shot list and the checklist.
 plus voice. Terminal font >= 16 pt, dark theme, window ~1600x900.
 **Every shot is the real system running** - no generated imagery, no mockups.
 
-## One command drives the whole take
+## The cut is assembled from parts, and picture is cut to fit the voice
+
+The one-take path below is still here and still works, but it asks for the
+market to be open, the screen to be clean and no line to be fluffed, all in the
+same five minutes - and on the first attempt it wasn't: the take ran after the
+close, so shot 1 printed `outside trading window` and the densest 45 seconds
+landed on a cycle that held. Only the three browser steps reached disk.
+
+So the video is built from four kinds of part, each of which can be redone on
+its own without redoing any of the others:
+
+| Part | Made by | Notes |
+|---|---|---|
+| slides | `assemble.py`, from `slides.pdf` | 144dpi turns the 960x540pt page into exactly 1920x1080 |
+| terminal shots | `tapes/make.sh` (vhs) | runs the real `demo.sh` commands over ssh; no screen recorder, no window chrome |
+| browser clips | screen recording, into `footage/` | the one part still captured by hand |
+| voice | recorded per narration block, into `narration/` | `01.mp3` ... `13.mp3`; any format ffmpeg reads |
+
+```sh
+python3 submission/video/assemble.py --check      # what exists, what is missing, how long
+bash    submission/video/tapes/make.sh            # render the terminal shots
+python3 submission/video/assemble.py --scratch    # a watchable cut, macOS `say` standing in
+python3 submission/video/assemble.py --open       # the real thing
+```
+
+**Every row's length comes from its narration block's audio** ([`cuts.txt`](video/cuts.txt)
+is the cut list; a clip is speed-fitted within 0.5x-2.0x and then frozen on its
+last frame). So the edit loop is: re-record one twenty-second file, re-run
+`assemble.py`. That is the whole reason to build it this way - **slide 18,
+Results, cannot be filled in until Thursday's close**, so this gets re-rendered
+on Friday morning no matter what else happens.
+
+`--scratch` speaks the script with macOS `say` at 180 wpm. It is not a take, it
+is a metronome: it gives every block a real length so the pacing and the 5:00
+cap can be judged before anyone records anything. It never overwrites a real
+take. Worth knowing what it found - the scripted per-block seconds in
+`narration.md` are rough. Block 1 is written for 8 seconds and reads in 17.
+
+Two shots depend on the world rather than on us, and `make.sh` says so when it
+runs them:
+
+- **shot 1** is a live cycle; outside 09:45-15:15 ET it is one line. `FORCE=--force`
+  runs it anyway - still real, just after hours - but render it during market
+  hours for the final cut.
+- **shot 4** closes the TEST account's real positions and trips a real kill
+  switch, so it is skipped unless you pass `SKIP_HALT=0`.
+
+## The one-take path
 
 ```sh
 bash submission/video/record.sh --check    # nothing recorded: is everything ready?
@@ -82,6 +129,9 @@ that one."*
 
 ## Capture checklist
 
+Only the browser clips are still captured by hand; slides, terminal shots and
+the assembly are commands. The rest of this list is what those clips need.
+
 - [ ] `record.sh --check` clean, and the Chrome window on the recording display
 - [ ] Rehearse the command sequence (`PAUSE=0 SKIP_HALT=1`)
 - [ ] Log into the viewer *before* recording - the email OTP is slow on camera
@@ -90,5 +140,7 @@ that one."*
       Home Assistant shots fit the whole dashboard in frame by themselves
 - [ ] Don't click inside the deck while narrating - it advances on any click
 - [ ] QuickTime/OBS 1080p; mic level check; notifications off
-- [ ] Export H.264/AAC MP4; check length <= 5:00 **and size <= 300 MB**
+- [ ] Narration recorded one file per block into `video/narration/`, named
+      `01` to `13` after the blocks in `narration.md`
+- [ ] `assemble.py` reports **<= 5:00 and <= 300 MB** - it checks both and says so
 - [ ] Upload YouTube (unlisted); test the link logged out; paste into METADATA.md

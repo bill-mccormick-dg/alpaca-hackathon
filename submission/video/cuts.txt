@@ -1,0 +1,60 @@
+# The cut list - what is on screen, block by block (issue #23).
+#
+# The live take didn't survive contact: shot 1 printed "outside trading window"
+# because we recorded after the close, and only the three browser steps ever made
+# it to disk. So the video is assembled from parts instead of performed in one
+# pass - slides rendered from slides.pdf, terminal shots rendered by vhs, the
+# browser footage cut from what we already have, narration recorded separately.
+#
+# assemble.py reads this file. Picture is cut to fit the narration, never the
+# other way round: each row's length is its narration block's audio length times
+# `share`, so re-recording one line and re-rendering is the whole edit loop.
+#
+#   row    | kind  | source        | in    | out   | narr | share | note
+#
+# kind:
+#   slide  a slide of ../slides.pdf, named by a distinctive piece of its title
+#          rather than its number, and resolved through SLIDES.md. #244 inserted
+#          a slide at 8 and moved Results from 18 to 19 while this branch was
+#          open; SLIDES.md and README-export.md both index by number and nothing
+#          guards either, so this one does not index by number. A title that no
+#          longer matches exactly one slide is an error, not a wrong picture.
+#   shot   source is build/shots/<name>.mp4, rendered by tapes/make.sh (vhs)
+#   clip   source is footage/<name>.<mp4|mov|...> - screen recordings
+#
+# in/out are seconds into the source; `-` means the whole thing. A clip is
+# speed-fitted to its target length within 0.5x-2.0x, then frozen on its last
+# frame if it is still short. Slides are stills, so they simply hold.
+#
+# narr names both the file (../video/narration/<narr>.<mp3|m4a|...>) and the
+# block, matched against its heading in narration.md - by name, because #247
+# inserted a block at 8 and positional ids would have quietly shifted every take
+# after it onto the wrong block. Two rows may share
+# one block (11 does: the digest, then the deploy history under its tail); their
+# shares are fractions of that block and must sum to 1.
+#
+# narr `self` means the clip was narrated live and carries its own sound. Those
+# rows play at native speed and set their own length from where the talking
+# starts and stops - audio and picture are one recording, and speed-fitting a
+# talking screen recording to a separate voice file desynchronises the words
+# from the thing they are pointing at.
+#
+# `secs` fallbacks live in narration.md's own headings and are used only when no
+# audio for that block exists yet - that is what --scratch and a silent rough
+# cut run on.
+
+01 | slide | Title      | -    | -    | title | 1.0 | title
+02 | slide | thesis     | -    | -    | thesis | 1.0 | the thesis in one sentence
+03 | slide | One cycle  | -    | -    | one-cycle | 1.0 | one cycle: the runtime diagram
+04 | shot  | shot1      | -    | -    | live-cycle | 1.0 | a live cycle on CT 108
+05 | shot  | shot2      | -    | -    | last-cycle | 1.0 | what the model was shown, and what it did
+06 | slide | Greeks     | -    | -    | greeks | 1.0 | Greeks: Alpaca's, Black-Scholes as the backstop
+07 | slide | then we grade it | - | -  | grading-the-prior | 1.0 | ...and then we grade the prior
+08 | slide | grade what it says | - | - | grading-what-it-says | 1.0 | the citations and exit-claims audits (#247)
+09 | shot  | shot4      | -    | -    | kill-switch | 1.0 | the kill switch
+10 | clip  | viewer     | -    | -    | self | 1.0 | the live viewer, and the four bugs it caught
+11 | clip  | ha         | -    | -    | self | 1.0 | Home Assistant: the operator dashboard
+12 | shot  | shot57     | -    | -    | shot-5-then-shot-7 | 0.72 | the end-of-day digest, then what is deployed
+13 | clip  | actions    | 2.0  | 27.0 | shot-5-then-shot-7 | 0.28 | the deploy history, green all week
+14 | slide | Results    | -    | -    | results | 1.0 | results
+15 | slide | thanks     | -    | -    | thanks | 1.0 | thanks

@@ -4,10 +4,56 @@ Read at a natural pace. Each block names the footage it sits over: **slide N**
 is the deck, **shot N** is the caption `demo.sh` prints, and **browser** is a
 web page.
 
-You do not have to arrange any of it. `bash submission/video/record.sh` walks
-this order for you - ssh for the terminal shots, Chrome for the slides and the
-pages - and waits on each one until you switch away, so the pauses are however
-long your narration is. Run `record.sh --check` first.
+**Record one file per block**, into `submission/video/narration/`, named after
+the block: `title.m4a`, `kill-switch.m4a`, `grading-what-it-says.m4a`. Any
+format ffmpeg reads. `assemble.py` cuts the picture to fit each one, so a
+fluffed line costs you that block and nothing else, and the seconds in the
+headings stop mattering: they are the estimate, your recording is the truth.
+
+**Named, not numbered, and that is not a style choice.** These files were `01`
+to `13` until #247 inserted the audit block at 8. Every take from the kill
+switch onward silently became the take for the block after it - `08.m4a` would
+have been played over the audit slide and `11.m4a` over Home Assistant, with
+nothing to say anything was wrong. Names survive an insertion; positions do not.
+`cuts.txt` matches the name against the block's own heading, and a name that
+matches no block, or more than one, stops the build.
+
+Blocks 10 and 11 have no file: the viewer and Home Assistant were narrated live
+and their words are on the screen recordings' own audio tracks. Block 12 covers
+two pictures - the digest, then the deploy history under its last sentences -
+so don't pause between "writes the critique" and "Then it ships itself".
+
+The alternative is to perform the whole thing in one pass:
+`bash submission/video/record.sh` walks this order for you - ssh for the
+terminal shots, Chrome for the slides and the pages - and waits on each one
+until you switch away. Run `record.sh --check` first. It needs the market open
+and a clean run to work.
+
+## What still needs recording
+
+| Block | File | State |
+|---|---|---|
+| 1 title | `title` | done |
+| 2 thesis | `thesis` | **REDO** - #247 added the autonomy clause |
+| 3 one cycle | `one-cycle` | done |
+| 4 shot 1, live cycle | `live-cycle` | done |
+| 5 shot 2 | `last-cycle` | **REDO** - #247 cut this from 45s to 30s |
+| 6 Greeks | `greeks` | done - the shortened take |
+| 7 grading the prior | `grading-the-prior` | done |
+| 8 grading what it says | `grading-what-it-says` | **not recorded** - new in #247 |
+| 9 kill switch | `kill-switch` | done - verify it ends with the autonomy sentence |
+| 10 viewer | - | done - narrated live on the clip |
+| 11 Home Assistant | - | done - narrated live on the clip |
+| 12 digest, then deploy | `shot-5-then-shot-7` | **REDO** - says "seven hundred and sixty-five" |
+| 13 results | `results` | **not recorded** - needs Thursday's close |
+| 14 thanks | `thanks` | **not recorded** |
+
+Six takes. Block 12's says *nearly eight hundred* now rather than a figure: the
+count was 765 on Monday and 795 today, it will move again before Thursday, and a
+number spoken into a video cannot be corrected the way a number in a file can.
+"Nearly eight hundred" is true across that range and still reads as a
+measurement, which "hundreds" does not - and this is the block making the claim
+about rigour.
 
 ---
 
@@ -112,7 +158,7 @@ cannot show.
 At the close, one command rebuilds every round trip from Alpaca's fills, groups
 the rejections by the rule that refused them, and scores the priors. A different
 model — one that did not trade the day — writes the critique. Then it ships
-itself: CI runs seven hundred and ninety-five tests on every pull request, a
+itself: CI runs nearly eight hundred tests on every pull request, a
 runner on the container deploys the merge in about a minute, and a freeze window
 hard-fails any trading-code merge while the market is open.
 
