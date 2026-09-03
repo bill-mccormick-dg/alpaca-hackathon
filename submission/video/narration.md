@@ -37,18 +37,18 @@ see #248. They are gone rather than guessed at.)
 | Block | File | State |
 |---|---|---|
 | 1 title | `title` | done |
-| 2 thesis | `thesis` | **REDO** - #247 added the autonomy clause |
+| 2 thesis | `thesis` | done - remake recorded Sep 3 (21s) |
 | 3 one cycle | `one-cycle` | done |
 | 4 shot 1, live cycle | `live-cycle` | done |
-| 5 shot 2 | `last-cycle` | **REDO** - #247 cut this from 45s to 30s |
+| 5 shot 2 | `last-cycle` | done - remake recorded Sep 3 (31s) |
 | 6 Greeks | `greeks` | done - the shortened take |
 | 7 grading the prior | `grading-the-prior` | done |
 | 8 grading what it says | `grading-what-it-says` | **not recorded** - new in #247 |
 | 9 kill switch | `kill-switch` | done - verify it ends with the autonomy sentence |
-| 10 viewer | - | **REDO** - crackle, and cut to ~20s (#248) |
-| 11 Home Assistant | - | done - narrated live on the clip |
+| 10 viewer | `live viewer` | **not recorded** - new text (Sep 3); the picture is now Thursday's overlay clips, silent, so this is a voice file and the row is `1.0`, not `self` |
+| 11 Home Assistant | `Home Assistant` | **not recorded** - `footage/ha.mov` has no audio track (checked Sep 3), so "narrated live on the clip" was never true of the committed file; record it, or drop the block (slide 13 has the dashboard) |
 | 12 digest, then deploy | `shot-5-then-shot-7` | **REDO** - says "seven hundred and sixty-five" |
-| 13 results | `results` | **not recorded** - needs Thursday's close |
+| 13 results | `results` | **not recorded** - text final (Thursday's close is in) |
 | 14 thanks | `thanks` | **not recorded** |
 
 Seven takes. Block 12's says *nearly eight hundred* now rather than a figure: the
@@ -132,12 +132,17 @@ The leash. One command closes everything — cancelled, settled, closed, verifie
 against the broker — and writes a halt file. The next cycle refuses to run until
 a human deletes it.
 
-**[3:24 — browser: the live viewer — 53s]** *(director: `bot.wpmccormick.pw`; show a
-cycle arriving, then a blocked line. Narrate this one live, over the recording -
-its audio is the take. The previous one crackled and ran 53s against a 40s slot,
-which is what #248 cut it down from.)*
+**[3:24 — browser: the live viewer — 35s]** *(director: Thursday's captures, not a
+live take - `footage/cycle-overlay-HHMM.mp4` from `overlay_cycle.sh`: the journal
+viewer behind, filtered to the judged account, with the bot's own console output
+for the same cycle sliding in front the moment the cycle lands. Record this block
+as a voice file, `live viewer.m4a`; the picture is silent. Which cycles, and how
+many, is set by the time left - see the plan.)*
 Everything you just saw is also a web page — and it is read-only; it cannot halt
-or trade. It has earned its keep: in two days of watching this scroll past, we
+or trade. This is Thursday's twelve-thirty cycle arriving: the prior it was
+handed, the snapshot, the proposal, the order — and, in front of it, what the bot
+printed to its own console at that same moment. Same cycle, two views, one
+journal. It has earned its keep: in two days of watching this scroll past, we
 found four bugs — none of them a failing test, because in every case the code did
 exactly what we had told it to. All four are fixed and deployed before the market
 open next day.
@@ -159,9 +164,13 @@ itself: CI runs nearly eight hundred tests on every pull request, a
 runner on the container deploys the merge in about a minute, and a freeze window
 hard-fails any trading-code merge while the market is open.
 
-**[5:07 — slide 19, results — 6s]**
-(Fill after Thursday's close.) From Monday's open to Thursday's close the judged
-account went ___. ___ round trips. What didn't work: ___.
+**[5:07 — slide 19, results — 22s]**
+From Monday's open to Thursday's close the judged account went from one hundred
+thousand dollars to one hundred and five thousand six hundred and sixty-eight — up
+five point seven percent — on fifteen round trips, every one of them defined-risk.
+What didn't work: the Kimi-K3 challenger, down seven percent and stopped by the
+two-percent cutoff on Thursday; and the churn of exiting a position and buying it
+back minutes later, which the leash allowed and the reasoning did not justify.
 
 **[5:13 — slide 20, thanks — 5s]**
 MIT licensed, in the repo. Thanks to Alpaca, lablab.ai and Featherless.
