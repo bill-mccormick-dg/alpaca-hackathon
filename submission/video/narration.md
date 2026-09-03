@@ -33,7 +33,7 @@ listen to the two marked *verify* rather than re-record them blind.
 | 8 kill switch | 2:38 | **verify** - does it end with the autonomy sentence? |
 | 9 viewer | 2:55 | done - narrated live on the clip |
 | 10 Home Assistant | 3:48 | done - narrated live on the clip |
-| 11 digest, then deploy | 4:12 | **REDO** - says "seven hundred and sixty-five"; it is 795 |
+| 11 digest, then deploy | 4:12 | **REDO** - says "seven hundred and sixty-five"; say "nearly eight hundred" |
 | 12 Results | 4:38 | **not recorded** - and cannot be written until Thursday's close |
 | 13 thanks | 4:45 | **not recorded** |
 
@@ -41,6 +41,13 @@ listen to the two marked *verify* rather than re-record them blind.
 take was recorded, so the audio and the script now disagree. Re-recording it
 fixes two pictures at once - it carries the deploy-history clip under its last
 sentences as well as the digest.
+
+It now says *nearly eight hundred* rather than a figure. Not vagueness for its
+own sake: the count was 765 on Monday and 795 today, it will move again before
+Thursday, and a number spoken into a video cannot be corrected the way a number
+in a file can. "Nearly eight hundred" is true across that whole range and still
+reads as a real measurement, which "hundreds" does not - and this is the block
+that is making a claim about rigour.
 
 **Blocks 5 and 8 are a *verify*, not a *redo*, and the reason is honest
 uncertainty.** The #202 sentences - the prose audit in 5, the autonomy position
@@ -165,7 +172,7 @@ cannot show.
 At the close, one command rebuilds every round trip from Alpaca's fills, groups
 the rejections by the rule that refused them, and scores the priors. A different
 model — one that did not trade the day — writes the critique. Then it ships
-itself: CI runs seven hundred and ninety-five tests on every pull request, a
+itself: CI runs nearly eight hundred tests on every pull request, a
 runner on the container deploys the merge in about a minute, and a freeze window
 hard-fails any trading-code merge while the market is open.
 
