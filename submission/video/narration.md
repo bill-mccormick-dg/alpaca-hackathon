@@ -126,7 +126,7 @@ cannot show.
 At the close, one command rebuilds every round trip from Alpaca's fills, groups
 the rejections by the rule that refused them, and scores the priors. A different
 model — one that did not trade the day — writes the critique. Then it ships
-itself: CI runs seven hundred and sixty-five tests on every pull request, a
+itself: CI runs seven hundred and ninety-five tests on every pull request, a
 runner on the container deploys the merge in about a minute, and a freeze window
 hard-fails any trading-code merge while the market is open.
 
