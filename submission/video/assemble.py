@@ -91,7 +91,7 @@ def die(msg: str) -> None:
 
 
 def run(cmd: list[str], quiet: bool = True) -> None:
-    r = subprocess.run(cmd, capture_output=quiet, text=True)
+    r = subprocess.run(cmd, capture_output=quiet, text=True, check=False)
     if r.returncode != 0:
         tail = (r.stderr or "")[-2000:] if quiet else ""
         die(f"{cmd[0]} failed: {' '.join(cmd[1:6])}...\n{tail}")
@@ -101,7 +101,7 @@ def duration(path: Path) -> float:
     r = subprocess.run(
         ["ffprobe", "-v", "error", "-show_entries", "format=duration",
          "-of", "json", str(path)],
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
     if r.returncode != 0:
         die(f"cannot probe {path}")
@@ -144,7 +144,7 @@ def voiced_span(path: Path) -> tuple[float, float]:
     r = subprocess.run(
         ["ffmpeg", "-v", "info", "-i", str(path), "-vn", "-af",
          f"silencedetect=n={SILENCE_DB}dB:d={SILENCE_MIN}", "-f", "null", "-"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
     total = duration(path)
     marks = re.findall(r"silence_(start|end): (-?[0-9.]+)", r.stderr or "")
@@ -164,8 +164,8 @@ def voiced_span(path: Path) -> tuple[float, float]:
 
 
 # **[1:20 — shot 2, `last_cycle.py` — 45s]**  ...and the body until the next one.
-HEAD = re.compile(r"^\*\*\[(\d+):(\d+)\s+[—-]\s+(.+?)\s+[—-]\s+(\d+)s\]\*\*", re.M)
-DIRECTOR = re.compile(r"\*\(director:.*?\)\*", re.S)
+HEAD = re.compile(r"^\*\*\[(\d+):(\d+)\s+[—-]\s+(.+?)\s+[—-]\s+(\d+)s\]\*\*", re.MULTILINE)
+DIRECTOR = re.compile(r"\*\(director:.*?\)\*", re.DOTALL)
 
 
 def narration_blocks() -> list[Block]:
@@ -271,7 +271,7 @@ def read_cuts() -> list[Row]:
         f = [x.strip() for x in line.split("|")]
         if len(f) != 8:
             die(f"cuts.txt: expected 8 fields, got {len(f)}: {line}")
-        num = lambda s: None if s == "-" else float(s)  # noqa: E731
+        num = lambda s: None if s == "-" else float(s)
         rows.append(Row(f[0], f[1], f[2], num(f[3]), num(f[4]), f[5],
                         float(f[6]), f[7]))
     return rows
@@ -305,7 +305,7 @@ def plan(rows: list[Row], blocks: dict[str, Block]) -> None:
 # ------------------------------------------------------------------ segments
 
 
-SLIDE_TITLE = re.compile(r"^(\d+)\. \*\*(.+?)\*\*", re.M)
+SLIDE_TITLE = re.compile(r"^(\d+)\. \*\*(.+?)\*\*", re.MULTILINE)
 
 
 def slide_number(key: str) -> int:
@@ -566,7 +566,7 @@ def main() -> None:
            blocks[r.narr].audio().parent.name == "scratch" for r in rows):
         print("\n\033[33mstand-in voice\033[0m - some blocks are macOS `say`, not a recording")
     if args.open:
-        subprocess.run(["open", str(OUT)])
+        subprocess.run(["open", str(OUT)], check=False)
 
 
 if __name__ == "__main__":
