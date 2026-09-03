@@ -26,7 +26,10 @@
 # speed-fitted to its target length within 0.5x-2.0x, then frozen on its last
 # frame if it is still short. Slides are stills, so they simply hold.
 #
-# narr names ../video/narration/<id>.<mp3|m4a|wav|aiff|caf>. Two rows may share
+# narr names both the file (../video/narration/<narr>.<mp3|m4a|...>) and the
+# block, matched against its heading in narration.md - by name, because #247
+# inserted a block at 8 and positional ids would have quietly shifted every take
+# after it onto the wrong block. Two rows may share
 # one block (11 does: the digest, then the deploy history under its tail); their
 # shares are fractions of that block and must sum to 1.
 #
@@ -40,19 +43,18 @@
 # audio for that block exists yet - that is what --scratch and a silent rough
 # cut run on.
 
-01 | slide | Title      | -    | -    | 01 | 1.0  | title
-02 | slide | thesis     | -    | -    | 02 | 1.0  | the thesis in one sentence
-03 | slide | One cycle  | -    | -    | 03 | 1.0  | one cycle: the runtime diagram
-04 | shot  | shot1      | -    | -    | 04 | 1.0  | a live cycle on CT 108
-05 | shot  | shot2      | -    | -    | 05 | 1.0  | what the model was shown, and what it did
-06 | slide | Greeks     | -    | -    | 06 | 1.0  | Greeks: Alpaca's, Black-Scholes as the backstop
-07 | slide | then we grade it | -    | -    | 07 | 1.0  | ...and then we grade the prior
-08 | shot  | shot4      | -    | -    | 08 | 1.0  | the kill switch
-# One continuous take now, so no splice: the first viewer recording had the
-# Chrome overflow menu open across 33-42s and had to be cut around.
-09 | clip  | viewer     | -    | -    | self | 1.0 | the live viewer, and the four bugs it caught
-10 | clip  | ha         | -    | -    | self | 1.0 | Home Assistant: the operator dashboard
-11 | shot  | shot57     | -    | -    | 11 | 0.72 | the end-of-day digest, then what is deployed
-12 | clip  | actions    | 2.0  | 27.0 | 11 | 0.28 | the deploy history, green all week
-13 | slide | Results    | -    | -    | 12 | 1.0  | results
-14 | slide | thanks     | -    | -    | 13 | 1.0  | thanks
+01 | slide | Title      | -    | -    | title | 1.0 | title
+02 | slide | thesis     | -    | -    | thesis | 1.0 | the thesis in one sentence
+03 | slide | One cycle  | -    | -    | one-cycle | 1.0 | one cycle: the runtime diagram
+04 | shot  | shot1      | -    | -    | live-cycle | 1.0 | a live cycle on CT 108
+05 | shot  | shot2      | -    | -    | last-cycle | 1.0 | what the model was shown, and what it did
+06 | slide | Greeks     | -    | -    | greeks | 1.0 | Greeks: Alpaca's, Black-Scholes as the backstop
+07 | slide | then we grade it | - | -  | grading-the-prior | 1.0 | ...and then we grade the prior
+08 | slide | grade what it says | - | - | grading-what-it-says | 1.0 | the citations and exit-claims audits (#247)
+09 | shot  | shot4      | -    | -    | kill-switch | 1.0 | the kill switch
+10 | clip  | viewer     | -    | -    | self | 1.0 | the live viewer, and the four bugs it caught
+11 | clip  | ha         | -    | -    | self | 1.0 | Home Assistant: the operator dashboard
+12 | shot  | shot57     | -    | -    | shot-5-then-shot-7 | 0.72 | the end-of-day digest, then what is deployed
+13 | clip  | actions    | 2.0  | 27.0 | shot-5-then-shot-7 | 0.28 | the deploy history, green all week
+14 | slide | Results    | -    | -    | results | 1.0 | results
+15 | slide | thanks     | -    | -    | thanks | 1.0 | thanks

@@ -46,6 +46,7 @@ STEPS=(
   "shot|2|what the model was shown, and what it did"
   "deck|4|Greeks: Alpaca's, Black-Scholes as the backstop"
   "deck|7|...and then we grade the prior"
+  "deck|8|...and we grade what it says"
   "shot|4|the kill switch"
   "web|viewer|the live journal viewer, and the four bugs it caught"
   "web|ha|Home Assistant: the operator dashboard"

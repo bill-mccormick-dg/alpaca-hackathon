@@ -111,6 +111,11 @@ def duration(path: Path) -> float:
 # ---------------------------------------------------------------- narration
 
 
+def norm(s: str) -> str:
+    """Lowercase, punctuation to spaces - so a name can match a written heading."""
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", s.lower())).strip()
+
+
 @dataclass
 class Block:
     id: str
@@ -188,6 +193,27 @@ def narration_blocks() -> list[Block]:
     return out
 
 
+def find_block(key: str, blocks: list[Block]) -> Block:
+    """The one block whose heading contains `key`.
+
+    By name, never by position. These were numbered 01-13 until #247 inserted
+    the audit block at 8, at which point every take from the kill switch onward
+    would have been played over the block after it - silently, because a
+    positional index cannot tell that it is now pointing somewhere else. A name
+    that matches nothing, or matches twice, stops the build instead.
+    """
+    want = norm(key)
+    hits = [b for b in blocks if want in norm(b.label)]
+    if len(hits) == 1:
+        return hits[0]
+    if not hits:
+        die(f"cuts.txt names narration block '{key}', which matches no heading "
+            f"in {NARRATION_MD.name}")
+    named = ", ".join(f"{b.id} ({b.label})" for b in hits)
+    die(f"cuts.txt names narration block '{key}', which is ambiguous - {named}")
+    raise AssertionError  # unreachable; die() exits
+
+
 def make_scratch(blocks: list[Block]) -> None:
     """A stand-in voice, so the cut is watchable before anyone records anything.
 
@@ -263,10 +289,7 @@ def plan(rows: list[Row], blocks: dict[str, Block]) -> None:
             else:
                 r.offset, r.secs = voiced_span(src)
             continue
-        b = blocks.get(r.narr)
-        if b is None:
-            die(f"cuts.txt row {r.n} names narration block {r.narr}, which does not exist")
-        r.secs = b.span()[1] * r.share
+        r.secs = blocks[r.narr].span()[1] * r.share
     seen: dict[str, float] = {}
     for r in rows:
         if r.self_voiced:
@@ -493,11 +516,16 @@ def main() -> None:
     VOICE.mkdir(exist_ok=True)
 
     blist = narration_blocks()
+    rows = read_cuts()
+    # Keyed by the name cuts.txt uses, so `blocks[r.narr]` reads the same as
+    # before while the lookup itself is now by heading rather than position.
+    blocks = {r.narr: find_block(r.narr, blist)
+              for r in rows if not r.self_voiced}
+    for b in blocks.values():
+        b.id = next(k for k, v in blocks.items() if v is b)
     if args.scratch:
         print("\033[1mstand-in voice\033[0m")
-        make_scratch(blist)
-    blocks = {b.id: b for b in blist}
-    rows = read_cuts()
+        make_scratch(list(blocks.values()))
     plan(rows, blocks)
     total = report(rows, blocks)
 
