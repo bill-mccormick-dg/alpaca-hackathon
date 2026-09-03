@@ -39,13 +39,14 @@ STEPS=(
   "shot|2|what the model was shown, and what it did"
   "deck|4|Greeks: Alpaca's, Black-Scholes as the backstop"
   "deck|7|...and then we grade the prior"
+  "deck|8|...and we grade what it says"
   "shot|4|the kill switch"
   "web|viewer|the live journal viewer, and the four bugs it caught"
   "web|ha|Home Assistant: the operator dashboard"
   "shot|5 7|the end-of-day digest, then what is actually deployed"
   "web|actions|the deploy history, green all week and one red X"
-  "deck|18|results"
-  "deck|19|thanks"
+  "deck|19|results"
+  "deck|20|thanks"
 )
 
 bar() { printf '\n\033[1;35m== %02d/%02d  %s\033[0m\n' "$1" "${#STEPS[@]}" "$2"; }
