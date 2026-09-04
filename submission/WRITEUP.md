@@ -158,7 +158,11 @@ added; it is removed the same way.
 
 ## Results
 
-Equity Mon open → Thu close: **$100,000.00 → $105,667.53 (+5.67 %)**. 15 round
+Equity Mon open → Thu close: **$100,000.00 → $105,095.51 (+5.10 %)**, Alpaca's
+own settled close for the judged account (PA3VS39Y5LE2). Our nightly review
+snapshots at 16:05 ET and recorded $105,667.53; the marks on the two positions
+carried overnight settled $572.02 lower after that, and the broker's number is
+the one that counts. 15 round
 trips (2 / 6 / 2 / 5 by day, net −450 / +664 / +906 / +3,688); win rate 47 %
 (7 of 15), with the winners much larger than the losers - Thursday alone was
 five round trips for +3,688 at a profit factor of 10.5. Exits: 0 stop /
@@ -168,10 +172,11 @@ fired on the judged account. Rejections by rule: 22 in the week, 18 of them
 on Tuesday - almost all `model exit blocked (min_hold_minutes=30)`, an exit
 proposed inside the hold window, plus 2 `entries not allowed` after
 `last_entry` and 1 `cannot sell` for a contract it no longer held; Thursday
-had none. Challenger vs official: the Kimi-K3 challenger finished at −7.06 %
+had none. Challenger vs official: the Kimi-K3 challenger finished at −7.04 %
 and tripped the 2 % daily cutoff on Thursday (three empty-output errors, one
 cycle in three producing no decision); the single-key `mixed` variant sat at
-+0.60 % and never traded on Thursday; the judged account's +5.67 % came from
++0.60 % against its Monday open (−0.18 % against the $100,000 start) and never
+traded on Thursday; the judged account's +5.10 % came from
 the promoted model, Qwen3.8-Flash-Next. What we'd change next: the
 exit-then-re-enter churn - Thursday sold QQQ at −4.8 % and NVDA at −3.3 % and
 bought both back within twenty minutes - which the leash allowed and the
