@@ -138,20 +138,23 @@ max_tokens: 1500
 # (#218). See review_model_preference below.
 request_timeout_sec: 60
 
-# Which model critiques the day in eod_review.py. Deliberately EMPTY since
-# 2026-09-08: all three accounts now trade the same model, so there is no
-# independent reviewer left to pick. review_choice() finds no candidate,
-# returns none, and eod_review.py falls back to the trading model - a
-# same-model review, stamped `review_note` on the digest so the critique is
-# read as self-assessment rather than an independent one.
+# Which model critiques the day in eod_review.py, in preference order. The
+# first entry that is not the account's own `model` and did not appear in the
+# day's journal is used, recomputed on every call - so switching the trading
+# model from the dashboard cannot silently make the reviewer the same model
+# that traded. A model grading its own reasoning is the weakest form of
+# review; this costs one call a day.
 #
-# Do NOT pin `review_model` to the trading model to get this: review_choice()
-# refuses a pin naming any model that traded (#218) and records
-# `review_pin_ignored`. The empty list is the supported route.
+# 2026-09-08: this list is now IDENTICAL on all three accounts, and none of
+# them trades either entry. All three trade Qwen/Qwen3.8-Flash-Next and all
+# three are reviewed by Kimi-K2.6 - one trading model, one reviewer, and the
+# no-self-review property (#218) intact.
 #
-# To restore independent review, put a model the accounts do NOT trade at the
-# top of this list.
-review_model_preference: []
+# Do NOT pin `review_model` to the trading model: review_choice() refuses a
+# pin naming any model that traded and records `review_pin_ignored`.
+review_model_preference:
+  - moonshotai/Kimi-K2.6
+  - moonshotai/Kimi-K2-Instruct
 
 model_params:
   # Applies to every model, and it has to, because the dashboard's model

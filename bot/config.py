@@ -158,12 +158,12 @@ def config_provenance(config: dict) -> dict:
         # the key is unset. Deliberately not in TRACKED_KEYS - it does not
         # affect trading, so it should not churn config_hash.
         #
-        # The `or config.get("model")` mirrors eod_review.py's own fallback.
-        # Since 2026-09-08 every account trades the same model and
-        # review_model_preference is empty, so review_choice() finds no
-        # independent reviewer and returns None - and a null here would tell
-        # the dashboard and the journal that nothing reviews the day, when in
-        # fact the trading model does.
+        # The `or config.get("model")` mirrors eod_review.py's own fallback,
+        # for the case where review_choice() finds no independent candidate:
+        # a null here would tell the dashboard and the journal that nothing
+        # reviews the day, when in fact the trading model does. With the
+        # current configs an independent reviewer always resolves, so this
+        # arm is a safety net rather than the live path.
         "review_model": resolve_review_model(config) or config.get("model"),
         "config_file": config.get("_config_file"),
         "overrides": config.get("_overrides", {}),

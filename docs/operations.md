@@ -203,15 +203,16 @@ did **not** trade the day for its advisory read, and
 appear in the day's journal (the digest's per-model rows), recomputed on every
 call.
 
-**Since 2026-09-08 there is no independent reviewer.** All three accounts trade
-`Qwen/Qwen3.8-Flash-Next` and `review_model_preference` is empty on all three,
-so `resolve_review_model()` returns `None` and `eod_review.py:141` falls back to
-the trading model. Every digest is now a self-assessment, and carries a
-`review_note` saying so. Do **not** try to express this by pinning
-`review_model` to the trading model - `review_choice()` refuses a pin naming
-any model that traded (#218) and stamps `review_pin_ignored`. The empty
-preference list is the supported route. To get independence back, put a model
-none of the accounts trade at the top of that list.
+**Since 2026-09-08 the lineup is standardised in both seats**: all three
+accounts trade `Qwen/Qwen3.8-Flash-Next`, and all three carry the *same*
+`review_model_preference`, whose entries none of them trades — so all three
+compute `moonshotai/Kimi-K2.6` as the reviewer. One trading model, one
+reviewer, and no account grading its own homework.
+
+Do **not** pin `review_model` to the trading model to force a same-model
+review: `review_choice()` refuses a pin naming any model that traded (#218)
+and stamps `review_pin_ignored`, so the config would quietly do something
+other than what it says.
 
 Recomputing rather than storing is what makes the property survive a dashboard
 model swap — switch an account onto its reviewer and the reviewer moves, instead
