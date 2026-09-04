@@ -149,4 +149,9 @@ the assembly are commands. The rest of this list is what those clips need.
 - [ ] Narration recorded one file per block into `video/narration/`, named
       `01` to `13` after the blocks in `narration.md`
 - [ ] `assemble.py` reports **<= 5:00 and <= 300 MB** - it checks both and says so
-- [ ] Upload YouTube (unlisted); test the link logged out; paste into METADATA.md
+- [ ] Upload the MP4 **to lablab's own uploader** on step 2 of the submission
+      form — it takes the file directly, so there is no YouTube step and
+      nothing to host. `assemble.py` already checks the two limits that matter
+      (≤ 5:00, ≤ 300 MB); this cut is 4:53 / 30.6 MB. Only if you paste a
+      hosted link instead does the old advice apply: open it in a private
+      window and confirm it plays for someone who is not signed in as you.

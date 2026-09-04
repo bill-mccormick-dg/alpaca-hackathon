@@ -59,6 +59,20 @@ expiring-only backstop (selling healthy positions would only pay the spread).
 **Friday Sep 4** (`final_flatten_date`): no new entries; the backstop closes
 everything.
 
+**Alpaca says this two ways, and they are not the same.** The timeline says
+equity "as of EOD Thursday Sep 3rd"; the FAQ says the window "ends at 9:30
+a.m. ET on Friday, September 4, when a snapshot of total account equity will
+be taken" (both quoted in
+[alpaca-official-guidelines.md](alpaca-official-guidelines.md)). Under the
+first, Thursday's close is the score and overnight positions are irrelevant;
+under the second, whatever is held overnight is marked at Friday's open, gap
+included. Going into Fri Sep 4 the judged account held SPY 771C and NVDA 230C
+— about 8% of equity — so the difference was real, not theoretical. Nothing in
+the rules requires stopping the agent, and `trade_start` (09:45 ET) is after
+the 9:30 snapshot either way, so the bot cannot trade into it; trading after
+09:30 ET Friday explicitly does not count. If a future event repeats this
+wording, decide *before* Thursday's close whether to hold overnight.
+
 ## At the close (human, ~15 minutes)
 
 1. Read all three digests: `logs/eod/<date>-official.md`, `<date>-test.md` and
