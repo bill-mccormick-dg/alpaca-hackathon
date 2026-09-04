@@ -80,11 +80,14 @@ def duration(path: Path) -> float:
 
 def freezes(path: Path, noise_db: float, min_freeze: float) -> list[tuple[float, float]]:
     """Frozen spans as (start, end), end = clip duration if it never thaws."""
+    # check=False: freezedetect reports through stderr, and a non-zero exit
+    # (a truncated recording, say) still carries usable spans - parse what came
+    # back rather than raising.
     proc = subprocess.run(
         ["ffmpeg", "-v", "info", "-i", str(path),
          "-vf", f"freezedetect=n={noise_db}dB:d={min_freeze}",
          "-map", "0:v", "-f", "null", "-"],
-        capture_output=True, text=True)
+        capture_output=True, text=True, check=False)
     spans: list[tuple[float, float]] = []
     start: float | None = None
     for key, val in re.findall(r"freeze_(start|end): ([0-9.]+)", proc.stderr):
@@ -305,7 +308,7 @@ def build(args: argparse.Namespace) -> int:
     m, s = divmod(round(total), 60)
     print(f"\n{len(parts)} segment(s), {m}:{s:02d} -> {out}")
     if args.open:
-        subprocess.run(["open", str(out)])
+        subprocess.run(["open", str(out)], check=False)
     return 0
 
 
