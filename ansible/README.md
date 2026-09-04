@@ -147,6 +147,72 @@ at the user and visibility level:
 
 For read-only access, prefer the journal viewer: it needs none of this.
 
+### 3. Judges: the dashboard on request, at `ha.wpmccormick.pw`
+
+Built 2026-09-03. The dashboard is LAN-only by default; a judge who asks gets
+it published through the **same Cloudflare Tunnel connector that already serves
+the viewer** (CT 108), as a second public hostname behind a *different* Access
+policy: an explicit allow-list of email addresses, signed in with **GitHub**,
+**no one-time PIN**, 24-hour session. Home Assistant's own login still stands
+behind Access, so a Cloudflare session alone reaches nothing.
+
+    ha.wpmccormick.pw → Cloudflare edge → Access (GitHub) → tunnel
+                      → cloudflared on CT 108 → 192.168.212.55:8123
+
+The Ansible half is in the **homenetwork** repo, not this one:
+`homeassistant-setup` sets `ha_trusted_proxies: [192.168.212.10]` and an
+`http:` block (`use_x_forwarded_for`, `trusted_proxies`) in the role-owned
+`configuration.yaml`. Without it every tunnelled request is **HTTP 400**
+("a request from a reverse proxy was received"). The full dashboard runbook —
+the GitHub OAuth app, the Access application, the tunnel hostname, and the
+teardown — is `ansible/roles/cloudflared/README.md` there.
+
+#### There is no automatic request flow — this is the part to know
+
+**Nobody is notified when a judge tries to get in.** An address that is not on
+the allow-list simply gets Cloudflare's "not authorized" page. No email, no
+GitHub message, no push. The judge has to ask out of band (the submission page,
+the hackathon chat, email), and you add their address by hand. That is the whole
+mechanism today, and it is why the deck and write-up say *on request* rather
+than *request access*.
+
+**Where to add someone** — Cloudflare **Zero Trust → Access controls →
+Policies → `on request` → Include → Emails**. One address per line; it must be
+the email on their **GitHub** account, since GitHub is the only login method on
+this application. Save; it takes effect on their next sign-in. Removing them is
+deleting the line, plus *Revoke existing tokens* on the application if you want
+it immediate rather than at session expiry.
+
+**How to see who tried** — Zero Trust → **Insights & Logs → Access**. Failed
+and successful logins are listed with the email address that was presented, so
+if a judge says "I tried and got blocked", their address is there and you can
+copy it straight into the policy.
+
+#### If you want a real request-and-approve flow
+
+Cloudflare supports it, and it is off. On the `on request` policy, **Just-in-time
+access** turns on two extra settings:
+
+| Setting | What it does |
+|---|---|
+| Purpose justification | the user must type a reason before access is granted |
+| Manual approval required | the user requests; named approvers approve; access is time-bound |
+
+With manual approval on, a field appears for **"Email addresses of the
+approvers"**, and notification settings state plainly that *"Email
+notifications are always sent to the approvers above"* (Google Chat and other
+apps are optional extras). That is the email you were expecting — it names the
+requester and carries approve/deny.
+
+**It only helps if the include rule is widened.** JIT gates users who *match*
+the policy; with Include = one email address, the only person who could ever
+request is you. To make it a genuine judge-facing flow, the policy would need
+Include = *Anyone with a verified email* (or an email-domain rule for the
+organisers), with manual approval as the real gate. That is a deliberately
+different posture — anyone with a GitHub account could reach the request screen
+— so it was **left off** for the hackathon, where the judge list is short and
+known. Turn it on in the same policy if that changes.
+
 ### Protecting the kill switch
 
 The team dashboard has no controls, but **that alone is not the boundary**.

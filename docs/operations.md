@@ -343,6 +343,18 @@ driven entirely by the MQTT topics above and below. `cd ansible && cp
 inventory.example.ini inventory.ini` (fill in your HA host) `&&
 ansible-playbook site.yml`. See `ansible/README.md`.
 
+**Remote access, on request.** The dashboard lives on the home LAN and is not
+public. It can be published the same way the viewer is - through the
+`cloudflared` connector on CT 108 as **https://ha.wpmccormick.pw**, with a
+Cloudflare Access policy in front - but with a different policy from the
+viewer's: an explicit allow-list of email addresses (added on request), signed
+in through Google rather than a one-time PIN. Home Assistant's own login still
+applies behind Access, and Access has no way to reach the kill switch or the
+knobs on its own. The hostname, the route and the policy are Zero Trust
+dashboard state; the Home Assistant side (trusting the connector as a reverse
+proxy) is in the `homenetwork` repo's `homeassistant-setup` role. Ask, and an
+address is added; it can be removed the same way.
+
 Inbound, both handled by `mqtt_bridge.py` (long-running):
 
 - `<prefix>/config/set` - applies `{"account","key","value","until"?}` through
