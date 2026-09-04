@@ -91,7 +91,7 @@ class LineupMatchesConfigsTest(unittest.TestCase):
         than silently handing back the trading model, so the caller has to
         opt into the fallback; and a config that still has an independent
         reviewer available must still use it."""
-        from bot.config import resolve_review_model, review_choice
+        from bot.config import review_choice
 
         for account, path in SEATS.items():
             config = _config(path)
