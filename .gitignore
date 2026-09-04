@@ -32,3 +32,5 @@ submission/video/tapes/generated/
 # Scratch record of other teams's repos (rival_repos.py) - not part of the submission.
 submission/rival-repos.json
 submission/rival-urls.txt
+submission/rival-survey.md
+submission/rival-report.html
