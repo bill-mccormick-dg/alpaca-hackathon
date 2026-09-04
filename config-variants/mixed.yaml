@@ -295,8 +295,12 @@ eod_close_dte: 1
 #
 # 2026-09-08: unset. It was "2026-09-04", the hackathon's judged close, and
 # the gate is `>=` - so it blocked entries on Sep 4 AND every day after,
-# permanently. Trading resumes Monday Sep 8 at the normal window
-# (trade_start below). Set it again to wind an account down for a date.
+# permanently. The next session is TUESDAY Sep 8 - Monday Sep 7 is Labor Day
+# and the market is shut. That needs no special handling: cron fires Mon-Fri
+# regardless, and run_cycle.py:198 exits on Alpaca's own clock
+# (`get_clock().is_open`, so it is holiday-aware) before the model is called.
+# Trading resumes at the normal window on the 8th (trade_start below). Set
+# this key again to wind an account down for a date.
 final_flatten_date:
 
 # Trading window, US/Eastern. No new entries after last_entry; sells stay
