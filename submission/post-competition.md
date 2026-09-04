@@ -82,7 +82,11 @@ See the rival survey (`submission/rival-survey.md`, gitignored — it is a scrat
 record of other people's projects) for ~70 adoption candidates, now including a
 second pass over the 284 submissions the first listing hid.
 
-`scripts/rival_repos.py recheck` was run on 2026-09-04 after the deadline:
-`isquividet/vega` is **still private** and nothing newly opened. Repo states are
-resolved for 170 of the 425 projects; run `scan` again to close the remaining
-~255, then `recheck`.
+`scripts/rival_repos.py` was re-run on 2026-09-04 after the deadline, first
+`recheck` and then `scan --urls-file` across the full 425-project field. Final
+state: **424 public**, 2 listing no repo, and **1 still private** —
+`isquividet/vega`, unchanged by the recheck. The Alpaca FAQ permits a private
+repo only *during* the competition, so that one is worth checking again later.
+
+Languages across the 424 public repos: Python 329, TypeScript 45, JavaScript 16,
+HTML 10, C# 6, Go 3, Rust 2.
