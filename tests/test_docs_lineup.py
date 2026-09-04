@@ -72,22 +72,55 @@ class LineupMatchesConfigsTest(unittest.TestCase):
             traded, reviewed = documented[account]
             self.assertIn(config["model"].split("/")[-1], traded,
                           f"reviewer table's 'trades on' for {account} is not {path}'s model")
-            self.assertIn(resolve_review_model(config).split("/")[-1], reviewed,
-                          f"reviewer table's 'reviewed by' for {account} is not what "
-                          "resolve_review_model() returns for it")
+            # None means no independent reviewer was available; eod_review.py
+            # then falls back to the trading model. Compare against the
+            # EFFECTIVE reviewer, which is what the table documents.
+            effective = resolve_review_model(config) or config["model"]
+            self.assertIn(effective.split("/")[-1], reviewed,
+                          f"reviewer table's 'reviewed by' for {account} is not the "
+                          "effective reviewer for it")
 
-    def test_no_account_reviews_its_own_homework(self):
-        """The property the reviewer table exists to assert (#218). A pinned
-        `review_model` bypasses resolve_review_model's own guard, so this is
-        checked against the configs rather than trusted to that function."""
-        from bot.config import resolve_review_model
+    def test_a_self_review_is_never_silent(self):
+        """Independent review was given up on 2026-09-08, when all three
+        accounts moved onto one model and `review_model_preference` was
+        emptied. #218's property - no account grades its own homework - no
+        longer holds, and this test is what replaced it: a self-review is
+        allowed, but it must be *visible*.
+
+        Two things must stay true. review_choice() must return None rather
+        than silently handing back the trading model, so the caller has to
+        opt into the fallback; and a config that still has an independent
+        reviewer available must still use it."""
+        from bot.config import resolve_review_model, review_choice
 
         for account, path in SEATS.items():
             config = _config(path)
-            self.assertNotEqual(
-                resolve_review_model(config), config["model"],
-                f"{account} ({path}) would grade its own homework",
+            reviewer, refused = review_choice(config, traded=(config["model"],))
+            self.assertIsNone(
+                refused,
+                f"{account} ({path}) pins a review_model that would be refused "
+                "(#218) - drop the pin, or point it at a model nothing trades",
             )
+            if reviewer is not None:
+                self.assertNotEqual(
+                    reviewer, config["model"],
+                    f"{account} ({path}) resolved its own model as an "
+                    "independent reviewer",
+                )
+
+    def test_self_review_is_disclosed_in_the_digest(self):
+        """eod_review.py stamps `review_note` when the reviewer traded that
+        day. With every account on one model that is now the normal path, so
+        the disclosure is the only thing standing between a self-assessment
+        and a reader who thinks it was independent."""
+        source = (ROOT / "eod_review.py").read_text()
+        self.assertIn("review_note", source,
+                      "eod_review.py no longer stamps review_note - a "
+                      "self-review would now read as an independent one")
+        self.assertTrue(
+            'if digest["review_model"] in traded' in source,
+            "the review_note condition changed; self-review may go undisclosed",
+        )
 
 
 if __name__ == "__main__":

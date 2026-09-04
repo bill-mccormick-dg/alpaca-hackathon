@@ -201,12 +201,23 @@ did **not** trade the day for its advisory read, and
 `bot/config.py::resolve_review_model()` picks it: the first entry of
 `review_model_preference` that is not this account's own `model` and did not
 appear in the day's journal (the digest's per-model rows), recomputed on every
-call. `official` reviews on `moonshotai/Kimi-K2.6` (computed); `test` and
-`mixed` pin `Qwen/Qwen3.8-Flash-Next`.
+call.
+
+**Since 2026-09-08 there is no independent reviewer.** All three accounts trade
+`Qwen/Qwen3.8-Flash-Next` and `review_model_preference` is empty on all three,
+so `resolve_review_model()` returns `None` and `eod_review.py:141` falls back to
+the trading model. Every digest is now a self-assessment, and carries a
+`review_note` saying so. Do **not** try to express this by pinning
+`review_model` to the trading model - `review_choice()` refuses a pin naming
+any model that traded (#218) and stamps `review_pin_ignored`. The empty
+preference list is the supported route. To get independence back, put a model
+none of the accounts trade at the top of that list.
 
 Recomputing rather than storing is what makes the property survive a dashboard
 model swap — switch an account onto its reviewer and the reviewer moves, instead
-of the account silently grading its own homework.
+of the account silently grading its own homework. That still holds: if an
+independent candidate is ever available again, a runtime model swap cannot
+strand the account on itself.
 
 To see which model will actually run it, read the resolved value rather than the
 config file — an unset key tells you nothing:

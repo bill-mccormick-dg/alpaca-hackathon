@@ -699,9 +699,12 @@ A tiny sample, so diagnostics rather than verdicts (`trade_report.py`, round-tri
 ## Why these models
 
 Four seats take a Featherless model: the judged account, each of the two
-challenger accounts, and the end-of-day reviewer, which is not a fourth model
-but whichever of the others did not trade that account. This section says how
-they got there, what would change them, and what has been ruled out.
+challenger accounts, and the end-of-day reviewer, which was never a fourth
+model but whichever of the others did not trade that account. Since 2026-09-08
+all three trading seats hold the same model, so the reviewer seat is filled by
+that model too - see the note under [the reviewer
+table](#the-critique-comes-from-a-model-that-did-not-trade). This section says
+how they got there, what would change them, and what has been ruled out.
 
 ### The honest history: nothing was selected
 
@@ -773,10 +776,21 @@ re-checked rather than believed:
 
 | Seat | Model | Tools | Context | $ in/out per M |
 |---|---|---|---|---|
-| `official` trades (`config.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 32,768 | 0.15 / 0.50 |
-| `test` trades (`config-test.yaml`) | `moonshotai/Kimi-K3` | yes | 262,144 | 3.00 / 15.00 |
-| `mixed` trades (`config-variants/mixed.yaml`) | `moonshotai/Kimi-K2.6` | yes | 262,144 | 0.77 / 3.50 |
-| Reviewer | computed, or pinned — see [the reviewer table](#the-critique-comes-from-a-model-that-did-not-trade) | — | — | — |
+| `official` trades (`config.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
+| `test` trades (`config-test.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
+| `mixed` trades (`config-variants/mixed.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
+| Reviewer | the trading model — see [the reviewer table](#the-critique-comes-from-a-model-that-did-not-trade) | — | — | — |
+
+**One model, three framings, since 2026-09-08.** The event's three-model
+bake-off ended with the hackathon: `test` finished at −7.04% on Kimi-K3, which
+also tripped the 2% daily cutoff and produced no decision on roughly one cycle
+in three; `mixed` was flat on K2.6. Both moved onto the judged account's model.
+What now separates the seats is one variable each — `official` is
+options-first with research tools off, `test` is the same with
+`research_tools_enabled: true`, and `mixed` is the same with the
+`instrument_note` that makes stock and options peers. `mixed` is a genuine
+single-variable variant against `config.yaml` again, which its own header has
+claimed all along and which the model split had quietly made untrue.
 
 **This table drifts, and there is a test for it.** #215 documented a lineup,
 five config PRs landed while it was open, and it merged naming three models
@@ -957,23 +971,39 @@ The digest ends with an advisory read of the day and **one** recommended change.
 That paragraph is what the daily loop turns on, so where it comes from matters:
 a model reviewing its own reasoning tends to explain rather than challenge it.
 
-So `eod_review.py` asks a *different* model, and the rule is one line: **the
-reviewer is never a model that traded the day.** `bot/config.py::review_choice()`
-takes the set of models the journal says decided, erred or retried — the
-digest's per-model rows (#231) — plus the account's current `model`, and
-excludes all of them. An explicit `review_model` pin is honoured only when it
-passes that rule; otherwise it is refused, the digest says so in a line above
-the critique, the `eod_review` journal event carries `review_pin_ignored`, and
-the first entry of `review_model_preference` that did not trade is used instead.
+So `eod_review.py` asks a *different* model where one is available, and the
+rule is one line: **the reviewer is never a model that traded the day.**
+`bot/config.py::review_choice()` takes the set of models the journal says
+decided, erred or retried — the digest's per-model rows (#231) — plus the
+account's current `model`, and excludes all of them. An explicit `review_model`
+pin is honoured only when it passes that rule; otherwise it is refused, the
+digest says so in a line above the critique, the `eod_review` journal event
+carries `review_pin_ignored`, and the first entry of `review_model_preference`
+that did not trade is used instead.
+
+> **This property was given up on 2026-09-08, deliberately.** All three
+> accounts now trade one model and `review_model_preference` is empty, so
+> `review_choice()` finds no independent candidate and returns `None`;
+> `eod_review.py:141` then falls back to the trading model, because a
+> same-model review is worth more than no review. **Every critique is now a
+> self-assessment** and should be read as one: a model reviewing its own
+> reasoning tends to explain it rather than challenge it, which is the whole
+> reason the rule existed. The disclosure is what stands in its place — the
+> digest carries `review_note` saying so, and
+> `tests/test_docs_lineup.py::test_self_review_is_disclosed_in_the_digest`
+> fails if that stamp is ever removed. To restore independence, put a model
+> that none of the accounts trade at the top of `review_model_preference`.
 
 | Account | Trades on | Reviewed by | How |
 |---|---|---|---|
-| `official` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
-| `test` | Kimi-K3 | **Qwen3.8-Flash-Next** | pinned |
-| `mixed` | Kimi-K2.6 | **Qwen3.8-Flash-Next** | pinned |
+| `official` | Qwen3.8-Flash-Next | **Qwen3.8-Flash-Next** | fallback (self) |
+| `test` | Qwen3.8-Flash-Next | **Qwen3.8-Flash-Next** | fallback (self) |
+| `mixed` | Qwen3.8-Flash-Next | **Qwen3.8-Flash-Next** | fallback (self) |
 
-No account currently reviews its own homework, and
-`tests/test_docs_lineup.py` asserts that against the configs on every run.
+**Every account now reviews its own homework**, by the choice recorded above.
+`tests/test_docs_lineup.py` no longer asserts independence — it asserts the two
+things that still have to hold: no config may pin a `review_model` that would
+be refused, and a self-review must never be silent.
 
 **Why the journal and not the config.** Until #218 the check compared the
 reviewer against `config["model"]` at review time, and a pin skipped the check

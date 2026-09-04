@@ -125,31 +125,33 @@ strategy_notes: |
 # deploy; a change here in git is the durable version.
 # K2.6 since 2026-09-02 (dashboard, ~01:28 ET; recorded in #165): with the
 # official account moving to Qwen3.8-Flash-Next, this account carries the
-# Kimi side of the model comparison. NOTE this makes mixed a two-variable
-# variant against config.yaml (instrument framing AND model) - its P&L now
-# reads on the pair, not on instrument choice alone.
-model: moonshotai/Kimi-K2.6
+# 2026-09-08: moved off moonshotai/Kimi-K2.6 onto the judged account's model.
+# This RESTORES the single-variable design the header promises: mixed now
+# differs from config.yaml in the instrument framing (`instrument_note`
+# below) and nothing else, so its P&L reads on instrument choice alone
+# rather than on the instrument/model pair.
+model: Qwen/Qwen3.8-Flash-Next
 temperature: 0.2
 # 1500 since 2026-09-02, matching the other accounts (same dashboard session).
 max_tokens: 1500
-# Pinned (same session): the computed reviewer for a K2.6 trader would be
-# K2-Instruct; the operator chose Qwen3.8-Flash-Next instead - still not
-# this account's own model, so the no-self-review property holds.
-review_model: Qwen/Qwen3.8-Flash-Next
+# No `review_model` pin: it would name the model that traded and be refused
+# (#218). See review_model_preference below.
 request_timeout_sec: 60
 
-# Which model critiques the day in eod_review.py, in preference order. The
-# first entry that is not the account's own `model` is used, recomputed at
-# review time - so switching the trading model from the dashboard cannot
-# silently make the reviewer the same model that traded. A model grading its
-# own reasoning is the weakest form of review; this costs one call a day.
+# Which model critiques the day in eod_review.py. Deliberately EMPTY since
+# 2026-09-08: all three accounts now trade the same model, so there is no
+# independent reviewer left to pick. review_choice() finds no candidate,
+# returns none, and eod_review.py falls back to the trading model - a
+# same-model review, stamped `review_note` on the digest so the critique is
+# read as self-assessment rather than an independent one.
 #
-# Set `review_model` (config or a runtime override) to pin one explicitly and
-# skip the list entirely.
-review_model_preference:
-  - moonshotai/Kimi-K2.6
-  - moonshotai/Kimi-K2-Instruct
-  - Qwen/Qwen3.8-Flash-Next
+# Do NOT pin `review_model` to the trading model to get this: review_choice()
+# refuses a pin naming any model that traded (#218) and records
+# `review_pin_ignored`. The empty list is the supported route.
+#
+# To restore independent review, put a model the accounts do NOT trade at the
+# top of this list.
+review_model_preference: []
 
 model_params:
   # Applies to every model, and it has to, because the dashboard's model
@@ -287,11 +289,15 @@ expiry_close_dte: 0
 # daily P&L, so flatten-all every day is deliberately NOT the policy.
 eod_close_dte: 1
 
-# The final day of the event. The score is fixed at the PRIOR close (Alpaca
-# measures equity as of EOD Thu Sep 3), so on/after this date run_cycle
-# makes no new entries and flatten.py ignores --expiring-only and closes
-# everything - post-snapshot cleanup so nothing is held over the weekend.
-final_flatten_date: "2026-09-04"
+# The final day of an event: on/after this date run_cycle makes NO new entries
+# (only exits run) and flatten.py ignores --expiring-only and closes
+# everything - post-event cleanup so nothing is held over the break.
+#
+# 2026-09-08: unset. It was "2026-09-04", the hackathon's judged close, and
+# the gate is `>=` - so it blocked entries on Sep 4 AND every day after,
+# permanently. Trading resumes Monday Sep 8 at the normal window
+# (trade_start below). Set it again to wind an account down for a date.
+final_flatten_date:
 
 # Trading window, US/Eastern. No new entries after last_entry; sells stay
 # legal until trade_end. Cycle cadence is NOT set here - cron drives it
