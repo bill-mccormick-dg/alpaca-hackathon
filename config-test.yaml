@@ -157,7 +157,7 @@ max_tokens: 1500
 # only survived empirically because httpx's read timeout counts between
 # chunks. Applies to every model on this account; the fast models never
 # get near it.
-request_timeout_sec: 240
+request_timeout_sec: 60
 
 # Per-token prices (USD per million) for the nightly cost line - this file
 # never had the block (an oversight; mixed.yaml has it), so the test
@@ -202,7 +202,7 @@ decide_max_attempts: 3
 # 400 for K3 (#206): a single ~140s attempt already exceeded the old 120,
 # so a transient failure got no retry. 400 fits two K3 attempts inside the
 # 10-minute cadence.
-decide_retry_budget_sec: 400
+decide_retry_budget_sec: 120
 
 # Deterministic exits (bot/exits.py), checked at the top of every cycle
 # BEFORE the model is consulted. Percentages are of the entry premium (or
@@ -224,7 +224,7 @@ take_profit_pct: 60
 # lever alone, so its exits are the model's and not the funnel's. official
 # and mixed keep 30 / 25.
 min_hold_minutes: 0
-early_exit_drawdown_pct: 1
+early_exit_drawdown_pct: 25
 
 # Force-close any option contract with this many days to expiration or
 # fewer, at any cycle - never carry a contract into expiration day's close.
