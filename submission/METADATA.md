@@ -10,8 +10,15 @@ It is a **3-step wizard**, and a filled draft is *not* a submission — the
 team page says "Submission draft in progress" until the last step is
 completed.
 
-**Status checked 2026-08-30: Step 1 of 3, 36% complete.** The event's live
-page counts us in "drafts in progress" (37), not "submissions" (19). There
+**Status checked 2026-09-03 21:30 CT: Step 1 of 3, 80% complete** (was 36% on
+Aug 30). Title 37/50, short description 237/255, long description 1979/2000,
+categories Finance + Coding, track Options Alpha Agents, technologies Alpaca /
+Featherless / GitHub Copilot / Anthropic Claude — all present. **All five
+social-post links are still empty**, and they are the only thing feeding the
+Social Engagement prize. The wizard is client-side: `?step=2` does not work,
+only *Next* advances it, so steps 2 and 3 cannot be inspected without
+advancing. The event's live page counts us in "drafts in progress" (37), not
+"submissions" (19). There
 is **no P&L leaderboard** for this event (the FAQ says so outright, and
 `/live` is momentum stats + a social feed) — nothing to appear on, so the
 submission itself is the only thing that puts the project in front of
@@ -20,9 +27,12 @@ judges.
 ## Pre-flight (do in this order Thu evening or Fri morning)
 
 - [ ] Repo flipped to **public** (`gh repo edit bill-mccormick-dg/alpaca-hackathon --visibility public`) and `LICENSE` present
-- [ ] Video uploaded (MP4, ≤ 5:00, target 3–5 min, **≤ 300 MB** — lablab's
-      stated cap; 5 min of 1080p H.264 screen content fits easily, a
-      high-bitrate or ProRes export does not), link opens **logged out**
+- [ ] Video uploaded — **lablab's step 2 takes the MP4 file directly**, so
+      there is no YouTube/Drive step and no link to test. Limits: ≤ 5:00 and
+      **≤ 300 MB** (lablab's stated cap; 5 min of 1080p H.264 screen content
+      fits easily, a high-bitrate or ProRes export does not). The finished cut
+      is `submission/video/build/autobelay.mp4`, **4:53 / 30.6 MB** — build it
+      with `python3 submission/video/assemble.py`, which reports both limits
 - [ ] Slides exported (PDF or Google Slides link, view access for anyone with the link)
 - [ ] Cover image uploaded (`submission/cover.png`, 1600×900)
 - [ ] Account ID below matches the official account exactly
@@ -93,7 +103,8 @@ but it is behind an email one-time PIN, so it is not a link a judge can open.
 event — the risk funnel and the journal are broker-agnostic; what is
 Alpaca-specific is the MCP client and the option-chain shape.
 
-**Video presentation**: (YouTube unlisted link — fill after Thu's close)
+**Video presentation**: upload `submission/video/build/autobelay.mp4` (4:53,
+30.6 MB) with the uploader on step 2 — a file, not a link.
 
 **Slide presentation**: (link — fill after Thu's close)
 
