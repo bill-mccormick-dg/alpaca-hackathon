@@ -53,9 +53,11 @@
 06 | slide | Greeks     | -    | -    | greeks | 1.0 | Greeks: Alpaca's, Black-Scholes as the backstop
 07 | slide | then we grade it | - | -  | grading-the-prior | 1.0 | ...and then we grade the prior
 08 | slide | grade what it says | - | - | grading-what-it-says | 1.0 | the citations and exit-claims audits (#247)
-09 | shot  | shot4      | -    | -    | kill-switch | 1.0 | the kill switch
-10 | clip  | viewer     | -    | -    | live viewer | self | the live viewer, and the four bugs it caught
-11 | clip  | ha         | -    | -    | Home Assistant | self | Home Assistant: the operator dashboard
+09 | shot  | shot4      | -    | -    | kill-switch | 0.7 | the kill switch
+09b | clip | kill-switch-viewer | - | - | kill-switch | 0.3 | the same event as the viewer recorded it: flatten, then manual_halt
+10  | clip  | cycle-overlay-1230 | - | - | live viewer | 0.5 | Thursday 12:30, the QQQ 717C buy: journal behind, the bot's console in front
+10b | clip  | cycle-overlay-1400 | - | - | live viewer | 0.5 | Thursday 14:00, the take-profit sell: same two views
+11 | clip  | ha         | -    | -    | Home Assistant | 1.0 | Home Assistant: the operator dashboard
 12 | shot  | shot57     | -    | -    | shot-5-then-shot-7 | 0.72 | the end-of-day digest, then what is deployed
 13 | clip  | actions    | 2.0  | 27.0 | shot-5-then-shot-7 | 0.28 | the deploy history, green all week
 14 | slide | Results    | -    | -    | results | 1.0 | results

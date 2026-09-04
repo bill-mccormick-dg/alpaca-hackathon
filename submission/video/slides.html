@@ -160,7 +160,7 @@
   section:nth-of-type(8) { font-size:0.982em; }
   section:nth-of-type(11) { font-size:0.909em; }
   section:nth-of-type(12) { font-size:0.942em; }
-  section:nth-of-type(13) { font-size:0.780em; }
+  section:nth-of-type(13) { font-size:0.720em; }
   section:nth-of-type(14) { font-size:0.897em; }
   section:nth-of-type(17) { font-size:0.862em; }
   @media print {
@@ -174,8 +174,8 @@
     section:nth-of-type(11) svg { max-height:509px; }
     section:nth-of-type(12) img { max-height:377px; }
     section:nth-of-type(12) svg { max-height:528px; }
-    section:nth-of-type(13) img { max-height:312px; }
-    section:nth-of-type(13) svg { max-height:437px; }
+    section:nth-of-type(13) img { max-height:288px; }
+    section:nth-of-type(13) svg { max-height:403px; }
     section:nth-of-type(14) img { max-height:359px; }
     section:nth-of-type(14) svg { max-height:502px; }
     section:nth-of-type(17) img { max-height:345px; }
@@ -430,6 +430,7 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
       <tr><th>Live journal</th><td>the cycle feed as it lands</td></tr>
       <tr><th>Trades &amp; EOD</th><td>today's fills and rejections, then the digest</td></tr>
       <tr><th>On a phone</th><td>the grid reflows to one account per screen; halts, identity refusals and 25 minutes of <em>silence</em> push — fills do not</td></tr>
+      <tr><th>Remote access</th><td>the dashboard lives on the home LAN; judges can have it <b>on request</b> — <code>ha.wpmccormick.pw</code> through the same Cloudflare Tunnel, Cloudflare Access allow-listed by email address, no one-time PIN</td></tr>
     </table>
   </div>
 </section>
@@ -481,7 +482,7 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
     <span>deployed before the open</span>
   </div>
   <p class="sub" style="margin-top:1em">The critique comes from a model that did <em>not</em> trade
-  the day. That loop ran 169 pull requests and 131 deploys in six days.</p>
+  the day. That loop ran 180 pull requests and 132 deploys in six days.</p>
 </section>
 
 <section>
@@ -530,11 +531,11 @@ model output: [{"symbol":"NVDA260902P00220000","side":"buy","qty":10,
 </section>
 
 <section>
-  <h2>Results <span class="fill" style="font-size:.6em">(fill Thu Sep 3)</span></h2>
+  <h2>Results</h2>
   <img src="../images/equity-curve.svg" alt="Percent change from each account's open on 31 August: the judged account, the challenger and the mixed-instrument variant, one point per session close">
   <p class="sub" style="margin-top:.7em">Judged account Mon open → Thu close:
-  <span class="fill">$___ → $___ (__%)</span> · <span class="fill">__</span> round trips ·
-  what didn't work: <span class="fill">__</span></p>
+  <strong>$100,000 → $105,668 (+5.7%)</strong> · <strong>15</strong> round trips ·
+  what didn't work: the Kimi-K3 challenger (−7.1%, hit the 2% cutoff Thu) and exit-then-re-enter churn on QQQ and NVDA</p>
 </section>
 
 <section>

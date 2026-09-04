@@ -1,0 +1,18 @@
+# cycles.txt - one row per ten-minute cycle, for cherry-picking (cycle_capture.sh).
+#
+#   cycle | what happened | equity / day P&L / positions | journal ts: start / decide / order | viewer take (cut) | CLI renders in build/cycles/
+#
+# Times are CT. The viewer take started at cycle:00 exactly, so a journal
+# timestamp of HH:MM:07 is 7 s into that take - that is the sync point for an
+# overlay. `what happened` is the cron log's own decision/order lines.
+1230 | SUBMITTED buy 10 QQQ260908C00717000: Buy QQQ 5DTE 717 Calls (delta 0.52) to capture upside | 104938.28 / +5176.45 / 1 | 12:30:08 / 12:30:12 / 12:30:12 | viewer-cycle-1230.mov (5.88-10.88) | 1230-cycle.mp4
+1310 | decision: hold (no actions) | 106658.03 / +6896.20 / 2 | 13:10:08 / 13:10:10 / - | viewer-cycle-1310.mov (5.55-9.10) | 1310-cycle.mp4
+1320 | decision: hold (no actions) | 106608.03 / +6846.20 / 2 | 13:20:08 / 13:20:10 / - | viewer-cycle-1320.mov (4.62-8.65) | 1320-cycle.mp4
+1330 | decision: hold (no actions) | 106548.03 / +6786.20 / 2 | 13:30:08 / 13:30:16 / - | viewer-cycle-1330.mov (4.95-6.95) | 1330-cycle.mp4
+1340 | SUBMITTED buy 10 NVDA260914C00230000: Buy NVDA 11DTE 230 Calls (delta 0.52) to capture mom | 106698.03 / +6936.20 / 2 | 13:40:07 / 13:40:11 / 13:40:11 | viewer-cycle-1340.mov (4.18-9.18) | 1340-cycle.mp4
+1350 | decision: hold (no actions) | 106427.78 / +6665.95 / 3 | 13:50:07 / 13:50:09 / - | viewer-cycle-1350.mov (4.25-7.78) | 1350-cycle.mp4
+1400 | SUBMITTED sell 10 QQQ260908C00717000: Take profit on QQQ calls as the position is up +20.3 | 105937.78 / +6175.95 / 3 | 14:00:09 / 14:00:14 / 14:00:14 | viewer-cycle-1400.mov (5.92-7.88) | 1400-cycle.mp4
+1410 | decision: hold (no actions) | 105837.53 / +6075.70 / 2 | 14:10:08 / 14:10:09 / - | viewer-cycle-1410.mov (4.52-7.52) | 1410-cycle.mp4
+1420 | decision: hold (no actions) | 106007.53 / +6245.70 / 2 | 14:20:07 / 14:20:09 / - | viewer-cycle-1420.mov (3.92-7.42) | 1420-cycle.mp4, 1420-last_cycle.mp4, 1420-status.mp4
+1430 | decision: hold (no actions) | 106007.53 / +6245.70 / 2 | 14:30:09 / 14:30:11 / - | viewer-cycle-1430.mov (6.18-9.65) | 1430-cycle.mp4, 1430-last_cycle.mp4, 1430-status.mp4
+1440 | decision: hold (no actions) | 105667.53 / +5905.70 / 2 | 14:40:08 / 14:40:12 / - | viewer-cycle-1440.mov (4.88-6.38) | 1440-cycle.mp4, 1440-last_cycle.mp4, 1440-status.mp4

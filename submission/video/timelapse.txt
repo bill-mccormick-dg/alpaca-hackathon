@@ -1,0 +1,31 @@
+# timelapse.txt - the viewer recordings, trimmed to the scroll (timelapse.py).
+#
+#   file | start | end | note
+#
+# start/end are seconds into that file. `-` means the very beginning / the
+# very end. `skip` in the start column drops the row. Rows play in this order.
+# Written by `timelapse.py scan` (noise -60dB, min freeze 0.3s,
+# pad 0.75s); the note says what it saw. Edit anything; `build` obeys the file.
+
+Screen Recording 2026-09-03 at 10.10.18 AM.mov | 3.12 | 4.62 | changes at 3.9 of 8.7s
+Screen Recording 2026-09-03 at 10.12.33 AM.mov | skip | - | never changes (17.0s)
+Screen Recording 2026-09-03 at 9.59.51 AM.mov | 3.77 | 8.28 | changes at 4.5, 6.5, 7.5 of 16.9s
+Screen Recording 2026-09-03 at 10.19.55 AM.mov | 10.85 | 15.83 | changes at 11.6, 12.1, 13.6, 15.1 of 23.0s
+Screen Recording 2026-09-03 at 10.29.59 AM.mov | 9.42 | 12.90 | changes at 10.2, 10.7, 12.2 of 21.2s
+Screen Recording 2026-09-03 at 10.39.59 AM.mov | 7.63 | 12.12 | changes at 8.4, 10.3, 11.4 of 20.6s
+Screen Recording 2026-09-03 at 10.49.58 AM.mov | 7.05 | 11.07 | changes at 7.8, 9.8, 10.3 of 17.6s
+Screen Recording 2026-09-03 at 11.04.33 AM.mov | 0.87 | 5.20 | changes at 1.6, 2.9, 4.5 of 10.1s
+Screen Recording 2026-09-03 at 11.19.59 AM.mov | 6.57 | 10.10 | changes at 7.3, 8.8, 9.3 of 18.7s
+Screen Recording 2026-09-03 at 11.29.59 AM.mov | 7.12 | 10.62 | changes at 7.9, 8.4, 9.9 of 16.6s
+Screen Recording 2026-09-03 at 11.40.00 AM.mov | 1.00 | 8.65 | changes at 1.8, 5.9, 7.4, 7.9 of 18.7s
+viewer-cycle-1230.mov | 5.88 | 10.88 | changes at 6.6, 10.1 of 15.0s
+viewer-cycle-1310.mov | 5.55 | 9.10 | changes at 6.3, 8.3 of 15.0s (14.6 was a stray, trimmed)
+viewer-cycle-1320.mov | 4.62 | 8.65 | changes at 5.4, 5.8, 7.9 of 15.0s (13.7 was a stray, trimmed)
+viewer-cycle-1330.mov | 4.95 | 6.95 | changes at 5.7, 6.2 of 15.0s; ignored stray change(s) at 14.0, 14.2
+viewer-cycle-1340.mov | 4.18 | 9.18 | changes at 4.9, 8.4 of 15.0s
+viewer-cycle-1350.mov | 4.25 | 7.78 | changes at 5.0, 6.5, 7.0 of 15.0s; ignored stray change(s) at 13.3
+viewer-cycle-1400.mov | 5.92 | 7.88 | changes at 6.7, 7.1 of 15.0s; ignored stray change(s) at 11.2
+viewer-cycle-1410.mov | 4.52 | 7.52 | changes at 5.3, 6.8 of 15.0s; ignored stray change(s) at 13.6
+viewer-cycle-1420.mov | 3.92 | 7.42 | changes at 4.7, 6.7 of 15.0s; ignored stray change(s) at 13.0
+viewer-cycle-1430.mov | 6.18 | 9.65 | changes at 6.9, 7.4, 8.9 of 15.0s
+viewer-cycle-1440.mov | 4.88 | 6.38 | changes at 5.6 of 15.0s; ignored stray change(s) at 10.1

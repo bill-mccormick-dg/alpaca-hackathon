@@ -136,7 +136,7 @@ All market data and every order go through **Alpaca's official MCP server**
 (`alpaca-mcp-server`, stdio) from a thin async client; the model only ever sees
 a curated read-only subset of its tools. Paper-only is hardcoded. A dedicated
 LXC on a home Proxmox host runs the bot from cron; a **self-hosted GitHub
-Actions runner** on that host deploys every merge (169 PRs, CI-gated, 795 unit
+Actions runner** on that host deploys every merge (180 PRs, CI-gated, 795 unit
 tests). A JSONL journal is the single source of truth: decisions, orders,
 rejections, exits, tool calls, and the exact config hash each cycle ran with.
 `trade_report.py` reconstructs round trips from Alpaca's fills and classifies
@@ -146,11 +146,37 @@ recommendation written by a model that did not trade the day. Runtime overrides 
 close, so intraday tweaks never outlive the day and tomorrow starts from git.
 The two challenger accounts above run the same code on the same host.
 
-## Results (fill Thu Sep 3 after the close)
+Two of the four windows onto the journal are reachable from outside the house.
+The read-only viewer is public to anyone on its list at
+**bot.wpmccormick.pw** (Cloudflare Tunnel, Cloudflare Access with an email
+one-time PIN). The Home Assistant dashboard - the one with the kill switch and
+the knobs - lives on the home LAN and is **available to judges on request**:
+the same tunnel publishes it at `ha.wpmccormick.pw` behind a different Access
+policy, an explicit allow-list of email addresses signed in through Google, no
+PIN; Home Assistant's own login still stands behind that. Ask and an address is
+added; it is removed the same way.
 
-Equity Mon open → Thu close: **$___ → $___ (__ %)**. __ round trips; win rate
-__ %; exits: __ stop / __ take-profit / __ expiry / __ model / __ flatten.
-Rejections by rule: __. Challenger vs official: __. What we'd change next: __.
+## Results
+
+Equity Mon open → Thu close: **$100,000.00 → $105,667.53 (+5.67 %)**. 15 round
+trips (2 / 6 / 2 / 5 by day, net −450 / +664 / +906 / +3,688); win rate 47 %
+(7 of 15), with the winners much larger than the losers - Thursday alone was
+five round trips for +3,688 at a profit factor of 10.5. Exits: 0 stop /
+2 take-profit / 0 expiry / 13 model / 0 flatten - the model closed its own
+positions far more often than a rule did, and the daily-loss cutoff never
+fired on the judged account. Rejections by rule: 22 in the week, 18 of them
+on Tuesday - almost all `model exit blocked (min_hold_minutes=30)`, an exit
+proposed inside the hold window, plus 2 `entries not allowed` after
+`last_entry` and 1 `cannot sell` for a contract it no longer held; Thursday
+had none. Challenger vs official: the Kimi-K3 challenger finished at −7.06 %
+and tripped the 2 % daily cutoff on Thursday (three empty-output errors, one
+cycle in three producing no decision); the single-key `mixed` variant sat at
++0.60 % and never traded on Thursday; the judged account's +5.67 % came from
+the promoted model, Qwen3.8-Flash-Next. What we'd change next: the
+exit-then-re-enter churn - Thursday sold QQQ at −4.8 % and NVDA at −3.3 % and
+bought both back within twenty minutes - which the leash allowed and the
+reasoning did not justify; the fix is the model's own prior exit reason in
+the next prompt (#225), not a longer hold (#222).
 
 ## Disclosure
 
