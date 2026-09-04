@@ -700,11 +700,11 @@ A tiny sample, so diagnostics rather than verdicts (`trade_report.py`, round-tri
 
 Four seats take a Featherless model: the judged account, each of the two
 challenger accounts, and the end-of-day reviewer, which was never a fourth
-model but whichever of the others did not trade that account. Since 2026-09-08
-all three trading seats hold the same model, so the reviewer seat is filled by
-that model too - see the note under [the reviewer
-table](#the-critique-comes-from-a-model-that-did-not-trade). This section says
-how they got there, what would change them, and what has been ruled out.
+model but one the trading seats do not use. Since 2026-09-08 all three trading
+seats hold `Qwen3.8-Flash-Next` and all three are reviewed by `Kimi-K2.6` — see
+[the reviewer table](#the-critique-comes-from-a-model-that-did-not-trade). This
+section says how they got there, what would change them, and what has been
+ruled out.
 
 ### The honest history: nothing was selected
 
@@ -779,7 +779,7 @@ re-checked rather than believed:
 | `official` trades (`config.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
 | `test` trades (`config-test.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
 | `mixed` trades (`config-variants/mixed.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
-| Reviewer | the trading model — see [the reviewer table](#the-critique-comes-from-a-model-that-did-not-trade) | — | — | — |
+| Reviewer (all three) | `moonshotai/Kimi-K2.6` | yes | 262,144 | 0.80 / 3.40 |
 
 **One model, three framings, since 2026-09-08.** The event's three-model
 bake-off ended with the hackathon: `test` finished at −7.04% on Kimi-K3, which
@@ -981,29 +981,30 @@ digest says so in a line above the critique, the `eod_review` journal event
 carries `review_pin_ignored`, and the first entry of `review_model_preference`
 that did not trade is used instead.
 
-> **This property was given up on 2026-09-08, deliberately.** All three
-> accounts now trade one model and `review_model_preference` is empty, so
-> `review_choice()` finds no independent candidate and returns `None`;
-> `eod_review.py:141` then falls back to the trading model, because a
-> same-model review is worth more than no review. **Every critique is now a
-> self-assessment** and should be read as one: a model reviewing its own
-> reasoning tends to explain it rather than challenge it, which is the whole
-> reason the rule existed. The disclosure is what stands in its place — the
-> digest carries `review_note` saying so, and
+> **2026-09-08: one trading model, one reviewer, property intact.** All three
+> accounts trade `Qwen/Qwen3.8-Flash-Next` and carry the *same*
+> `review_model_preference`, whose entries none of them trades — so all three
+> resolve to `Kimi-K2.6` and no account grades its own homework. The
+> standardisation is in both seats: same trader everywhere, same reviewer
+> everywhere.
+>
+> The fallback below it still exists — if the preference list is ever emptied
+> or exhausted, `eod_review.py:141` reviews on the trading model, because a
+> same-model review beats no review. That is defensible only while it is
+> visible, so the digest stamps `review_note` and
 > `tests/test_docs_lineup.py::test_self_review_is_disclosed_in_the_digest`
-> fails if that stamp is ever removed. To restore independence, put a model
-> that none of the accounts trade at the top of `review_model_preference`.
+> fails if the stamp is removed.
 
 | Account | Trades on | Reviewed by | How |
 |---|---|---|---|
-| `official` | Qwen3.8-Flash-Next | **Qwen3.8-Flash-Next** | fallback (self) |
-| `test` | Qwen3.8-Flash-Next | **Qwen3.8-Flash-Next** | fallback (self) |
-| `mixed` | Qwen3.8-Flash-Next | **Qwen3.8-Flash-Next** | fallback (self) |
+| `official` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
+| `test` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
+| `mixed` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
 
-**Every account now reviews its own homework**, by the choice recorded above.
-`tests/test_docs_lineup.py` no longer asserts independence — it asserts the two
-things that still have to hold: no config may pin a `review_model` that would
-be refused, and a self-review must never be silent.
+No account reviews its own homework, and `tests/test_docs_lineup.py` asserts
+that against the configs on every run — along with two more: no config may pin
+a `review_model` that would be refused, and a self-review, if the fallback is
+ever reached, must never be silent.
 
 **Why the journal and not the config.** Until #218 the check compared the
 reviewer against `config["model"]` at review time, and a pin skipped the check
