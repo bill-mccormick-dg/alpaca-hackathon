@@ -288,11 +288,11 @@ Alpaca's terms; model inference is Featherless.ai's.
 - [ ] Cover image
 - [ ] Video presentation
 - [ ] Slide presentation
-- [ ] Public GitHub repository — currently **private** (fine during the
-      build phase per Alpaca's own FAQ), but lablab.ai's submission
-      checklist separately requires "Public GitHub repository" as a
-      submission item. **Flip back to public before the Sep 4, 10:00 AM
-      CDT deadline.**
+- [x] Public GitHub repository — **public since before the deadline** (verified
+      2026-09-03). Two separate rules, and only the second binds: Alpaca's FAQ
+      permits a private repo *during* the hackathon ("No. It may remain private
+      during the hackathon"), while lablab.ai's submission checklist requires a
+      "Public GitHub repository" *as a submission item*.
 - [x] MIT license in the repo (`LICENSE`) — prize terms require submissions to
       be "original and MIT-compliant"
 - [ ] Demo application URL — likely N/A, UI not required (FAQ); only needed

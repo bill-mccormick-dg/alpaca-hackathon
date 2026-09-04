@@ -28,3 +28,7 @@ submission/video/placeholder.*
 submission/video/build/
 submission/video/footage/
 submission/video/tapes/generated/
+
+# Scratch record of other teams's repos (rival_repos.py) - not part of the submission.
+submission/rival-repos.json
+submission/rival-urls.txt
