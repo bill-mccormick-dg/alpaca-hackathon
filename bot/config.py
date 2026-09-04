@@ -157,7 +157,14 @@ def config_provenance(config: dict) -> dict:
         # model that will actually critique the day rather than a blank when
         # the key is unset. Deliberately not in TRACKED_KEYS - it does not
         # affect trading, so it should not churn config_hash.
-        "review_model": resolve_review_model(config),
+        #
+        # The `or config.get("model")` mirrors eod_review.py's own fallback.
+        # Since 2026-09-08 every account trades the same model and
+        # review_model_preference is empty, so review_choice() finds no
+        # independent reviewer and returns None - and a null here would tell
+        # the dashboard and the journal that nothing reviews the day, when in
+        # fact the trading model does.
+        "review_model": resolve_review_model(config) or config.get("model"),
         "config_file": config.get("_config_file"),
         "overrides": config.get("_overrides", {}),
     }
