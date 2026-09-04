@@ -9,6 +9,12 @@ The first three came out of reading 140 rival repos (`scripts/rival_repos.py`)
 and then checking our own code for the same mistakes. Two of the three we do not
 have. The one we do have fails safe.
 
+> **Field size, corrected 2026-09-04 after the deadline.** The survey that
+> produced these three ran against a lazy-loaded listing and counted 142
+> submissions. The real field is **425** — 283 projects were never looked at.
+> The three findings below are about *our own code* and are unaffected, but the
+> comparative claims in the survey were recomputed; see the revision note there.
+
 ## 1. An unpriceable exit is refused, and the reason misdescribes itself
 
 `run_cycle.py:302`:
@@ -73,7 +79,10 @@ gated on the clamped result, which is the safe use of it.
 ## Also open
 
 See the rival survey (`submission/rival-survey.md`, gitignored — it is a scratch
-record of other people's projects) for ~60 adoption candidates, and re-run
-`scripts/rival_repos.py recheck` after the deadline: 140 of 142 rival repos were
-already public, and the rest should open when the private-during-competition
-window closes.
+record of other people's projects) for ~70 adoption candidates, now including a
+second pass over the 284 submissions the first listing hid.
+
+`scripts/rival_repos.py recheck` was run on 2026-09-04 after the deadline:
+`isquividet/vega` is **still private** and nothing newly opened. Repo states are
+resolved for 170 of the 425 projects; run `scan` again to close the remaining
+~255, then `recheck`.
