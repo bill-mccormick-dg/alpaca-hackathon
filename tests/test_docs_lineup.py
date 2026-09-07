@@ -17,10 +17,13 @@ ROOT = Path(__file__).resolve().parent.parent
 STRATEGY = ROOT / "docs/strategy.md"
 
 # The seats the lineup table documents, and the config that decides each.
+# base_a and base_b share config.yaml on purpose - that is what makes them a
+# replicate pair by construction. The judged three are parked for judging and
+# are documented in docs/baseline.md, not in the lineup table.
 SEATS = {
-    "official": "config.yaml",
-    "test": "config-test.yaml",
-    "mixed": "config-variants/mixed.yaml",
+    "base_a": "config.yaml",
+    "base_b": "config.yaml",
+    "base_mixed": "config-variants/mixed.yaml",
 }
 
 
@@ -48,7 +51,7 @@ class LineupMatchesConfigsTest(unittest.TestCase):
         rows = _table_rows("### The lineup, and the evidence for it")
         documented = {}
         for cells in rows:
-            m = re.match(r"`(\w+)` trades", cells[0])
+            m = re.match(r"`([\w-]+)` trades", cells[0])
             if m:
                 documented[m.group(1)] = cells[1].strip("`")
 

@@ -50,10 +50,14 @@ RUNS = REPO / "runs"
 # is the same list). Anything else under config-variants/ is a local farm
 # variant, not a scheduled account: fingerprinted, but not compared.
 LIVE_CONFIGS = {
-    "official": "config.yaml",
-    "test": "config-test.yaml",
-    "mixed": "config-variants/mixed.yaml",
+    "base_a": "config.yaml",
+    "base_b": "config.yaml",
+    "base_mixed": "config-variants/mixed.yaml",
 }
+
+# The replicate pair, and the single-variable arm measured against it.
+PAIR = ("base_a", "base_b")
+VARIANT = "base_mixed"
 
 # Prose keys are compared by hash, not value: they are long, and what matters
 # is whether they moved, not what they say.
@@ -137,23 +141,23 @@ def warnings(fp: dict) -> list[dict]:
     # The replicate pair is the run's whole value: any differing effective
     # value between official and test means it is already broken.
     cfgs = fp["effective_config"]
-    keys = set(cfgs["official"]) | set(cfgs["test"])
-    differing = sorted(k for k in keys if cfgs["official"].get(k) != cfgs["test"].get(k))
+    keys = set(cfgs[PAIR[0]]) | set(cfgs[PAIR[1]])
+    differing = sorted(k for k in keys if cfgs[PAIR[0]].get(k) != cfgs[PAIR[1]].get(k))
     if differing:
         out.append({
             "warning": "replicate_pair_broken",
-            "detail": f"official and test differ in {len(differing)} effective value(s): {differing}",
+            "detail": f"{PAIR[0]} and {PAIR[1]} differ in {len(differing)} effective value(s): {differing}",
         })
 
     # mixed is meant to be a single-variable arm: prose only.
     numeric = sorted(
-        k for k in set(cfgs["official"]) | set(cfgs["mixed"])
-        if not k.endswith("_sha256") and cfgs["official"].get(k) != cfgs["mixed"].get(k)
+        k for k in set(cfgs[PAIR[0]]) | set(cfgs[VARIANT])
+        if not k.endswith("_sha256") and cfgs[PAIR[0]].get(k) != cfgs[VARIANT].get(k)
     )
     if numeric:
         out.append({
             "warning": "mixed_is_not_prose_only",
-            "detail": f"mixed differs from official in non-prose value(s): {numeric}",
+            "detail": f"{VARIANT} differs from {PAIR[0]} in non-prose value(s): {numeric}",
         })
 
     # A wind-down date already in the past means that account cannot open a

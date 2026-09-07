@@ -82,12 +82,29 @@ REPO_ROOT = Path(__file__).resolve().parent
 # account not listed here still works for config/set (apply_message resolves
 # its config from the bridge's own --config); it just won't have dashboard
 # controls until added to both lists.
-KNOWN_ACCOUNTS = ("official", "test", "mixed")
+# The baseline lineup (2026-09-08). base_a and base_b are a replicate pair on
+# NEW paper accounts opened with identical starting equity; base_mixed is the
+# prose variant. The judged three (official, test, mixed) are parked in cron
+# for the duration of judging - see docs/baseline.md - but stay listed here so
+# the dashboard can still read their state.
+KNOWN_ACCOUNTS = ("base_a", "base_b", "base_mixed", "official", "test", "mixed")
 # Which config file each account actually runs with. An account missing here
 # falls back to config.yaml, which is right for `official` and wrong for any
 # variant - a knob primed from the wrong file makes the dashboard report a
 # model or a stop-loss the account is not using.
+# EVERY account is listed, including the ones that run config.yaml. The old
+# map relied on an unlisted account falling back to config.yaml, which is one
+# unlisted variant away from priming the dashboard off the wrong file - the
+# failure this map exists to prevent. Explicit costs one line per account.
+#
+# base_a and base_b share ONE file on purpose: that is what makes them a
+# replicate pair by construction rather than by keeping two files in step,
+# which is exactly how official and test drifted (#269).
 ACCOUNT_CONFIG_PATH: dict[str, str] = {
+    "base_a": str(REPO_ROOT / "config.yaml"),
+    "base_b": str(REPO_ROOT / "config.yaml"),
+    "base_mixed": str(REPO_ROOT / "config-variants" / "mixed.yaml"),
+    "official": str(REPO_ROOT / "config.yaml"),
     "test": str(REPO_ROOT / "config-test.yaml"),
     "mixed": str(REPO_ROOT / "config-variants" / "mixed.yaml"),
 }

@@ -776,9 +776,9 @@ re-checked rather than believed:
 
 | Seat | Model | Tools | Context | $ in/out per M |
 |---|---|---|---|---|
-| `official` trades (`config.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
-| `test` trades (`config-test.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
-| `mixed` trades (`config-variants/mixed.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
+| `base_a` trades (`config.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
+| `base_b` trades (`config.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
+| `base_mixed` trades (`config-variants/mixed.yaml`) | `Qwen/Qwen3.8-Flash-Next` | yes | 262,144 | 0.15 / 0.50 |
 | Reviewer (all three) | `moonshotai/Kimi-K2.6` | yes | 262,144 | 0.80 / 3.40 |
 
 **One model, three framings, since 2026-09-08.** The event's three-model
@@ -997,9 +997,9 @@ that did not trade is used instead.
 
 | Account | Trades on | Reviewed by | How |
 |---|---|---|---|
-| `official` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
-| `test` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
-| `mixed` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
+| `base_a` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
+| `base_b` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
+| `base_mixed` | Qwen3.8-Flash-Next | **Kimi-K2.6** | computed |
 
 No account reviews its own homework, and `tests/test_docs_lineup.py` asserts
 that against the configs on every run — along with two more: no config may pin

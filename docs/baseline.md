@@ -5,9 +5,10 @@ title: The baseline run
 
 # The baseline run
 
-Starting **Tue Sep 8, 2026**. The competition is over; this is the run that
-establishes what the current system does when nobody is steering it, so that
-the backlog can be implemented against a number instead of an argument.
+Starting **Wed Sep 9, 2026**, on three **new** paper accounts. The competition
+is over; this is the run that establishes what the current system does when
+nobody is steering it, so the backlog can be implemented against a number
+instead of an argument.
 
 Read this before changing anything on a live account between Sep 8 and the end
 of the run. The rule that matters is in [What may ship during the
@@ -30,45 +31,67 @@ of the care is doing anything.
 
 So: a reference period first, then changes against it.
 
-## The configuration, as of Sep 8
+## The lineup
 
-Verified 2026-09-07 by loading all three configs and diffing the *effective*
-values, not by reading them:
+| Account | Config | Role |
+|---|---|---|
+| `base_a` | `config.yaml` | replicate pair |
+| `base_b` | `config.yaml` | replicate pair |
+| `base_mixed` | `config-variants/mixed.yaml` | single-variable arm (prose only) |
 
-| Pair | Differing keys |
-|---|---|
-| `official` vs `test` | **0** — including `strategy_notes` |
-| `official` vs `mixed` | **0** numeric; prose only (`strategy_notes`, `instrument_note`) |
+All three are **new paper accounts opened with identical starting equity**.
+The judged three - `official`, `test`, `mixed` - are parked in cron for the
+duration of judging and do not trade.
 
-Shared by all three: `Qwen/Qwen3.8-Flash-Next`, `min_hold_minutes: 0`,
-`early_exit_drawdown_pct: 25`, `research_tools_enabled: true`,
-`daily_loss_cutoff_pct: 2.0`, `stop_loss_pct: 40`, `take_profit_pct: 60`,
-`expiry_close_dte: 0`.
+### Why new accounts rather than the judged ones
 
-### `official` and `test` are a replicate pair, on purpose
+Two reasons, and the second was nearly missed.
 
-This is the most useful property of the run and the easiest to accidentally
-destroy. Two accounts, same model, same config, same prompt, same market —
-whatever they *differ* by at the end of the period is the **noise floor**:
-run-to-run variance with no variable changed.
+**The judged accounts had drifted apart in equity, and position sizing is
+absolute.** `max_position_usd: 5000` and `max_contracts_per_order: 10` do not
+scale with account size. At the Sep 3 settled closes a $5,000 position was
+4.76% of `official` ($105,095.51) but 5.38% of `test` ($92,938.91) - so `test`
+ran **13% more levered** in percentage terms. Two accounts taking identical
+trades would have posted systematically different returns, and the 2% daily
+halt would have fired at $2,102 on one and $1,859 on the other, which is a
+behavioural fork no analysis can undo. A "replicate pair" with that in it is
+not a replicate pair.
 
-That number is the thing every future A/B has to clear before it is allowed to
-claim anything. Without it, the first config change that produces a 3%
-divergence will get read as a result, and it may well be a coin flip. We have
-never had this number.
+**`submission/METADATA.md` tells judges to pull `PA3VS39Y5LE2` and see
+$105,095.51.** Resuming trading on the judged account during judging week
+makes that statement false. Scoring itself is locked - the organisers
+snapshotted at 09:30 ET on Fri Sep 4 - so this was never a scoring risk, but
+it is a credibility one, and it costs nothing to avoid.
 
-`mixed` is the single-variable arm: identical knobs, different prompt prose.
-Whatever it does differently is attributable to the prompt or to noise, and the
-replicate pair is what tells you which.
+New accounts solve both: equal equity makes the pair genuinely identical, and
+the judged three sit frozen at exactly what the submission describes.
 
-**If you change a value on `test`, the replicate is over.** Say so in the
-commit message, because a later reader will otherwise read the divergence as
-signal.
+### The pair shares one config file
+
+`base_a` and `base_b` both load `config.yaml`. Not two identical files - one
+file. That makes "the pair is identical" true by construction rather than by
+someone keeping two files in step, which is precisely how `official` and
+`test` drifted (#269). `mqtt_bridge.py::ACCOUNT_CONFIG_PATH` now maps every
+account explicitly, with no silent fallback, and a test asserts the pair
+shares a file while the variant does not.
+
+### How P&L is compared
+
+Per-account percentages are recorded as before (`equity.jsonl` carries
+`day_pnl_pct` against each account's own open, and `equity_curve.py` plots
+percent change from each account's own baseline). With equal starting equity
+those are directly comparable again.
+
+Compare the pair on **dollar P&L and decision agreement**, not percentage
+alone. Dollar P&L is exactly comparable because position caps are absolute;
+decision agreement - did they propose the same contracts? - is independent of
+equity entirely, and is the cleaner noise measure, since returns are dominated
+by market direction rather than by the model.
 
 ## What this baseline is not
 
-It is not a continuation of the judged week. Three variables moved at once
-between Sep 4 and Sep 8:
+It is not a continuation of the judged week. It runs on different accounts,
+and three variables moved at once between Sep 4 and Sep 9:
 
 1. one model across all three accounts (was: K3 on `test`),
 2. research tools on everywhere (was: `official` without them),
@@ -116,9 +139,10 @@ git**, because the point of a pre-registration is that someone else can check
 when it was written, and a gitignored file proves nothing about that.
 
 ```sh
-python scripts/fingerprint_run.py --run baseline-2026-09-08 \
+python scripts/fingerprint_run.py --run baseline-2026-09-09 \
+    --accounts base_a,base_b,base_mixed \
     --question "..." --hypothesis "..."     # once, before the run
-python scripts/fingerprint_run.py --run baseline-2026-09-08 --check
+python scripts/fingerprint_run.py --run baseline-2026-09-09 --check
                                             # any time after; exits 1 on drift
 ```
 
@@ -127,7 +151,7 @@ Four files, the shape the survey's `wheel` and `doa-parent` reads described:
 | | |
 |---|---|
 | `strategy_spec.json` | the question, the accounts, and `"commitment": "rules fixed before results"` |
-| `data_fingerprint.json` | sha256 + byte count of 39 inputs — every config, every `bot/*.py`, the entrypoints, `requirements.txt` — plus the git SHA and dirty flag |
+| `data_fingerprint.json` | sha256 + byte count of every config, every `bot/*.py`, the entrypoints and `requirements.txt`, plus the git SHA and dirty flag |
 | `warnings.json` | what was already true and would weaken the run |
 | `notes.md` | the same, for humans |
 
@@ -143,17 +167,40 @@ anything.
 `warnings.json` records rather than fixes — a pre-registration that quietly
 cleans up its own inputs is not recording the run that happened. It flags an
 uncommitted tree, a **broken replicate pair** (any effective value differing
-between `official` and `test`), a `mixed` arm differing by more than prose,
-and a `final_flatten_date` already in the past. The bundle written on
-2026-09-07 at git `15fb32b` carries **no warnings**: 39 files fingerprinted,
-clean tree, the pair intact.
+between `base_a` and `base_b`), a `base_mixed` arm differing by more than
+prose, and a `final_flatten_date` already in the past.
+
+**Not yet registered for this run.** The 2026-09-07 bundle is void: it
+fingerprinted `official`/`test`/`mixed`, which will not run this baseline, and
+its hypothesis claimed the pair would "differ only by noise" while the two
+accounts carried a systematic 13% leverage difference. It stays on disk at
+`runs/baseline-2026-09-08/`, marked `VOID.md`, rather than being deleted - a
+pre-registration you can make disappear is not one, and "check git history" is
+a weaker claim than "look in the directory".
+
+`runs/baseline-2026-09-09/` therefore holds only a `notes.md` marker until the
+accounts exist. Register it, with the real starting equity, **before the first
+cycle on Wednesday**:
+
+```sh
+python scripts/fingerprint_run.py --run baseline-2026-09-09 \
+    --accounts base_a,base_b,base_mixed \
+    --question "..." --hypothesis "..."
+```
 
 The neutral hypothesis for this run, stated in advance:
 
-> The three accounts are drawn from the same distribution. `official` and
-> `test` will differ only by noise. `mixed` will not separate from the pair by
-> more than that noise. We do not expect the fleet to beat its judged-week
-> return, and we are not trying to.
+> The three accounts are drawn from the same distribution. `base_a` and
+> `base_b` start from identical equity, load the same config file, and will
+> differ only by noise - that difference is the noise floor every later A/B
+> must clear. `base_mixed` will not separate from the pair by more than that
+> noise. We do not expect the fleet to beat the judged week's +5.10%, and we
+> are not trying to.
+
+This version is defensible in a way the 2026-09-07 one was not: with equal
+starting equity and one shared config file, "differ only by noise" is a claim
+about the model rather than an artefact of two accounts being sized
+differently against fixed-dollar caps.
 
 Writing that down is the whole discipline. If the run beats it, we learn
 something; if we only decide what we expected after seeing the result, we
