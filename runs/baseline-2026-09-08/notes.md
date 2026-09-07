@@ -13,7 +13,7 @@ The three accounts are drawn from the same distribution. official and test will 
 
 ## What it started from
 
-- git `15fb32b27f50` — feat: pre-register a run - fingerprint its inputs, state the hypothesis first
+- git `9c308c3c9528` — fix: a squash-merge orphans the SHA a pre-registration recorded (#272) (re-pointed from 15fb32b27f50, orphaned by a squash-merge; every input was verified byte-identical first)
 - accounts: official, test, mixed
 - 39 input files fingerprinted (sha256 in `data_fingerprint.json`)
 
