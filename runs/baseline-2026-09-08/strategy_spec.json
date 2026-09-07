@@ -1,0 +1,13 @@
+{
+  "run": "baseline-2026-09-08",
+  "question": "What does the current system do over a sustained period with nothing changed underneath it, and how much of any difference between two identically-configured accounts is just noise?",
+  "hypothesis": "The three accounts are drawn from the same distribution. official and test will differ only by noise, and that difference is the noise floor every later A/B must clear. mixed will not separate from the pair by more than that noise. We do not expect the fleet to beat its judged-week return (+5.10% over four sessions), and we are not trying to.",
+  "accounts": [
+    "official",
+    "test",
+    "mixed"
+  ],
+  "commitment": "rules fixed before results",
+  "created_utc": "2026-09-07T20:44:00+00:00",
+  "git_sha": "15fb32b27f500b4b0bcf37dd662c364708abcc9a"
+}

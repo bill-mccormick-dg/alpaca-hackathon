@@ -1,0 +1,424 @@
+{
+  "created_utc": "2026-09-07T20:44:00+00:00",
+  "git": {
+    "sha": "15fb32b27f500b4b0bcf37dd662c364708abcc9a",
+    "subject": "feat: pre-register a run - fingerprint its inputs, state the hypothesis first",
+    "dirty": false
+  },
+  "files": {
+    "config.yaml": {
+      "sha256": "fc7662a8b1734c394ed7428c891c9843bda67b1d2ee6b0036e12665578b8149f",
+      "bytes": 14561
+    },
+    "config-test.yaml": {
+      "sha256": "d34238dc40b2bdd9231eca880062b78e332a430bfec912ba51755b6cf6692dce",
+      "bytes": 14122
+    },
+    "config-variants/mixed.yaml": {
+      "sha256": "906a852cdc7729e6879b9ba0ab9ff0403192e2f15083a9be80bf20948b56dc6c",
+      "bytes": 16344
+    },
+    "config-variants/kimi26.yaml": {
+      "sha256": "a46dee2aebabbd543b63be03763f94b3a300d911eb9584683db238900aad8837",
+      "bytes": 3430
+    },
+    "bot/__init__.py": {
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    "bot/alpaca_mcp.py": {
+      "sha256": "33afdfaad8e480e6f2650d5e510ebc2ea0435f1cb2f85619d9c5756f5773baad",
+      "bytes": 4278
+    },
+    "bot/citations.py": {
+      "sha256": "3ebd5b3b4db4fd2c8c0d62f6dbbe2265f34424fccd41c649fa48294d45cfe06d",
+      "bytes": 12344
+    },
+    "bot/config.py": {
+      "sha256": "b5f59811a4f5880dfef1b0da8099828560966c23b0af58c608566e1c9f7c0f8f",
+      "bytes": 8426
+    },
+    "bot/credentials.py": {
+      "sha256": "441647aaf2b32dbcc69569caca83c8e7d7b95d63a6617b649c026866dc062d43",
+      "bytes": 11685
+    },
+    "bot/decide.py": {
+      "sha256": "d17cb5502f4a2f7898569fea350adfecf730496f7bb4871c299bb5e6632f1436",
+      "bytes": 25889
+    },
+    "bot/execute.py": {
+      "sha256": "4b0da3d0f0a913914b2963fbf8dad905b85676e849ec4a95111ca053e237117c",
+      "bytes": 4236
+    },
+    "bot/exits.py": {
+      "sha256": "7f4c8624c937c5fe5f5b851313a10e0c16918d3ee3f0bba9f3c1d5f9ea846f05",
+      "bytes": 3111
+    },
+    "bot/featherless.py": {
+      "sha256": "c97902235dad1d24266a202748d7787eef782fffbb1537b082f724a904af1221",
+      "bytes": 1796
+    },
+    "bot/flatten.py": {
+      "sha256": "796b0ea18c03dd39fd94324b25bfda914a000119d10383aec80328427f96fb88",
+      "bytes": 6782
+    },
+    "bot/greeks.py": {
+      "sha256": "e18a52d6afac8e6d88445fc62226fd59cac1e406f05c5ba1bdbddb170cfc1f73",
+      "bytes": 4704
+    },
+    "bot/holdings.py": {
+      "sha256": "fee09501e5027e267509618969c221612c3730fe8bee1713d9b75ec30547a3a4",
+      "bytes": 16282
+    },
+    "bot/identity.py": {
+      "sha256": "e3e1364ecbd7f6c7b53bb5dc68ed8654ad48f0a6751096a5f99bd7ca539aa839",
+      "bytes": 4130
+    },
+    "bot/journal.py": {
+      "sha256": "1664250e54e5f4d054453c83e31015caafb7cfbfd2021e558eec8f0c93620a6b",
+      "bytes": 6758
+    },
+    "bot/learning.py": {
+      "sha256": "1f1dea450acb0aed25834dd4d67f38393be6cb6055cf8a6b9096b7150c9b71ba",
+      "bytes": 4098
+    },
+    "bot/menu.py": {
+      "sha256": "3b382a6d1db7a69f3a86237567da8ea8033515359a5eb3976ed41198b4473b09",
+      "bytes": 5491
+    },
+    "bot/models.py": {
+      "sha256": "3a3156fe1d500e6958ab8cb2d6633a4f1b7413cc00bc1038b20ffce09b40e56f",
+      "bytes": 3664
+    },
+    "bot/mqtt.py": {
+      "sha256": "a22fafccbbafcdfa286c723dcfb87fa5a56474b63b1e2c6fcc5a9a38e352f9a3",
+      "bytes": 13146
+    },
+    "bot/occ.py": {
+      "sha256": "27f01fe5489659eacf24813274052321615cc49c7a45b75622639de1a606d6b8",
+      "bytes": 1157
+    },
+    "bot/orders.py": {
+      "sha256": "ce8c9100b87ce5c5d0bc98b3dbd38263ca56e74f425ad6e3c23d0e06a298156b",
+      "bytes": 2859
+    },
+    "bot/overrides.py": {
+      "sha256": "9ccfd6c40324151345811a02618de803138f7b9f15d926141ea61bf941eb5e5f",
+      "bytes": 8800
+    },
+    "bot/predictions.py": {
+      "sha256": "10c0c1fe103e1813fc119ac6556b5e8fe918a930b74a4bf5e2d0eb72d3ffb1fb",
+      "bytes": 24031
+    },
+    "bot/prior_scores.py": {
+      "sha256": "d4097ee1c9ddf535b44012dffc3db16944de1fb6b0d75a9f8641fbf3318e798d",
+      "bytes": 9770
+    },
+    "bot/report.py": {
+      "sha256": "0e641484eb4ff4e7286c0bfdd05a65825ba1e8b48064fcf0e3476764980a94f1",
+      "bytes": 13503
+    },
+    "bot/research.py": {
+      "sha256": "d67336c61927869e34394774bb1b5967d724c3f095461191d5e861e8949bcade",
+      "bytes": 7340
+    },
+    "bot/retry.py": {
+      "sha256": "f51dd8e9896fe80c25df2ee07d851f2e336953551c85b2f48944c3e90c01f72f",
+      "bytes": 7694
+    },
+    "bot/review.py": {
+      "sha256": "a66b561edbdfbd54639e9f0192c91467832ad43dbd1566f7dd9b94723348ed20",
+      "bytes": 19109
+    },
+    "bot/risk.py": {
+      "sha256": "47a148198438e8d0bd48ea426b3b6d1eb7d128c7e4348e01c3848614b6b1bdbd",
+      "bytes": 14909
+    },
+    "bot/snapshot.py": {
+      "sha256": "1709ee2e680ab067b20f32a82f59385ec8d3a0c9e9cc82359af2d2f527f69455",
+      "bytes": 19036
+    },
+    "bot/stale_orders.py": {
+      "sha256": "75769af964d3103b789a97dd007b0130272f1dbab3c4df4492616025c78f8524",
+      "bytes": 2341
+    },
+    "bot/trades.py": {
+      "sha256": "5e2aa19085d35d9c9b6f73f6620d38dd628459c4613bdcd45a00b2828a4befda",
+      "bytes": 9007
+    },
+    "run_cycle.py": {
+      "sha256": "6aed96865dc3d673698a17ffbf58402d5310e2ff516e20172dbfe851ce9bd29d",
+      "bytes": 27171
+    },
+    "flatten.py": {
+      "sha256": "6c6e65de872724b195be253fdb337a24bf65e6eb7a4f88b7209051b5ad9e26fb",
+      "bytes": 6171
+    },
+    "eod_review.py": {
+      "sha256": "6fc7ca40fa53f424048809b536ceea5e925fa96f391962847d2c5c0bac9dfcc1",
+      "bytes": 13377
+    },
+    "requirements.txt": {
+      "sha256": "7ac2df87df5ecd90c05b2c5836768b3f5ba65377c7f1f316de36f9fbdfb1c569",
+      "bytes": 965
+    }
+  },
+  "effective_config": {
+    "official": {
+      "underlyings": [
+        "SPY",
+        "QQQ",
+        "AAPL",
+        "MSFT",
+        "NVDA"
+      ],
+      "max_position_usd": 5000,
+      "max_positions": 4,
+      "max_contracts_per_order": 10,
+      "daily_loss_cutoff_pct": 2.0,
+      "min_days_to_expiration": 2,
+      "max_days_to_expiration": 45,
+      "option_strike_band_pct": 0.08,
+      "research_contracts_per_underlying": 12,
+      "model": "Qwen/Qwen3.8-Flash-Next",
+      "temperature": 0.2,
+      "max_tokens": 1500,
+      "request_timeout_sec": 60,
+      "review_model_preference": [
+        "moonshotai/Kimi-K2.6",
+        "moonshotai/Kimi-K2-Instruct"
+      ],
+      "model_params": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "model_params_by_model": {
+        "moonshotai/Kimi-K3": {
+          "chat_template_kwargs": {
+            "enable_thinking": true
+          },
+          "max_tokens": 6000
+        }
+      },
+      "decide_max_attempts": 3,
+      "decide_retry_budget_sec": 120,
+      "research_tools_enabled": true,
+      "research_max_tool_calls": 6,
+      "learning_enabled": true,
+      "learning_days": 2,
+      "learning_trades": 15,
+      "predictions_enabled": true,
+      "prediction_series": {
+        "SPY": "KXINX",
+        "QQQ": "KXNASDAQ100"
+      },
+      "mqtt": {
+        "enabled": true,
+        "topic_prefix": "alpaca-hackathon",
+        "ha_discovery": true,
+        "timeout_sec": 2
+      },
+      "model_prices": {
+        "moonshotai/Kimi-K2-Instruct": {
+          "in": 0.6,
+          "out": 2.5
+        },
+        "moonshotai/Kimi-K2.6": {
+          "in": 0.77,
+          "out": 3.5
+        },
+        "Qwen/Qwen3.8-Flash-Next": {
+          "in": 0.15,
+          "out": 0.5
+        },
+        "moonshotai/Kimi-K3": {
+          "in": 3.0,
+          "out": 15.0
+        }
+      },
+      "stop_loss_pct": 40,
+      "take_profit_pct": 60,
+      "min_hold_minutes": 0,
+      "early_exit_drawdown_pct": 25,
+      "expiry_close_dte": 0,
+      "eod_close_dte": 1,
+      "final_flatten_date": null,
+      "trade_start": "09:45",
+      "trade_end": "15:45",
+      "last_entry": "15:15",
+      "strategy_notes_sha256": "029b3f29e816a176"
+    },
+    "test": {
+      "underlyings": [
+        "SPY",
+        "QQQ",
+        "AAPL",
+        "MSFT",
+        "NVDA"
+      ],
+      "max_position_usd": 5000,
+      "max_positions": 4,
+      "max_contracts_per_order": 10,
+      "daily_loss_cutoff_pct": 2.0,
+      "min_days_to_expiration": 2,
+      "max_days_to_expiration": 45,
+      "option_strike_band_pct": 0.08,
+      "research_contracts_per_underlying": 12,
+      "research_tools_enabled": true,
+      "research_max_tool_calls": 6,
+      "learning_enabled": true,
+      "learning_days": 2,
+      "learning_trades": 15,
+      "predictions_enabled": true,
+      "prediction_series": {
+        "SPY": "KXINX",
+        "QQQ": "KXNASDAQ100"
+      },
+      "model": "Qwen/Qwen3.8-Flash-Next",
+      "review_model_preference": [
+        "moonshotai/Kimi-K2.6",
+        "moonshotai/Kimi-K2-Instruct"
+      ],
+      "model_params": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "temperature": 0.2,
+      "max_tokens": 1500,
+      "request_timeout_sec": 60,
+      "model_prices": {
+        "moonshotai/Kimi-K2-Instruct": {
+          "in": 0.6,
+          "out": 2.5
+        },
+        "moonshotai/Kimi-K2.6": {
+          "in": 0.77,
+          "out": 3.5
+        },
+        "Qwen/Qwen3.8-Flash-Next": {
+          "in": 0.15,
+          "out": 0.5
+        },
+        "moonshotai/Kimi-K3": {
+          "in": 3.0,
+          "out": 15.0
+        }
+      },
+      "model_params_by_model": {
+        "moonshotai/Kimi-K3": {
+          "chat_template_kwargs": {
+            "enable_thinking": true
+          },
+          "max_tokens": 6000
+        }
+      },
+      "decide_max_attempts": 3,
+      "decide_retry_budget_sec": 120,
+      "stop_loss_pct": 40,
+      "take_profit_pct": 60,
+      "min_hold_minutes": 0,
+      "early_exit_drawdown_pct": 25,
+      "expiry_close_dte": 0,
+      "eod_close_dte": 1,
+      "final_flatten_date": null,
+      "trade_start": "09:45",
+      "trade_end": "15:45",
+      "last_entry": "15:15",
+      "mqtt": {
+        "enabled": true,
+        "topic_prefix": "alpaca-hackathon",
+        "ha_discovery": true,
+        "timeout_sec": 2
+      },
+      "strategy_notes_sha256": "029b3f29e816a176"
+    },
+    "mixed": {
+      "underlyings": [
+        "SPY",
+        "QQQ",
+        "AAPL",
+        "MSFT",
+        "NVDA"
+      ],
+      "max_position_usd": 5000,
+      "max_positions": 4,
+      "max_contracts_per_order": 10,
+      "daily_loss_cutoff_pct": 2.0,
+      "min_days_to_expiration": 2,
+      "max_days_to_expiration": 45,
+      "option_strike_band_pct": 0.08,
+      "research_contracts_per_underlying": 12,
+      "model": "Qwen/Qwen3.8-Flash-Next",
+      "temperature": 0.2,
+      "max_tokens": 1500,
+      "request_timeout_sec": 60,
+      "review_model_preference": [
+        "moonshotai/Kimi-K2.6",
+        "moonshotai/Kimi-K2-Instruct"
+      ],
+      "model_params": {
+        "chat_template_kwargs": {
+          "enable_thinking": false
+        }
+      },
+      "model_params_by_model": {
+        "moonshotai/Kimi-K3": {
+          "chat_template_kwargs": {
+            "enable_thinking": true
+          },
+          "max_tokens": 6000
+        }
+      },
+      "decide_max_attempts": 3,
+      "decide_retry_budget_sec": 120,
+      "research_tools_enabled": true,
+      "research_max_tool_calls": 6,
+      "learning_enabled": true,
+      "learning_days": 2,
+      "learning_trades": 15,
+      "predictions_enabled": true,
+      "prediction_series": {
+        "SPY": "KXINX",
+        "QQQ": "KXNASDAQ100"
+      },
+      "mqtt": {
+        "enabled": true,
+        "topic_prefix": "alpaca-hackathon",
+        "ha_discovery": true,
+        "timeout_sec": 2
+      },
+      "model_prices": {
+        "moonshotai/Kimi-K2-Instruct": {
+          "in": 0.6,
+          "out": 2.5
+        },
+        "moonshotai/Kimi-K2.6": {
+          "in": 0.77,
+          "out": 3.5
+        },
+        "Qwen/Qwen3.8-Flash-Next": {
+          "in": 0.15,
+          "out": 0.5
+        },
+        "moonshotai/Kimi-K3": {
+          "in": 3.0,
+          "out": 15.0
+        }
+      },
+      "stop_loss_pct": 40,
+      "take_profit_pct": 60,
+      "min_hold_minutes": 0,
+      "early_exit_drawdown_pct": 25,
+      "expiry_close_dte": 0,
+      "eod_close_dte": 1,
+      "final_flatten_date": null,
+      "trade_start": "09:45",
+      "trade_end": "15:45",
+      "last_entry": "15:15",
+      "strategy_notes_sha256": "bf9a235c8457a3fd",
+      "instrument_note_sha256": "bff6df1b76781f51"
+    }
+  }
+}

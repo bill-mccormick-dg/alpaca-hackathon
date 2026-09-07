@@ -145,7 +145,7 @@ cleans up its own inputs is not recording the run that happened. It flags an
 uncommitted tree, a **broken replicate pair** (any effective value differing
 between `official` and `test`), a `mixed` arm differing by more than prose,
 and a `final_flatten_date` already in the past. The bundle written on
-2026-09-07 at git `3901e8d` carries **no warnings**: 39 files fingerprinted,
+2026-09-07 at git `15fb32b` carries **no warnings**: 39 files fingerprinted,
 clean tree, the pair intact.
 
 The neutral hypothesis for this run, stated in advance:
