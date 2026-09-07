@@ -8,9 +8,6 @@
     "mixed"
   ],
   "commitment": "rules fixed before results",
-  "created_utc": "2026-09-07T20:44:00+00:00",
-  "git_sha": "9c308c3c95280cf3cd10a77eb4c7e2927e752838",
-  "superseded_shas": [
-    "15fb32b27f500b4b0bcf37dd662c364708abcc9a"
-  ]
+  "created_utc": "2026-09-07T21:10:27+00:00",
+  "git_sha": "c0c80cbe419bbd16172487918b69b7253fc81be4"
 }

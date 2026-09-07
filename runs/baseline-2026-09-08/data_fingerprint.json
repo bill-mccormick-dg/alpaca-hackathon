@@ -1,8 +1,8 @@
 {
-  "created_utc": "2026-09-07T20:44:00+00:00",
+  "created_utc": "2026-09-07T21:10:27+00:00",
   "git": {
-    "sha": "9c308c3c95280cf3cd10a77eb4c7e2927e752838",
-    "subject": "fix: a squash-merge orphans the SHA a pre-registration recorded (#272)",
+    "sha": "c0c80cbe419bbd16172487918b69b7253fc81be4",
+    "subject": "chore: retire the kimi26 farm variant (#274)",
     "dirty": false
   },
   "files": {
@@ -17,10 +17,6 @@
     "config-variants/mixed.yaml": {
       "sha256": "906a852cdc7729e6879b9ba0ab9ff0403192e2f15083a9be80bf20948b56dc6c",
       "bytes": 16344
-    },
-    "config-variants/kimi26.yaml": {
-      "sha256": "a46dee2aebabbd543b63be03763f94b3a300d911eb9584683db238900aad8837",
-      "bytes": 3430
     },
     "bot/__init__.py": {
       "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
@@ -420,9 +416,5 @@
       "strategy_notes_sha256": "bf9a235c8457a3fd",
       "instrument_note_sha256": "bff6df1b76781f51"
     }
-  },
-  "superseded_shas": [
-    "15fb32b27f500b4b0bcf37dd662c364708abcc9a"
-  ],
-  "sha_adopted_utc": "2026-09-07T20:51:44+00:00"
+  }
 }

@@ -1,6 +1,6 @@
 # baseline-2026-09-08
 
-Written **2026-09-07T20:44:00+00:00**, before the run produced anything.
+Written **2026-09-07T21:10:27+00:00**, before the run produced anything.
 Commitment: *rules fixed before results*.
 
 ## The question
@@ -13,9 +13,9 @@ The three accounts are drawn from the same distribution. official and test will 
 
 ## What it started from
 
-- git `9c308c3c9528` — fix: a squash-merge orphans the SHA a pre-registration recorded (#272) (re-pointed from 15fb32b27f50, orphaned by a squash-merge; every input was verified byte-identical first)
+- git `c0c80cbe419b` — chore: retire the kimi26 farm variant (#274)
 - accounts: official, test, mixed
-- 39 input files fingerprinted (sha256 in `data_fingerprint.json`)
+- 38 input files fingerprinted (sha256 in `data_fingerprint.json`)
 
 Re-check at any time, and before analysing anything:
 
