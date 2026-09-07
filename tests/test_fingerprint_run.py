@@ -39,6 +39,18 @@ def _names(fp) -> list[str]:
     return [w["warning"] for w in fingerprint_run.warnings(fp)]
 
 
+def _clean_collect(mod):
+    """collect() with dirty forced false - adopt_sha refuses on a dirty tree,
+    and the repo is dirty while these very tests are being written."""
+    real = mod.collect
+
+    def fake():
+        out = real()
+        out["git"]["dirty"] = False
+        return out
+    return fake
+
+
 class Warnings(unittest.TestCase):
     def test_the_clean_case_is_silent(self):
         self.assertEqual(fingerprint_run.warnings(_fp()), [])
@@ -131,6 +143,46 @@ class CreateAndCheck(unittest.TestCase):
             stored["files"]["config.yaml"]["sha256"] = "0" * 64
             (Path(tmp) / "r" / "data_fingerprint.json").write_text(json.dumps(stored))
             self.assertEqual(fingerprint_run.check("r"), 1)
+
+    def test_check_fails_when_an_input_appeared(self):
+        """_inputs() globs bot/*.py and config-variants/*.yaml, so a file
+        appearing there is a new module or a new account - a mid-run code
+        change, not noise."""
+        with TemporaryDirectory() as tmp, patch.object(fingerprint_run, "RUNS", Path(tmp)):
+            fingerprint_run.create("r", "q", "h", "official")
+            fp = Path(tmp) / "r" / "data_fingerprint.json"
+            stored = json.loads(fp.read_text())
+            stored["files"].pop("config.yaml")          # as if it had not existed at creation
+            fp.write_text(json.dumps(stored))
+            self.assertEqual(fingerprint_run.check("r"), 1)
+
+    def test_adopt_sha_refuses_when_inputs_moved(self):
+        """The pointer may move; the commitment may not. Adopting over a
+        changed input would launder exactly the event the bundle exists to
+        expose."""
+        with TemporaryDirectory() as tmp, patch.object(fingerprint_run, "RUNS", Path(tmp)):
+            fingerprint_run.create("r", "q", "h", "official")
+            fp = Path(tmp) / "r" / "data_fingerprint.json"
+            stored = json.loads(fp.read_text())
+            stored["files"]["config.yaml"]["sha256"] = "0" * 64
+            fp.write_text(json.dumps(stored))
+            self.assertEqual(fingerprint_run.adopt_sha("r"), 1)
+
+    def test_adopt_sha_keeps_the_old_sha(self):
+        """An audit trail that erases what it replaced is not one."""
+        with TemporaryDirectory() as tmp, patch.object(fingerprint_run, "RUNS", Path(tmp)):
+            fingerprint_run.create("r", "q", "h", "official")
+            fp = Path(tmp) / "r" / "data_fingerprint.json"
+            stored = json.loads(fp.read_text())
+            orphan = "a" * 40
+            stored["git"]["sha"] = orphan
+            fp.write_text(json.dumps(stored))
+            with patch.object(fingerprint_run, "collect", _clean_collect(fingerprint_run)):
+                rc = fingerprint_run.adopt_sha("r")
+            after = json.loads(fp.read_text())
+        self.assertEqual(rc, 0)
+        self.assertIn(orphan, after["superseded_shas"])
+        self.assertNotEqual(after["git"]["sha"], orphan)
 
     def test_check_on_a_missing_bundle_is_distinct_from_drift(self):
         """2, not 1: "you never registered this" and "it drifted" are
