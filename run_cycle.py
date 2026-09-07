@@ -317,6 +317,21 @@ async def run(args: argparse.Namespace) -> int:
             end_cycle(actions=len(exit_proposals), exits_only=True)
             return 0
 
+        # Parked accounts: no NEW entries, exits unaffected. Placed here, next
+        # to the final-day gate and AFTER exits, on purpose - a park that also
+        # skipped exits would leave a contract to run into expiration, and
+        # expiry_close_dte exists precisely to stop that. Parking is about not
+        # taking new risk, not about going inert.
+        #
+        # Account-scoped rather than config-scoped because the baseline pair
+        # SHARES config.yaml with `official` (docs/baseline.md): a config-level
+        # switch cannot park one without parking the others. A list of names
+        # works from any config file.
+        if args.account in (config.get("parked_accounts") or []):
+            print(f"account {args.account} is parked (config parked_accounts) - no new entries")
+            end_cycle(actions=0, skipped="parked")
+            return 0
+
         # The final day of the event: the score is fixed at the prior close,
         # so there is nothing to gain from a new position - only exits run.
         final_day = config.get("final_flatten_date")

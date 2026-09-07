@@ -37,6 +37,10 @@ TRACKED_KEYS = (
     # exit is allowed, so they belong in the hash - and the dashboard's
     # number rows read them from config/effective, which is this dict.
     "min_hold_minutes", "early_exit_drawdown_pct",
+    # Which accounts may not open new positions (#276 follow-up). It decides
+    # whether a cycle trades at all, so a reader attributing a flat day to
+    # strategy needs to see it in the cycle's own config event.
+    "parked_accounts",
 )
 
 
