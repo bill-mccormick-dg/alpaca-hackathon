@@ -170,12 +170,33 @@ accumulate *no* record of what volatility we were being offered.
 That means a volatility signal could not be evaluated against this baseline
 afterwards — we would have to run a whole new period to test it.
 
-**So: journal the menu.** Record the per-contract IV and Greeks that went into
-the prompt, or at minimum ATM IV per underlying per cycle. It gates nothing and
-changes no decision — an *observer*, in the sense of backlog item 26 — so it is
-on the ships-during-the-run side of the table above. It costs one journal call
-and it is the difference between being able to ask "would an IV-rank filter
-have helped?" in October and having to spend another month to find out.
+**Done, before the run started.** Every cycle now appends the menu it was shown
+— each contract with bid/ask, spread, IV and Greeks — to
+`logs/menu-<account>-<date>.jsonl`. It gates nothing and changes no decision:
+an *observer*, in the sense of backlog item 26, which is why it was allowed to
+land the night before the baseline rather than waiting for the end of it.
+
+Three properties make it safe, and each is pinned by a test:
+
+- **It is the menu the model actually saw.** `decide()` summarizes once, hands
+  that dict to `build_prompt()`, and carries the same dict out on `Decision`.
+  Recomputing it afterwards would look identical today and diverge the first
+  time contract selection or the Greek fallback changes.
+- **It stays out of the hot paths.** Not written through `journal.log()`: that
+  republishes everything to the MQTT feed ahead of its allow-list, and
+  `read_events("all")` parses the whole journal every cycle for the learning
+  and holdings blocks. A record is ~16 KB against the journal's few hundred
+  bytes.
+- **It cannot cost a cycle.** A failed write returns `None` and is swallowed.
+
+Volume is ~570 KB per account per day, ~1.7 MB/day across the three, so about
+100 MB over a 60-session baseline. `dry_run` is on every row, so rehearsal
+cycles can be dropped from a study. Read them with
+`bot/journal.py::read_menus(account, day)`.
+
+What this buys: in October, "would an IV-rank filter have helped?" is a query
+against data we already have, instead of a proposal to spend another month
+collecting it.
 
 This is the general shape of the gap the backlog note calls out: **the system
 produces evidence and does not consume it.** IV is the clearest case — we
