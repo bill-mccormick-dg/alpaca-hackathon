@@ -110,15 +110,43 @@ Note that a deploy is still gated by the freeze (Mon–Fri 08:20–15:15 CT,
 
 ## Pre-registration
 
-Backlog item **24** is the reproducibility bundle, and the cheap half of it
-costs twenty minutes and should be done before the open:
+Backlog item **24**, the cheap half, done before the open:
+`scripts/fingerprint_run.py` writes `runs/<name>/` and it is **committed to
+git**, because the point of a pre-registration is that someone else can check
+when it was written, and a gitignored file proves nothing about that.
 
-- a stated **neutral hypothesis**, written down before the run rather than
-  after it;
-- a **fingerprint** of the three configs as they stand tonight (sha256 + byte
-  count), so "was anything changed mid-run?" is answerable in one command;
-- `notes.md` recording what we expected, so the write-up at the end is a
-  comparison and not a narrative.
+```sh
+python scripts/fingerprint_run.py --run baseline-2026-09-08 \
+    --question "..." --hypothesis "..."     # once, before the run
+python scripts/fingerprint_run.py --run baseline-2026-09-08 --check
+                                            # any time after; exits 1 on drift
+```
+
+Four files, the shape the survey's `wheel` and `doa-parent` reads described:
+
+| | |
+|---|---|
+| `strategy_spec.json` | the question, the accounts, and `"commitment": "rules fixed before results"` |
+| `data_fingerprint.json` | sha256 + byte count of 39 inputs — every config, every `bot/*.py`, the entrypoints, `requirements.txt` — plus the git SHA and dirty flag |
+| `warnings.json` | what was already true and would weaken the run |
+| `notes.md` | the same, for humans |
+
+**Files are hashed as well as covered by the git SHA on purpose.** A hand-edit
+on the trading host leaves the SHA untouched, which is exactly what an
+undisclosed mid-run change looks like.
+
+`--check` reports file changes and effective-config changes **separately**: a
+`bot/*.py` edit and a config value change are different kinds of mid-run event
+and deserve different sentences in a write-up. Run it before analysing
+anything.
+
+`warnings.json` records rather than fixes — a pre-registration that quietly
+cleans up its own inputs is not recording the run that happened. It flags an
+uncommitted tree, a **broken replicate pair** (any effective value differing
+between `official` and `test`), a `mixed` arm differing by more than prose,
+and a `final_flatten_date` already in the past. The bundle written on
+2026-09-07 at git `3901e8d` carries **no warnings**: 39 files fingerprinted,
+clean tree, the pair intact.
 
 The neutral hypothesis for this run, stated in advance:
 
@@ -129,7 +157,9 @@ The neutral hypothesis for this run, stated in advance:
 
 Writing that down is the whole discipline. If the run beats it, we learn
 something; if we only decide what we expected after seeing the result, we
-learn nothing and will not be able to tell the difference.
+learn nothing and will not be able to tell the difference. If the result
+contradicts it, that is the finding, and it gets published as it stands
+(item 25).
 
 ## What to collect while it runs
 
