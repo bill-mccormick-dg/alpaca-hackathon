@@ -28,15 +28,23 @@ one before expiry. **The model never touches an order.**
    the official-account safety rules.
 5. **[The daily loop](daily-loop)** - what happens each trading day and what
    we do at the close.
-6. **[Official guidelines](alpaca-official-guidelines)** - Alpaca's rules and
+6. **[The baseline run](baseline)** - the post-competition reference period
+   from Sep 8, what may and may not ship while it runs, and the priorities
+   it feeds.
+7. **[Official guidelines](alpaca-official-guidelines)** - Alpaca's rules and
    FAQ, verbatim.
 
 ## The two accounts
 
+Updated 2026-09-07: since #264 all three accounts run **one model with
+identical settings**, and `official`/`test` differ in zero effective values -
+a deliberate replicate pair for the [baseline run](baseline). The A/B
+framing below describes the judged week, not today.
+
 | | Official `PA3VS39Y5LE2` | `hackathon_test` |
 |---|---|---|
-| Purpose | Judged. Equity as of EOD Thu Sep 3 is the score | Ours. Development and the A/B challenger |
-| Config | `config.yaml` - Qwen3.8-Flash-Next, Kalshi prior **on**, research tools/learning **off** | `config-test.yaml` - Kimi-K3 with research tools, Kalshi prior, learning loop **on** |
+| Purpose | Judged through Thu Sep 3. Now the reference arm | Ours. Now the replicate of official; development account |
+| Config | `config.yaml` - Qwen3.8-Flash-Next, Kalshi prior, research tools and learning **on** since #264 | `config-test.yaml` - **identical effective values**; was Kimi-K3 with research tools during the event |
 | Keys | Only on CT 108 (`/root/.config/alpaca-hackathon/credentials.env`) | Your own `secrets.yaml` locally; CT 108 has its copy |
 | Rule | No orders before Mon Aug 31 9:30 ET (enforced in code) | Trade freely |
 

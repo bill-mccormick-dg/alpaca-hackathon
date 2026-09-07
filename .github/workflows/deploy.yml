@@ -80,6 +80,14 @@ jobs:
         # schedules). Blocking 08:20-15:15 CT covers every scheduled run
         # with a margin either side, so a sync can never land mid-cycle.
         #
+        # Mon-Fri alone over-blocks: on 2026-09-07 (Labor Day) the market
+        # never opened and the gate still refused a config change, because
+        # the check was a weekday test with no calendar behind it. It now
+        # reads .github/market-holidays.txt. That list is for CI only - the
+        # bot asks the broker (`get_clock().is_open`) and always has. An
+        # unlisted date counts as a TRADING day, so a stale or unreadable
+        # list keeps the freeze on rather than opening it.
+        #
         # Deliberately a hard failure, not a skip: a red X on main is the
         # signal that main and the trading host have diverged. Re-run this
         # job after the close to apply it.
@@ -112,10 +120,35 @@ jobs:
           fi
           now_min=$(( 10#$(TZ=America/Chicago date +%H) * 60 + 10#$(TZ=America/Chicago date +%M) ))
           dow=$(TZ=America/Chicago date +%u)   # 1=Mon .. 7=Sun
+          today=$(TZ=America/Chicago date +%F)
+
+          # Holiday lookup, fail-safe in both directions: no file, no parsable
+          # dates, or a list that stops before this year all leave `holiday`
+          # empty, and an empty `holiday` means the freeze applies as before.
+          holidays_file="$GITHUB_WORKSPACE/.github/market-holidays.txt"
+          holiday=""; covered=""
+          if [ -r "$holidays_file" ]; then
+            dates=$(sed 's/#.*//' "$holidays_file" | tr -d '[:blank:]' \
+                    | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || true)
+            if [ -n "$dates" ]; then
+              last_year=$(echo "$dates" | cut -d- -f1 | sort -n | tail -1)
+              [ "${today%%-*}" -le "$last_year" ] && covered=yes
+              echo "$dates" | grep -qxF "$today" && holiday=yes
+            fi
+          fi
+
           if [ "$dow" -le 5 ] && [ "$now_min" -ge 500 ] && [ "$now_min" -le 915 ]; then
+            if [ -n "$holiday" ]; then
+              echo "$today is a US market holiday - no session to land in the middle of, proceeding"
+              echo "changed trading files: $(echo "$trading" | tr '\n' ' ')"
+              exit 0
+            fi
+            if [ -z "$covered" ]; then
+              echo "::warning::.github/market-holidays.txt does not cover $today - treating it as a trading day. Extend the list."
+            fi
             echo "::error::Refusing to deploy trading code while the market is open."
             echo "Changed trading files:"; echo "$trading" | sed 's/^/  /'
-            echo "Now $(TZ=America/Chicago date '+%a %H:%M %Z'); the freeze is Mon-Fri 08:20-15:15 CT."
+            echo "Now $(TZ=America/Chicago date '+%a %H:%M %Z'); the freeze is Mon-Fri 08:20-15:15 CT, market holidays excepted."
             echo "Re-run this job after the close, or merge outside market hours."
             exit 1
           fi

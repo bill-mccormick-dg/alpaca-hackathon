@@ -120,8 +120,17 @@ strategy_notes: |
 # 2026-09-08: moved off moonshotai/Kimi-K3 onto the judged account's model.
 # K3 finished the event at -7.04% and tripped the 2% daily cutoff on Sep 3
 # (three empty-output errors, roughly one cycle in three producing no
-# decision). All three accounts now run this model, so the remaining variable
-# on this account is `research_tools_enabled: true` - and only that.
+# decision). All three accounts now run this model.
+#
+# 2026-09-07: `research_tools_enabled: true` is NO LONGER what distinguishes
+# this account - #264 turned research tools on everywhere. Verified by loading
+# all three configs and diffing the effective values: `official` and `test`
+# differ in ZERO keys, `strategy_notes` included. This account is a REPLICATE
+# of official, deliberately: it measures the run-to-run variance of one config
+# on one model, which is the noise floor any later A/B has to clear. `mixed`
+# differs from both only in prose (`strategy_notes`, `instrument_note`).
+# If you change a value here, you have ended the replicate - say so in the
+# commit, because a later reader will otherwise read divergence as signal.
 model: Qwen/Qwen3.8-Flash-Next
 # No `review_model` pin: it would name the model that traded and be refused
 # (#218). See review_model_preference below.

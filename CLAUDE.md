@@ -27,6 +27,10 @@ Alpaca (`get_stock_snapshot` → `prevDailyBar.c`), not from the model's reason.
   `^(run_cycle|flatten|eod_review|mqtt_bridge)\.py$|^bot/|^config(-test)?\.yaml$|^config-variants/|^requirements\.txt$`.
   Docs, tests, `scripts/`, `mail_report.py`, `bot/report.py` deploy any time.
   Merging frozen code inside the window fails the deploy job and leaves `main` undeployed — open the PR, merge after 15:15.
+  **US market holidays are excepted** since 2026-09-07: the gate reads
+  `.github/market-holidays.txt` (CI only — the bot uses `get_clock().is_open`).
+  An unlisted date counts as a trading day, so a stale list keeps the freeze on,
+  never off. Extend the list when `test_market_holidays.py` starts failing.
 - **Runtime overrides expire 16:00 ET; the EOD review runs 15:05 CT = 16:05 ET.**
   A `review_model` override needs `--until 17:00` to be seen by the review; the
   self-review check itself no longer depends on it (#218).

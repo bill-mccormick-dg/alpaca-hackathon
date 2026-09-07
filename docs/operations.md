@@ -403,6 +403,20 @@ project can never disturb the trading host:
    normally, which is what the daily loop needs (EOD review -> config change
    -> PR -> deploy before the next open).
 
+   **Market holidays are excepted.** Mon-Fri alone over-blocks: on Labor Day
+   2026 the market never opened and the gate still refused a config change.
+   The gate now reads `.github/market-holidays.txt`, a static NYSE list that
+   exists for CI alone - the bot itself asks the broker
+   (`get_clock().is_open`) and nothing under `bot/` reads the file. The
+   failure direction is deliberate: an unlisted date counts as a *trading*
+   day, so a missing, malformed or expired list leaves the freeze **on**.
+   Over-blocking costs a wait until 15:15; under-blocking deploys trading
+   code into a live session. `tests/test_market_holidays.py` checks the
+   format and fails the build once the list stops covering the current year;
+   the gate also logs a CI warning at that point. Early closes (13:00 ET) are
+   not listed on purpose - cycles stop early but the 14:50 flatten and 15:05
+   review still run, so the window has to hold anyway.
+
 Trading code is `run_cycle.py`, `flatten.py`, `eod_review.py`,
 `mqtt_bridge.py`, anything under `bot/`, `config.yaml`, `config-test.yaml`,
 anything under `config-variants/` and `requirements.txt`. `mqtt_bridge.py` is on that list deliberately: it
