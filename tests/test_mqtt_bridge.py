@@ -63,8 +63,15 @@ class ConfigPathForTest(unittest.TestCase):
         path = mqtt_bridge.config_path_for("test", None)
         self.assertTrue(path.endswith("config-test.yaml"))
 
-    def test_official_falls_back_to_default_config(self):
-        self.assertIsNone(mqtt_bridge.config_path_for("official", None))
+    def test_official_now_maps_explicitly_to_config_yaml(self):
+        """It used to return None and let load_config pick the default. The
+        map is explicit for every account now, so this returns the path - and
+        it resolves to the same file the default would have, which is what
+        makes the change a clarification rather than a behaviour change."""
+        from bot.config import load_config
+        path = mqtt_bridge.config_path_for("official", None)
+        self.assertTrue(path.endswith("config.yaml"))
+        self.assertEqual(load_config(path)["_config_file"], load_config(None)["_config_file"])
 
 
 class ParseHaltTopicTest(unittest.TestCase):
@@ -454,22 +461,28 @@ class AccountConfigMappingTest(unittest.TestCase):
     a stop-loss or a strike band the account is not using - and the A/B
     dashboard is the one place someone goes to check exactly that."""
 
-    def test_every_variant_account_maps_to_its_own_config(self):
+    def test_every_known_account_maps_explicitly(self):
+        """No account may rely on the config.yaml fallback. The fallback is
+        right for an account that runs config.yaml and silently wrong for one
+        that does not, and nothing about an unlisted name says which it is."""
         for account in mqtt_bridge.KNOWN_ACCOUNTS:
-            if account == "official":
-                continue  # official is config.yaml, the fallback
             self.assertIn(
                 account, mqtt_bridge.ACCOUNT_CONFIG_PATH,
-                f"{account} would be primed from config.yaml, not its own config",
+                f"{account} would be primed from config.yaml by fallback, not by decision",
             )
 
     def test_mapped_configs_exist_on_disk(self):
         for account, path in mqtt_bridge.ACCOUNT_CONFIG_PATH.items():
             self.assertTrue(Path(path).is_file(), f"{account} maps to a missing config: {path}")
 
-    def test_mapped_configs_are_distinct(self):
-        paths = list(mqtt_bridge.ACCOUNT_CONFIG_PATH.values())
-        self.assertEqual(len(paths), len(set(paths)), "two accounts share a config file")
+    def test_the_replicate_pair_shares_one_config_file(self):
+        """base_a and base_b are a replicate pair, and sharing a single file is
+        what makes them identical BY CONSTRUCTION. Two files kept in step by
+        hand is how official and test drifted (#269), so this asserts the
+        sharing rather than forbidding it."""
+        m = mqtt_bridge.ACCOUNT_CONFIG_PATH
+        self.assertEqual(m["base_a"], m["base_b"], "the replicate pair no longer shares one config")
+        self.assertNotEqual(m["base_a"], m["base_mixed"], "the variant arm is not a variant")
 
 
 MODEL_CONFIG = {"model_prices": {"a/one": {}, "b/two": {}}}
