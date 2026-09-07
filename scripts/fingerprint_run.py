@@ -209,7 +209,9 @@ def _notes(spec: dict, fp: dict, warns: list[dict]) -> str:
         "",
         "## What it started from",
         "",
-        f"- git `{fp['git']['sha'][:12]}` — {fp['git']['subject']}",
+        f"- git `{fp['git']['sha'][:12]}` — {fp['git']['subject']}"
+        + (f" (re-pointed from {', '.join(s[:12] for s in fp['superseded_shas'])}, orphaned by a squash-merge;"
+           " every input was verified byte-identical first)" if fp.get("superseded_shas") else ""),
         f"- accounts: {', '.join(spec['accounts'])}",
         f"- {len(fp['files'])} input files fingerprinted (sha256 in `data_fingerprint.json`)",
         "",
@@ -238,15 +240,19 @@ def _notes(spec: dict, fp: dict, warns: list[dict]) -> str:
     return "\n".join(lines)
 
 
-def check(run: str) -> int:
+def _load(run: str) -> dict | None:
     stored_path = RUNS / run / "data_fingerprint.json"
     if not stored_path.exists():
         print(f"no fingerprint at {_rel(stored_path)} - create it first", file=sys.stderr)
-        return 2
-    stored = json.loads(stored_path.read_text())
-    now = collect()
+        return None
+    return json.loads(stored_path.read_text())
 
-    changed, missing, added = [], [], []
+
+def _diff(stored: dict, now: dict) -> tuple[list, list, list, list]:
+    """(changed, missing, added, config drift). The git SHA is deliberately
+    NOT part of this: it is a pointer, and the commitment is the file hashes
+    and the hypothesis. See adopt_sha()."""
+    changed, missing = [], []
     for name, d in stored["files"].items():
         cur = now["files"].get(name)
         if cur is None:
@@ -254,6 +260,78 @@ def check(run: str) -> int:
         elif cur["sha256"] != d["sha256"]:
             changed.append(name)
     added = [n for n in now["files"] if n not in stored["files"]]
+
+    drift = []
+    for account, cfg in stored["effective_config"].items():
+        cur = now["effective_config"].get(account, {})
+        for key in sorted(set(cfg) | set(cur)):
+            if cfg.get(key) != cur.get(key):
+                drift.append((account, key, cfg.get(key, "<absent>"), cur.get(key, "<absent>")))
+    return changed, missing, added, drift
+
+
+def adopt_sha(run: str) -> int:
+    """Re-point a bundle at a reachable commit after a squash-merge.
+
+    A bundle created on a branch records that branch's SHA, and a squash
+    merge orphans it: `git merge-base --is-ancestor` says no, and anyone
+    cloning the repo cannot check out the tree the bundle claims to
+    describe. That silently breaks the one property a pre-registration
+    exists to have.
+
+    What is being re-pointed is only the pointer. The commitment is the
+    hypothesis and the file hashes, and this refuses to run unless every
+    one of those still matches byte for byte - so it can move the SHA to a
+    commit with identical content and cannot launder a changed input. The
+    old SHA is kept in superseded_shas.
+
+    ORDERING MATTERS: run this AFTER the bundle has landed on the branch you
+    want it to point at, not before. Adopting on a feature branch records
+    that branch's SHA, which the next squash orphans the same way - the fix
+    chases its own tail. The sequence is: merge, then adopt on the target
+    branch, then commit the re-pointed bundle. That last commit does not
+    itself need adopting, because the SHA it names is already permanent.
+    """
+    stored = _load(run)
+    if stored is None:
+        return 2
+    now = collect()
+    changed, missing, added, drift = _diff(stored, now)
+    if changed or missing or added or drift:
+        print("refusing: the tree does not match the fingerprint, so this would be rewriting "
+              "history rather than re-pointing it. Run --check.", file=sys.stderr)
+        return 1
+    if now["git"]["dirty"]:
+        print("refusing: working tree is dirty; the adopted SHA would not describe it.", file=sys.stderr)
+        return 1
+    old = stored["git"]["sha"]
+    if old == now["git"]["sha"]:
+        print(f"already at {old[:12]} - nothing to adopt")
+        return 0
+
+    stored.setdefault("superseded_shas", []).append(old)
+    stored["git"] = now["git"]
+    stored["sha_adopted_utc"] = now["created_utc"]
+    d = RUNS / run
+    (d / "data_fingerprint.json").write_text(json.dumps(stored, indent=2) + "\n")
+
+    spec = json.loads((d / "strategy_spec.json").read_text())
+    spec.setdefault("superseded_shas", []).append(spec.get("git_sha"))
+    spec["git_sha"] = now["git"]["sha"]
+    (d / "strategy_spec.json").write_text(json.dumps(spec, indent=2) + "\n")
+    (d / "notes.md").write_text(_notes(spec, stored, json.loads((d / "warnings.json").read_text())))
+
+    print(f"adopted {now['git']['sha'][:12]} (was {old[:12]}, orphaned)")
+    print("inputs verified identical first - the commitment is unchanged")
+    return 0
+
+
+def check(run: str) -> int:
+    stored = _load(run)
+    if stored is None:
+        return 2
+    now = collect()
+    changed, missing, added, drift = _diff(stored, now)
 
     print(f"run {run}, fingerprinted {stored['created_utc']} at git {stored['git']['sha'][:12]}")
     print(f"now git {now['git']['sha'][:12]}{' (dirty)' if now['git']['dirty'] else ''}")
@@ -268,12 +346,6 @@ def check(run: str) -> int:
 
     # Effective config is reported separately: a bot/*.py change and a config
     # value change are very different kinds of mid-run event.
-    drift = []
-    for account, cfg in stored["effective_config"].items():
-        cur = now["effective_config"].get(account, {})
-        for key in sorted(set(cfg) | set(cur)):
-            if cfg.get(key) != cur.get(key):
-                drift.append((account, key, cfg.get(key, "<absent>"), cur.get(key, "<absent>")))
     if drift:
         print(f"\n{len(drift)} effective config value(s) moved since the fingerprint:")
         for account, key, was, now_val in drift:
@@ -281,7 +353,7 @@ def check(run: str) -> int:
     else:
         print("\nno effective config values moved")
 
-    if changed or missing or drift:
+    if changed or missing or added or drift:
         print("\nThe run did not start from what it is running on. Say so in the write-up.", file=sys.stderr)
         return 1
     print("\nclean - inputs match the pre-registration")
@@ -292,6 +364,9 @@ def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run", required=True, help="run name, e.g. baseline-2026-09-08")
     ap.add_argument("--check", action="store_true", help="re-hash and report drift; exits 1 on any change")
+    ap.add_argument("--adopt-sha", action="store_true",
+                    help="re-point the bundle at HEAD after a squash-merge orphaned its SHA; "
+                         "refuses unless every fingerprinted input is byte-identical")
     ap.add_argument("--question", default="", help="what the run is meant to answer")
     ap.add_argument("--hypothesis", default="", help="what we expect, written before the result exists")
     ap.add_argument("--accounts", default="official,test,mixed")
@@ -299,6 +374,8 @@ def main() -> int:
 
     if args.check:
         return check(args.run)
+    if args.adopt_sha:
+        return adopt_sha(args.run)
     if not args.question or not args.hypothesis:
         ap.error("--question and --hypothesis are required when creating a bundle; "
                  "a pre-registration with nothing registered is decoration")
