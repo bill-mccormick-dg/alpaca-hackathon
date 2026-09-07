@@ -237,12 +237,15 @@ decision; then answer with the JSON array. Tools never place orders.
 
 def build_prompt(
     snapshot: dict, config: dict, today: date | None = None, tools: bool = False, learning: str = "",
-    positions_block: str = "",
+    positions_block: str = "", options: dict | None = None,
 ) -> str:
+    """`options` is the already-summarized menu, when the caller has one.
+    decide() passes the dict it is going to journal so the record is the
+    menu the model actually saw, not an equal-looking recomputation."""
     today = today or datetime.now(EASTERN).date()
     payload = {
         "account": snapshot.get("account"),
-        "options": _summarize_options(snapshot, config, today),
+        "options": _summarize_options(snapshot, config, today) if options is None else options,
     }
     tools_note = TOOLS_NOTE.format(n=int(config.get("research_max_tool_calls", 6))) if tools else ""
     return PROMPT_TEMPLATE.format(
@@ -342,6 +345,11 @@ class Decision:
     finish_reason: str | None = None
     reasoning: str = ""  # thinking models return this separately from content; kept for the audit trail
     tool_calls: list = field(default_factory=list)  # research calls made before answering (#43)
+    # The candidate menu this decision was shown, per underlying: strikes with
+    # IV and Greeks. Carried out so run_cycle can journal it (bot/journal.py
+    # ::log_menu) - the IV was computed for the prompt and used to be thrown
+    # away, which left no way to test a volatility signal against past cycles.
+    menu: dict = field(default_factory=dict)
     extra: dict = field(default_factory=dict)
 
 
@@ -459,7 +467,12 @@ async def decide(
     carries usage, latency and the tool calls made so the journal can
     attribute cost, speed and evidence to the model/config that produced it."""
     use_tools = _research_enabled(config, mcp)
-    prompt = build_prompt(snapshot, config, today, tools=use_tools, learning=learning, positions_block=positions_block)
+    # Resolved here, not twice: build_prompt would default it again, and a
+    # menu summarized against a different date is a different menu.
+    today = today or datetime.now(EASTERN).date()
+    menu = _summarize_options(snapshot, config, today)
+    prompt = build_prompt(snapshot, config, today, tools=use_tools, learning=learning,
+                          positions_block=positions_block, options=menu)
     started = time.monotonic()
     tool_calls: list[dict] = []
     if use_tools:
@@ -500,4 +513,5 @@ async def decide(
         finish_reason=finish,
         reasoning=reasoning[:REASONING_KEEP_CHARS],
         tool_calls=tool_calls,
+        menu=menu,
     )

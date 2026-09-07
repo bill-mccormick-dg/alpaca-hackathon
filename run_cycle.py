@@ -404,6 +404,13 @@ async def run(args: argparse.Namespace) -> int:
         exit_claims = citations.audit_exit_claims(proposals, dtes, spot_ref, config)
         if exit_claims:
             print(f"WARNING: {citations.describe_exit_claims(exit_claims)}", file=sys.stderr)
+        # The candidate menu, to its own file (bot/journal.py::log_menu explains
+        # why not through journal.log). Observer only: it records what the model
+        # was shown and gates nothing, so it is safe to land mid-baseline. The
+        # per-contract IV in it is the reason - it was computed for the prompt
+        # and discarded, leaving no way to ask later whether a volatility
+        # signal would have helped.
+        journal.log_menu(args.account, decision.menu, model=decision.model, dry_run=args.dry_run)
         journal.log(
             "decision",
             raw=raw,

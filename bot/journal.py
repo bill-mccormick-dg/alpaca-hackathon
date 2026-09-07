@@ -51,6 +51,69 @@ def log(event: str, journal: Path | None = None, **fields) -> dict:
     return record
 
 
+def menu_file(account: str | None, day: str | None = None) -> Path:
+    """logs/menu-<account>-<YYYY-MM-DD>.jsonl. One file per account per day,
+    unlike the journal, because this stream is two orders of magnitude
+    larger per cycle and wants pruning and shipping a day at a time."""
+    day = day or datetime.now(EASTERN).date().isoformat()
+    return LOGS_DIR / f"menu-{account or 'official'}-{day}.jsonl"
+
+
+def log_menu(account: str | None, menu: dict, path: Path | None = None, **fields) -> Path | None:
+    """Append the candidate menu the model was shown this cycle.
+
+    Deliberately NOT through log(): that is the "something happened"
+    chokepoint, and two things make this stream a bad fit for it. It is
+    ~12 KB a cycle against the journal's few hundred bytes, and everything
+    log() writes is also republished to the MQTT feed (bot/mqtt.py::on_event
+    calls _publish_feed() ahead of its allow-list), so routing the menu
+    through it would push a 60-contract blob at Home Assistant every ten
+    minutes. It would also slow every read_events("all") caller - the
+    learning and holdings blocks parse the whole journal each cycle.
+
+    This records only what was already computed for the prompt (#160 gives
+    us Alpaca's IV and Greeks per contract, Black-Scholes for the rest).
+    Nothing reads it back yet; it exists so that a volatility signal can be
+    evaluated against the baseline period afterwards instead of needing its
+    own months of data. Failure is swallowed - a measurement that cannot be
+    written must never cost a cycle.
+    """
+    if not menu:
+        return None
+    try:
+        path = path or menu_file(account)
+        path.parent.mkdir(exist_ok=True)
+        record = {
+            "ts": datetime.now(EASTERN).isoformat(timespec="seconds"),
+            "account": account or "official",
+            "underlyings": menu,
+            **fields,
+        }
+        with path.open("a") as f:
+            f.write(json.dumps(record, default=str) + "\n")
+        return path
+    except Exception:  # noqa: BLE001 - observer only; never break a cycle over it
+        return None
+
+
+def read_menus(account: str | None, day: str | None = None, path: Path | None = None) -> list[dict]:
+    """The menu records for one day, for analysis. Malformed lines skipped,
+    same as read_events - a half-written line must not take a study down."""
+    path = path or menu_file(account, day)
+    if not path.exists():
+        return []
+    out = []
+    for line in path.read_text().splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            out.append(json.loads(line))
+        except json.JSONDecodeError:
+            continue
+    return out
+
+
 def read_events(
     day: str | None = None, events: tuple[str, ...] | None = None, journal: Path | None = None
 ) -> list[dict]:

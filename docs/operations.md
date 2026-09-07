@@ -291,6 +291,29 @@ survives redeploys.
 The file names differ by account: `journal.jsonl` is the **official** account,
 `journal-test.jsonl` and `journal-mixed.jsonl` the other two.
 
+### The candidate menu (`logs/menu-<account>-<date>.jsonl`)
+
+Since 2026-09-07, every cycle also appends the **candidate menu the model was
+shown** - each contract with its bid/ask, spread, implied volatility and
+Greeks - to a separate file per account per day. `bot/decide.py` had always
+computed those numbers for the prompt and then discarded them; the `decision`
+event stored the answer and none of the inputs, so "would a volatility signal
+have helped?" was unanswerable after the fact.
+
+It is an **observer**: it records, gates nothing, and changes no decision.
+Deliberately not written through `journal.log()`, for two reasons - a record
+is ~16 KB against the journal's few hundred bytes, and everything `log()`
+writes is republished to the MQTT feed ahead of its allow-list
+(`bot/mqtt.py::on_event`), which would push a 60-contract blob at Home
+Assistant every ten minutes. Keeping it out also keeps `read_events("all")`
+fast; the learning and holdings blocks parse the whole journal each cycle.
+
+Volume is about **570 KB per account per day**, ~1.7 MB/day across the three,
+so roughly 100 MB over a 60-session period. Daily files make pruning a
+one-liner. Read them with `bot/journal.py::read_menus(account, day)`. A write
+failure is swallowed - a measurement must never cost a cycle - and `dry_run`
+is recorded on each row so a study can drop rehearsal cycles.
+
 Did the model get a second opinion on the last cycle, and if not, why not:
 
 ```sh
