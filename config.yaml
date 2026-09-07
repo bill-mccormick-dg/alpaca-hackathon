@@ -244,6 +244,24 @@ model_prices:
 # what was paid". Long premium's worst case is the premium, so the stop is
 # about not sitting in a dead trade, the take-profit about banking gains
 # that theta will otherwise erode.
+# Accounts that may not open NEW positions, whatever config they load. Exits,
+# the expiring-only flatten and the EOD review all still run - parking is about
+# not taking new risk, not about going inert, and a parked account still needs
+# expiry_close_dte to keep a contract out of expiration.
+#
+# 2026-09-07: the three that ran the competition are parked for the duration of
+# judging. submission/METADATA.md tells judges to pull PA3VS39Y5LE2 and see
+# $105,095.51; new positions move that number. The post-competition baseline
+# runs on base_a/base_b/base_mixed instead - see docs/baseline.md.
+#
+# This is the belt to Ansible's braces: homenetwork's
+# alpaca_hackathon_judged_accounts_enabled drops their cron lines, and this
+# refuses the cycle even if a line survives. Empty the list to bring them back.
+parked_accounts:
+  - official
+  - test
+  - mixed
+
 stop_loss_pct: 40
 take_profit_pct: 60
 # Churn guard (#132): a model-proposed sell of a position opened under
