@@ -46,23 +46,20 @@ services:
   # (logs/journal-<name>.jsonl).
   # farm.py does what cron does on CT 108: a cycle every 10 min in market
   # hours, expiring-only flatten at 15:50 ET, eod_review at 16:05 ET.
-  #   docker compose --profile farm up -d            # all variants
-  #   docker compose --profile farm up bot-kimi26    # one, in the foreground
-  #   docker compose run --rm bot farm.py --account kimi26 --config config-variants/kimi26.yaml --once
-  # Add a variant: copy this block, a config-variants/<name>.yaml, and an
-  # accounts.<name> block in secrets.yaml.
-  bot-kimi26:
-    image: alpaca-hackathon:latest
-    build: .
-    environment:
-      TZ: ${TZ:-America/Chicago}
-    command: ["farm.py", "--account", "kimi26", "--config", "config-variants/kimi26.yaml"]
-    volumes:
-      - ./logs:/app/logs
-      - ./config-variants:/app/config-variants:ro
-      - ./secrets.yaml:/app/secrets.yaml:ro
-    restart: unless-stopped
-    profiles: ["farm"]
+  #   docker compose --profile farm up -d           # all variants
+  #   docker compose --profile farm up bot-mixed    # one, in the foreground
+  #   docker compose run --rm bot farm.py --account mixed --config config-variants/mixed.yaml --once
+  # Add a variant: copy the bot-mixed block below, a config-variants/<name>.yaml,
+  # and an accounts.<name> block in secrets.yaml.
+  #
+  # Note the farm's LOOP mode places real orders on the variant's paper
+  # account - only `--once` implies --dry-run. A variant nobody is running
+  # should not have a service block here at all.
+  #
+  # bot-kimi26 was removed 2026-09-07 along with config-variants/kimi26.yaml:
+  # the K3 challenger it existed for finished the event at -7.04%, tripped the
+  # 2% daily cutoff on Sep 3 and was dropped from the lineup in #260. Git
+  # history has both.
 
   # Instrument-choice variant (config-variants/mixed.yaml): identical to the
   # official config except that stock and options are peers chosen per idea,

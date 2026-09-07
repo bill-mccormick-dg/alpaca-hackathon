@@ -498,11 +498,18 @@ Current variants:
 
 | Variant | Changes vs `config.yaml` | Question it answers |
 |---|---|---|
-| `kimi26` | newer model, research tools + learning, no Kalshi prior | is the newer model worth it? |
 | `mixed` | **only** `strategy_notes` — stock and options as peers rather than options-first | which instrument should the agent reach for? |
 
 `mixed` is deliberately a single-variable change: same model, same caps, same
 research settings. Anything else differing from `config.yaml` is a bug.
+
+`kimi26` was retired on 2026-09-07. Its model lost the event (-7.04%, tripped
+the 2% daily cutoff on Sep 3) and was dropped from the lineup in #260, which
+left a config file and a compose service for an experiment that had finished.
+Worth naming what kept it harmless meanwhile: there was no `accounts.kimi26`
+block, so it could not authenticate. That is an accident of configuration, not
+a guard - and in the farm's loop mode there is no `--dry-run`. A variant
+nobody is running should not have a service block.
 
 
 The bot is stateless per cycle, so scaling *experiments* is trivial: one
@@ -515,8 +522,8 @@ in market hours, the expiring-only flatten at 15:50 ET, `eod_review` at
 
 ```
 docker compose --profile farm up -d                                   # all variants, detached
-docker compose --profile farm up bot-kimi26                           # one, foreground
-docker compose run --rm bot farm.py --account kimi26 --config config-variants/kimi26.yaml --once   # smoke test (dry-run)
+docker compose --profile farm up bot-mixed                            # one, foreground
+docker compose run --rm bot farm.py --account mixed --config config-variants/mixed.yaml --once   # smoke test (dry-run)
 ```
 
 Add a variant: a `config-variants/<name>.yaml` (copy an existing one),

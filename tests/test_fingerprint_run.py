@@ -65,8 +65,10 @@ class Warnings(unittest.TestCase):
         self.assertIn("take_profit_pct", w[0]["detail"])
 
     def test_a_key_present_on_only_one_side_breaks_the_pair(self):
-        """The kimi26 failure in miniature: an absent key is not a neutral
-        key, it is whatever bot/risk.py's config.get() default happens to be."""
+        """An absent key is not a neutral key: bot/risk.py reads several
+        through config.get(key, DEFAULT), so a config that omits one runs the
+        code default silently. A retired variant shipped a 30-minute exit
+        leash that way (#269) while every live account ran 0."""
         fp = _fp()
         del fp["effective_config"]["test"]["take_profit_pct"]
         self.assertIn("replicate_pair_broken", _names(fp))

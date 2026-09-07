@@ -47,8 +47,8 @@ sys.path.insert(0, str(REPO))
 RUNS = REPO / "runs"
 
 # The three accounts cron actually runs (scripts/verify_models.py::CONFIGS
-# is the same list). config-variants/kimi26.yaml is a docker farm variant,
-# not a scheduled account, so it is fingerprinted but not compared.
+# is the same list). Anything else under config-variants/ is a local farm
+# variant, not a scheduled account: fingerprinted, but not compared.
 LIVE_CONFIGS = {
     "official": "config.yaml",
     "test": "config-test.yaml",
