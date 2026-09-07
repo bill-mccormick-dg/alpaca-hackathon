@@ -10,7 +10,7 @@ is over; this is the run that establishes what the current system does when
 nobody is steering it, so the backlog can be implemented against a number
 instead of an argument.
 
-Read this before changing anything on a live account between Sep 8 and the end
+Read this before changing anything on a live account between Sep 9 and the end
 of the run. The rule that matters is in [What may ship during the
 run](#what-may-ship-during-the-run), and it has exactly one line: **if it
 changes what the bot would trade, it waits.**
@@ -40,8 +40,40 @@ So: a reference period first, then changes against it.
 | `base_mixed` | `config-variants/mixed.yaml` | single-variable arm (prose only) |
 
 All three are **new paper accounts opened with identical starting equity**.
-The judged three - `official`, `test`, `mixed` - are parked in cron for the
-duration of judging and do not trade.
+The judged three - `official`, `test`, `mixed` - are parked for the duration of
+judging and do not open new positions.
+
+### How the judged three are parked
+
+Two independent mechanisms, deliberately:
+
+| | Where | Effect |
+|---|---|---|
+| `alpaca_hackathon_judged_accounts_enabled: false` | homenetwork Ansible role | cron never schedules them |
+| `parked_accounts: [official, test, mixed]` | all three config files | `run_cycle` refuses even if a cron line survives |
+
+The second exists because the first only takes effect when someone runs the
+playbook, and the change was needed the same evening. It is also the more
+durable of the two: it is in git, reviewed and tested, rather than in the state
+of one host.
+
+**Parking stops new entries, not exits.** The gate sits after the exit block
+and before the model call, and `tests/test_parked_accounts.py` asserts that
+placement rather than trusting the comment. A park that skipped exits too would
+leave a contract to run into expiration with `expiry_close_dte` unable to fire,
+and an assignment moves the judged equity far more than trading would. Parking
+means *take no new risk*, not *go inert*. Running before `decide()` also saves
+the model call.
+
+It is keyed on the **account name**, not on config, because `base_a`/`base_b`
+share `config.yaml` with `official` and `base_mixed` shares
+`config-variants/mixed.yaml` with `mixed`. A config-level switch would park the
+new accounts along with the old ones. `parked_accounts` is in `TRACKED_KEYS`,
+so a flat day is attributable to the park in the cycle's own `config` event
+rather than being misread as the strategy declining to trade.
+
+To bring them back after judging: empty `parked_accounts` **and** flip
+`alpaca_hackathon_judged_accounts_enabled`. Both, or they stay parked.
 
 ### Why new accounts rather than the judged ones
 
@@ -120,6 +152,7 @@ The test is not "is it safe" — it is **"would it change what the bot trades?"*
 | Guards, gates, exit rules, sizing | | ❌ items 2, 3, 4, 15 |
 | Config values on any live account | | ❌ ends the replicate pair |
 | Prompt / `strategy_notes` | | ❌ the prompt *is* the strategy here |
+| `parked_accounts` | ✅ for a judged account | ❌ never add a baseline account mid-run |
 
 Item **1** (fail-closed calibration manifest) is on the left-hand side, and it
 is the only top-ten item that is: it changes no trading behaviour, so it cannot
@@ -130,6 +163,25 @@ it was meant to protect.
 
 Note that a deploy is still gated by the freeze (Mon–Fri 08:20–15:15 CT,
 [market holidays excepted](operations#deploy)).
+
+## Before the first cycle on Wednesday
+
+In order. Nothing below can be done afterwards and still mean anything.
+
+| | Done by | State |
+|---|---|---|
+| Three paper accounts, **identical starting equity** | operator | ⬜ |
+| Six vault variables (`vault_alpaca_hackathon_{base_a,base_b,base_mixed}_{api,secret}_key`) | operator | ⬜ |
+| `ansible-playbook site.yml -e @vault.yml --limit <ct108> --tags alpaca-hackathon` | operator | ⬜ |
+| Confirm `/etc/cron.d/alpaca-hackathon` shows three `run_cycle` lines and no `--account official` | operator | ⬜ |
+| Register `runs/baseline-2026-09-09/` with the real opening equity | either | ⬜ |
+| Judged three cannot open new positions | — | ✅ `parked_accounts`, deployed 2026-09-07 |
+| Candidate menu journaled | — | ✅ deployed 2026-09-07 |
+| Holiday-aware deploy freeze | — | ✅ deployed 2026-09-07 |
+
+The identical-equity item is the one with no recovery path. Everything else can
+be fixed on Thursday; a lineup that started from three different balances
+cannot, because the whole run is then measuring its own setup.
 
 ## Pre-registration
 
@@ -217,8 +269,12 @@ Cheap now, expensive to reconstruct later.
   answer "did we rest a limit or pay the touch?" — reconstructing the judged
   week meant re-parsing `decision.raw` and pairing proposals to submissions by
   symbol and side. Four fields on one dict.
-- **The candidate menu** — see the volatility section below.
-- **Daily equity per account**, which `equity.jsonl` already gives us.
+- **The candidate menu** — ✅ **done**, shipping since 2026-09-07. See the
+  volatility section below.
+- **Daily equity per account**, which `equity.jsonl` already gives us. Record
+  the three opening balances in the pre-registration too: with absolute
+  position caps, the starting equity *is* the leverage, and the old bundle's
+  silence on it is what let a 13% artefact through.
 
 ## Volatility: the one capability gap, and what it needs from this run
 
