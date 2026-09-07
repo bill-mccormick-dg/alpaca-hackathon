@@ -20,6 +20,7 @@ from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from bot import decide, journal
+from tests.test_decide import FakeFeatherlessClient
 from tests.test_decide import _config as _decide_config
 
 TODAY = date(2026, 9, 8)
@@ -126,6 +127,32 @@ class MenuIsWhatThePromptSaw(unittest.TestCase):
         self.assertTrue(contracts, "fixture produced no menu")
         self.assertEqual(contracts[0]["iv"], 0.1834)
         self.assertEqual(contracts[0]["greeks_source"], "alpaca")
+
+
+class DecideCarriesTheMenuOut(unittest.IsolatedAsyncioTestCase):
+    """The unit tests above exercise the pieces; this one walks the real path,
+    because Decision.menu being populated is the whole point and a wiring
+    mistake there would leave every file empty while every other test passed."""
+
+    async def test_decision_menu_is_populated_and_matches_the_prompt(self):
+        client = FakeFeatherlessClient("[]")
+        decision = await decide.decide(_snapshot(), _config(), client, today=TODAY)
+        self.assertTrue(decision.menu, "decide() returned an empty menu")
+        self.assertEqual(decision.menu, decide._summarize_options(_snapshot(), _config(), TODAY))
+        prompt = client.calls[0][0][0]["content"]
+        for block in decision.menu.values():
+            for contract in block["contracts"]:
+                self.assertIn(contract["symbol"], prompt)
+
+    async def test_the_journaled_record_is_that_menu(self):
+        client = FakeFeatherlessClient("[]")
+        decision = await decide.decide(_snapshot(), _config(), client, today=TODAY)
+        with TemporaryDirectory() as tmp:
+            path = Path(tmp) / "menu.jsonl"
+            journal.log_menu("official", decision.menu, path=path, model=decision.model, dry_run=False)
+            rows = journal.read_menus("official", path=path)
+        self.assertEqual(rows[0]["underlyings"], decision.menu)
+        self.assertEqual(rows[0]["dry_run"], False)
 
 
 class StaysOutOfTheHotPaths(unittest.TestCase):
