@@ -1,8 +1,8 @@
 {
   "created_utc": "2026-09-07T20:44:00+00:00",
   "git": {
-    "sha": "15fb32b27f500b4b0bcf37dd662c364708abcc9a",
-    "subject": "feat: pre-register a run - fingerprint its inputs, state the hypothesis first",
+    "sha": "9c308c3c95280cf3cd10a77eb4c7e2927e752838",
+    "subject": "fix: a squash-merge orphans the SHA a pre-registration recorded (#272)",
     "dirty": false
   },
   "files": {
@@ -420,5 +420,9 @@
       "strategy_notes_sha256": "bf9a235c8457a3fd",
       "instrument_note_sha256": "bff6df1b76781f51"
     }
-  }
+  },
+  "superseded_shas": [
+    "15fb32b27f500b4b0bcf37dd662c364708abcc9a"
+  ],
+  "sha_adopted_utc": "2026-09-07T20:51:44+00:00"
 }
