@@ -1,25 +1,35 @@
-# baseline-2026-09-09 — NOT YET REGISTERED
+# baseline-2026-09-09
 
-This bundle is **empty on purpose**. Do not read the absence of
-`strategy_spec.json` as a run that was never pre-registered — read it as one
-that has not started.
+Written **2026-09-09T00:34:34+00:00**, before the run produced anything.
+Commitment: *rules fixed before results*.
 
-The 2026-09-07 registration is **void** - see `runs/baseline-2026-09-08/VOID.md`,
-which is kept on disk rather than deleted. It fingerprinted
-`official`, `test` and `mixed`, and the baseline will not run on those
-accounts. Its hypothesis was also wrong: it claimed the pair would "differ
-only by noise" while the two accounts held $105,095.51 and $92,938.91 against
-fixed-dollar position caps, which is a systematic 13% leverage difference, not
-noise.
+## The question
 
-Register this run once the three new accounts exist and their starting equity
-is known:
+What does the current system do over a sustained period with nothing changed underneath it, and how much of any difference between two identically-configured accounts is just noise?
+
+## The hypothesis, stated in advance
+
+base_a and base_b start from identical equity ($100,000.00 each, verified against Alpaca on 2026-09-08) and load the same config file, so they will differ only by noise - and that difference IS the noise floor every later A/B must clear. base_mixed will not separate from the pair by more than that noise. We do not expect the fleet to beat the judged week's +5.10%, and we are not trying to. Compare the pair on dollar P&L and decision agreement, not percentage alone.
+
+## What it started from
+
+- git `7ad44f630353` — feat: pre-registration records opening equity, and warns when it cannot (#279)
+- accounts: base_a, base_b, base_mixed
+- opening equity: base_a $100,000.00, base_b $100,000.00, base_mixed $100,000.00
+- 37 input files fingerprinted (sha256 in `data_fingerprint.json`)
+
+Re-check at any time, and before analysing anything:
 
 ```sh
-python scripts/fingerprint_run.py --run baseline-2026-09-09 \
-    --accounts base_a,base_b,base_mixed \
-    --question "..." --hypothesis "..."
+python scripts/fingerprint_run.py --run baseline-2026-09-09 --check
 ```
 
-Do it BEFORE the first cycle on Wednesday. After that the timestamp proves
-nothing, which is the only thing the bundle is for.
+## Warnings at creation
+
+None. Every input was committed and the accounts were configured as intended.
+
+---
+
+If the result contradicts the hypothesis above, that is the finding, and it gets
+published as it stands. Deciding what we expected after seeing the number is the
+failure this file exists to prevent.

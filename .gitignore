@@ -35,3 +35,7 @@ submission/rival-urls.txt
 submission/rival-survey.md
 submission/rival-report.html
 submission/rival-report.pdf
+
+# Alpaca API keys for the baseline accounts, handed over out of band and
+# copied into the Ansible vault. Never belongs in git.
+base-line-test
