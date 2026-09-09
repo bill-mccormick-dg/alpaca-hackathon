@@ -126,7 +126,7 @@ def collect() -> dict:
     }
 
 
-def warnings(fp: dict) -> list[dict]:
+def warnings(fp: dict, opening_equity: dict | None = None) -> list[dict]:
     """Things already true that would weaken the run. Recorded rather than
     fixed: a pre-registration that quietly cleans up its own inputs is not
     recording the run that happened."""
@@ -160,6 +160,32 @@ def warnings(fp: dict) -> list[dict]:
             "detail": f"{VARIANT} differs from {PAIR[0]} in non-prose value(s): {numeric}",
         })
 
+    # Equal config is not a replicate when sizing is absolute. This is the
+    # check whose absence let a 13% leverage difference through on 2026-09-07,
+    # so its silence is itself worth a warning.
+    if not opening_equity:
+        out.append({
+            "warning": "opening_equity_not_recorded",
+            "detail": "no --opening-equity given, so nothing here can tell whether the accounts "
+                      "started from the same balance - and with absolute position caps that "
+                      "difference IS a leverage difference",
+        })
+    else:
+        pair_eq = [opening_equity.get(a) for a in PAIR]
+        if any(v is None for v in pair_eq):
+            out.append({
+                "warning": "opening_equity_incomplete",
+                "detail": f"opening equity missing for one of {PAIR}: {opening_equity}",
+            })
+        elif len(set(pair_eq)) > 1:
+            lo, hi = min(pair_eq), max(pair_eq)
+            out.append({
+                "warning": "unequal_opening_equity",
+                "detail": f"{PAIR[0]} and {PAIR[1]} start from {pair_eq[0]:,.2f} and {pair_eq[1]:,.2f} "
+                          f"- a {(hi / lo - 1) * 100:.1f}% leverage difference against absolute "
+                          "position caps, which is not noise",
+            })
+
     # A wind-down date already in the past means that account cannot open a
     # position at all (run_cycle.py: "final day - no new entries").
     today = date.today().isoformat()  # noqa: DTZ011 - a calendar date, compared to a config string
@@ -173,11 +199,23 @@ def warnings(fp: dict) -> list[dict]:
     return out
 
 
-def create(run: str, question: str, hypothesis: str, accounts: str) -> Path:
+def parse_equity(spec: str) -> dict:
+    """`base_a=100000,base_b=100000` -> {"base_a": 100000.0, ...}."""
+    out = {}
+    for part in (spec or "").split(","):
+        part = part.strip()
+        if not part:
+            continue
+        name, _, value = part.partition("=")
+        out[name.strip()] = float(value)
+    return out
+
+
+def create(run: str, question: str, hypothesis: str, accounts: str, opening_equity: dict | None = None) -> Path:
     out = RUNS / run
     out.mkdir(parents=True, exist_ok=True)
     fp = collect()
-    warns = warnings(fp)
+    warns = warnings(fp, opening_equity)
 
     spec = {
         "run": run,
@@ -186,6 +224,13 @@ def create(run: str, question: str, hypothesis: str, accounts: str) -> Path:
         "accounts": accounts.split(","),
         # The line that makes this a pre-registration rather than a summary.
         "commitment": "rules fixed before results",
+        # Recorded because with ABSOLUTE position caps the starting equity IS
+        # the leverage: two accounts on identical config but different equity
+        # take systematically different percentage risk on the same trade.
+        # The 2026-09-07 bundle omitted this and reported no warnings while
+        # its pair was 13% apart - a clean bill of health for a property it
+        # had never looked at.
+        "opening_equity": opening_equity or {},
         "created_utc": fp["created_utc"],
         "git_sha": fp["git"]["sha"],
     }
@@ -217,6 +262,8 @@ def _notes(spec: dict, fp: dict, warns: list[dict]) -> str:
         + (f" (re-pointed from {', '.join(s[:12] for s in fp['superseded_shas'])}, orphaned by a squash-merge;"
            " every input was verified byte-identical first)" if fp.get("superseded_shas") else ""),
         f"- accounts: {', '.join(spec['accounts'])}",
+        *(["- opening equity: " + ", ".join(f"{k} ${v:,.2f}" for k, v in spec["opening_equity"].items())]
+          if spec.get("opening_equity") else []),
         f"- {len(fp['files'])} input files fingerprinted (sha256 in `data_fingerprint.json`)",
         "",
         "Re-check at any time, and before analysing anything:",
@@ -373,7 +420,12 @@ def main() -> int:
                          "refuses unless every fingerprinted input is byte-identical")
     ap.add_argument("--question", default="", help="what the run is meant to answer")
     ap.add_argument("--hypothesis", default="", help="what we expect, written before the result exists")
-    ap.add_argument("--accounts", default="official,test,mixed")
+    ap.add_argument("--accounts", default="base_a,base_b,base_mixed")
+    ap.add_argument("--opening-equity", default="",
+                    help="name=amount pairs, e.g. base_a=100000,base_b=100000,base_mixed=100000. "
+                         "Recorded in strategy_spec.json; absent, or unequal across the pair, "
+                         "raises a warning - with absolute position caps the starting equity IS "
+                         "the leverage")
     args = ap.parse_args()
 
     if args.check:
@@ -383,7 +435,8 @@ def main() -> int:
     if not args.question or not args.hypothesis:
         ap.error("--question and --hypothesis are required when creating a bundle; "
                  "a pre-registration with nothing registered is decoration")
-    out = create(args.run, args.question, args.hypothesis, args.accounts)
+    out = create(args.run, args.question, args.hypothesis, args.accounts,
+                 parse_equity(args.opening_equity))
     warns = json.loads((out / "warnings.json").read_text())
     print(f"wrote {_rel(out)}/ - {len(json.loads((out / 'data_fingerprint.json').read_text())['files'])} files fingerprinted")
     for w in warns:
