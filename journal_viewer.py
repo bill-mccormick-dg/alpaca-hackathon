@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 """Read-only web view of the journal stream — the terminal watcher, in a browser.
 
-One page, three journals, live. Serves the raw records over SSE as they are
-appended and lets the page render them: per-account colour, one line per
-event, filters, and replay of any prior day via bot/journal.py's own reader.
+One page, every journal in the directory, live. Serves the raw records over
+SSE as they are appended and lets the page render them: per-account colour,
+one line per event, filters, and replay of any prior day via bot/journal.py's
+own reader. The account list is the feed's, at both ends: journal_files()
+globs per call and the page builds its filter from what arrives, so a new
+account needs no change here to be seen.
 Exists because "is it working, and what is it doing?" (bot/report.py) needs
 an answer that is a link, not host access - the HA card (issue #134) shows
 the recent tail; this shows everything, with scrollback.
@@ -223,15 +226,15 @@ PAGE = r"""<!doctype html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Autobelay — journal</title>
 <style>
-  :root { --bg:#0f1720; --fg:#e6edf3; --dim:#8b98a5; --official:#d48ae0; --test:#6fd3d3; --mixed:#7fa7e8; }
+  :root { --bg:#0f1720; --fg:#e6edf3; --dim:#8b98a5; }
   body { background:var(--bg); color:var(--fg); font:13px/1.45 ui-monospace,SFMono-Regular,Menlo,monospace; margin:0; }
   header { position:sticky; top:0; background:#131e2a; padding:8px 14px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; border-bottom:1px solid #22303e; }
   header b { font-size:14px; }
   label { color:var(--dim); user-select:none; }
+  #accts { display:contents; }
   #feed { padding:10px 14px 40px; }
   .row { white-space:pre-wrap; word-break:break-word; }
   .ts { color:var(--dim); }
-  .acct-official { color:var(--official); } .acct-test { color:var(--test); } .acct-mixed { color:var(--mixed); }
   .ev-order_submitted { color:#69d58c; font-weight:600; }
   .ev-order_rejected, .ev-order_error, .ev-error, .ev-identity_refused { color:#e8b34b; }
   .ev-manual_halt, .ev-daily_loss_halt { color:#ef6a6a; font-weight:600; }
@@ -250,9 +253,7 @@ PAGE = r"""<!doctype html>
 <header>
   <b>Autobelay — journal</b>
   <span id="status" class="dim">connecting…</span>
-  <label><input type="checkbox" class="acct" value="official" checked> official</label>
-  <label><input type="checkbox" class="acct" value="test" checked> test</label>
-  <label><input type="checkbox" class="acct" value="mixed" checked> mixed</label>
+  <span id="accts"></span>
   <label><input type="checkbox" id="chatter"> tool/config chatter</label>
   <label>replay <input type="date" id="day"></label>
 </header>
@@ -262,12 +263,48 @@ PAGE = r"""<!doctype html>
 const feed = document.getElementById('feed'), status = document.getElementById('status');
 const jump = document.getElementById('jump'), jumpn = document.getElementById('jumpn');
 const NOISY = new Set(['tool_call','config']);
-// A cycle writes ~10 events and there are ~40 cycles a day across three
-// accounts, so an unbounded feed reaches five figures of DOM nodes by the
-// close and the tab crawls. Keep a window; the whole journal is always one
-// day-replay away.
+// A cycle writes ~10 events and there are ~40 cycles a day per account, so an
+// unbounded feed reaches five figures of DOM nodes by the close and the tab
+// crawls - and the lineup only grows. Keep a window; the whole journal is
+// always one day-replay away.
 const MAX_ROWS = 600;
 let lastDay = null, rows = [], unseen = 0;
+
+// The lineup is not a constant: the baseline run (#276) added three accounts
+// and a filter written as a literal list hid every one of them, with no
+// control on the page to bring them back (#281). Accounts come from the feed.
+// The original three keep their colours so a familiar page does not recolour
+// itself; anything new draws from the palette in first-sighting order.
+const ACCT_COLOURS = new Map([['official','#d48ae0'], ['test','#6fd3d3'], ['mixed','#7fa7e8']]);
+const PALETTE = ['#e8b34b','#69d58c','#e8836f','#b79ae8','#6fb3e8','#c9d36f'];
+const ACCT_W = 10;  // 'base_mixed'
+const acctBar = document.getElementById('accts');
+const acctBoxes = new Map();
+let paletteNext = 0;
+
+function colourFor(a){
+  if (!ACCT_COLOURS.has(a)) ACCT_COLOURS.set(a, PALETTE[paletteNext++ % PALETTE.length]);
+  return ACCT_COLOURS.get(a);
+}
+
+// Checked on arrival: an account nobody thought about must show up unbidden,
+// because the failure this replaces was silence. The map outlives feed clears
+// (reconnect, day replay), so an operator's unticks survive them.
+function seeAccount(a){
+  if (acctBoxes.has(a)) return;
+  const box = document.createElement('input');
+  box.type = 'checkbox'; box.className = 'acct'; box.value = a; box.checked = true;
+  box.addEventListener('change', ()=>applyFilters());
+  const label = document.createElement('label');
+  label.dataset.acct = a;
+  label.style.color = colourFor(a);
+  label.append(box, ' ' + a);
+  // Alphabetical, so the bar does not reshuffle by whichever account happens
+  // to journal first after a reload.
+  const after = [...acctBar.children].find(el => el.dataset.acct > a);
+  acctBar.insertBefore(label, after || null);
+  acctBoxes.set(a, box);
+}
 
 function fmt(ts){ try { return new Date(ts).toLocaleTimeString('en-US',{hour12:false}); } catch(e){ return '--:--:--'; } }
 function dayOf(ts){ try { return new Date(ts).toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric'}); } catch(e){ return ''; } }
@@ -275,7 +312,7 @@ function esc(s){ const d=document.createElement('span'); d.textContent=s==null?'
 
 function line(r){
   const e = r.event, a = r._account || '?';
-  const head = `<span class="ts">${fmt(r.ts)}</span> <span class="acct-${a}">${a.padEnd(8)}</span> `;
+  const head = `<span class="ts">${fmt(r.ts)}</span> <span style="color:${colourFor(a)}">${esc(a.padEnd(ACCT_W))}</span> `;
   let body;
   if (e === 'cycle_start') body = `▶ CYCLE  equity $${Number(r.equity).toLocaleString()}  day P&L ${Number(r.day_pnl).toFixed(2)}  positions ${r.positions}${r.dry_run?' [DRY RUN]':''}`;
   else if (e === 'config') body = `<span class="dim">  model ${esc(r.model)}  review ${esc(r.review_model)}  hash ${esc(r.config_hash)}</span>`;
@@ -309,7 +346,8 @@ function push(r, live){
   const d = dayOf(r.ts);
   if (d && d !== lastDay){ lastDay = d; const b=document.createElement('div'); b.className='banner'; b.textContent=`── ${d} ──`; feed.appendChild(b); }
   const el = document.createElement('div');
-  el.className = 'row'; el.dataset.account = r._account; el.dataset.event = r.event;
+  el.className = 'row'; el.dataset.account = r._account || '?'; el.dataset.event = r.event;
+  seeAccount(el.dataset.account);
   el.innerHTML = line(r);
   feed.appendChild(el); rows.push(el);
   applyFilters(el);
@@ -341,7 +379,7 @@ function applyFilters(only){
     el.hidden = !accts.has(el.dataset.account) || (!chatter && NOISY.has(el.dataset.event));
   }
 }
-document.querySelectorAll('.acct, #chatter').forEach(c=>c.addEventListener('change',()=>applyFilters()));
+document.getElementById('chatter').addEventListener('change', ()=>applyFilters());
 
 let es = null;
 function connectLive(){

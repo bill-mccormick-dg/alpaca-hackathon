@@ -188,6 +188,47 @@ class ReasonsAreNotTruncatedTest(unittest.TestCase):
         self.assertIn("white-space:pre-wrap", journal_viewer.PAGE)
 
 
+class AccountsComeFromTheFeedTest(unittest.TestCase):
+    """Issue #281: the account filter was three literal checkboxes, so the
+    baseline lineup traded all morning behind a page that hid it and offered
+    no way to unhide it. The lineup changes; the filter must be built from
+    whatever the feed carries. Asserted on the page source, like the other
+    renderer tests - the JavaScript never runs under Python."""
+
+    def test_no_account_is_named_in_the_page_markup(self):
+        """The specific regression: a literal <input value="official"> is the
+        shape that cannot see base_a. Any account name hardcoded into a filter
+        control means the next account added is invisible again."""
+        for name in ("official", "test", "mixed", "base_a", "base_b", "base_mixed"):
+            self.assertNotIn(
+                f'value="{name}"', journal_viewer.PAGE,
+                f"'{name}' is a literal filter checkbox; the filter must come from the feed",
+            )
+
+    def test_every_row_registers_its_account(self):
+        self.assertIn("function seeAccount(", journal_viewer.PAGE)
+        self.assertIn("seeAccount(el.dataset.account)", journal_viewer.PAGE)
+
+    def test_a_newly_seen_account_starts_visible(self):
+        """Silence was the failure being fixed, so an account nobody
+        anticipated has to arrive checked rather than waiting to be found."""
+        lines = journal_viewer.PAGE.splitlines()
+        start = next(i for i, x in enumerate(lines) if "function seeAccount(" in x)
+        body = "\n".join(lines[start:start + 16])
+        self.assertIn("box.checked = true", body)
+
+    def test_the_account_column_fits_the_longest_name(self):
+        """'base_mixed' is 10 characters; padding to 8 breaks the column."""
+        self.assertIn("const ACCT_W = 10", journal_viewer.PAGE)
+        self.assertNotIn("padEnd(8)", journal_viewer.PAGE)
+
+    def test_colours_are_kept_for_the_accounts_that_already_had_them(self):
+        """A page whose colours shuffle on every reload is worse than one
+        with too few of them."""
+        for name, colour in (("official", "#d48ae0"), ("test", "#6fd3d3"), ("mixed", "#7fa7e8")):
+            self.assertIn(f"['{name}','{colour}']", journal_viewer.PAGE)
+
+
 class PageJavaScriptParsesTest(unittest.TestCase):
     """The renderer is JavaScript inside a Python string, so Python's own
     syntax check never sees it and a stray brace ships a blank page to
