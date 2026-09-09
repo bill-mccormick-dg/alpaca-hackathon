@@ -229,6 +229,30 @@ class AccountsComeFromTheFeedTest(unittest.TestCase):
             self.assertIn(f"['{name}','{colour}']", journal_viewer.PAGE)
 
 
+class PriorsLineUpUnderTheRowTest(unittest.TestCase):
+    """A predictions event carries one prior per underlying and renders as one
+    row. The second underlying used to be joined with a zero-width indent
+    (`' '.repeat(0)`), so it started at column 0 with no timestamp or account
+    in front of it - which reads as a stray row once several accounts
+    interleave in the feed."""
+
+    def test_no_zero_width_indent_survives(self):
+        self.assertNotIn("' '.repeat(0)", journal_viewer.PAGE)
+
+    def test_the_indent_is_derived_from_the_account_column(self):
+        """Hardcoding the width in the CSS would silently un-align the priors
+        the next time the account column is widened."""
+        self.assertIn("const HEAD_W = 10 + ACCT_W", journal_viewer.PAGE)
+        self.assertIn("setProperty('--head-w', HEAD_W + 'ch')", journal_viewer.PAGE)
+        self.assertIn("padding-left:var(--head-w)", journal_viewer.PAGE)
+
+    def test_a_continuation_prior_is_a_block(self):
+        """A padded newline loses the alignment as soon as the line wraps;
+        .reason is a block for the same reason."""
+        self.assertIn(".cont { display:block;", journal_viewer.PAGE)
+        self.assertIn('<span class="cont">', journal_viewer.PAGE)
+
+
 class PageJavaScriptParsesTest(unittest.TestCase):
     """The renderer is JavaScript inside a Python string, so Python's own
     syntax check never sees it and a stray brace ships a blank page to

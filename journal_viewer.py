@@ -241,6 +241,7 @@ PAGE = r"""<!doctype html>
   .ev-decision { font-weight:600; }
   .dim { color:var(--dim); }
   .reason { color:var(--dim); padding-left:2.5em; display:block; }
+  .cont { display:block; padding-left:var(--head-w); }
   .banner { color:#e8b34b; font-weight:700; margin:10px 0; }
   input[type=date] { background:#1a2733; color:var(--fg); border:1px solid #2a3947; border-radius:4px; padding:2px 6px; }
   a { color:#6fb3e8; }
@@ -278,6 +279,8 @@ let lastDay = null, rows = [], unseen = 0;
 const ACCT_COLOURS = new Map([['official','#d48ae0'], ['test','#6fd3d3'], ['mixed','#7fa7e8']]);
 const PALETTE = ['#e8b34b','#69d58c','#e8836f','#b79ae8','#6fb3e8','#c9d36f'];
 const ACCT_W = 10;  // 'base_mixed'
+const HEAD_W = 10 + ACCT_W;  // 'HH:MM:SS' + ' ' + account column + ' '
+document.documentElement.style.setProperty('--head-w', HEAD_W + 'ch');
 const acctBar = document.getElementById('accts');
 const acctBoxes = new Map();
 let paletteNext = 0;
@@ -317,8 +320,13 @@ function line(r){
   if (e === 'cycle_start') body = `▶ CYCLE  equity $${Number(r.equity).toLocaleString()}  day P&L ${Number(r.day_pnl).toFixed(2)}  positions ${r.positions}${r.dry_run?' [DRY RUN]':''}`;
   else if (e === 'config') body = `<span class="dim">  model ${esc(r.model)}  review ${esc(r.review_model)}  hash ${esc(r.config_hash)}</span>`;
   else if (e === 'predictions') {
-    body = ['SPY','QQQ'].filter(s=>r[s]).map(s=>{ const p=r[s];
-      return `◈ PRIOR  ${s} ref ${p.reference_close}  median ${p.implied_median} (${p.implied_move_pct}%)  P(above) ${p.p_above_reference}  vol ${p.volume} → ${p.suppressed?('withheld: '+esc(p.suppressed)):'shown'}`; }).join('\n' + ' '.repeat(0));
+    const priors = ['SPY','QQQ'].filter(s=>r[s]).map(s=>{ const p=r[s];
+      return `◈ PRIOR  ${s} ref ${p.reference_close}  median ${p.implied_median} (${p.implied_move_pct}%)  P(above) ${p.p_above_reference}  vol ${p.volume} → ${p.suppressed?('withheld: '+esc(p.suppressed)):'shown'}`; });
+    // One event, one row, but one line per underlying: the first shares the
+    // row's head and every later one hangs under the body column. A block
+    // rather than a padded newline so a long prior stays lined up when it
+    // wraps - the same reason .reason is a block.
+    body = priors.slice(1).reduce((out, x) => out + `<span class="cont">${x}</span>`, priors[0] || '');
   }
   else if (e === 'tool_call') body = `<span class="dim">  · ${esc(r.tool)} ${esc(JSON.stringify(r.args||{}).slice(0,70))} → ${r.result_chars} chars</span>`;
   else if (e === 'decision') { body = `✱ MODEL  ${r.count} proposal(s)  <span class="dim">${esc(r.model)}  ${(r.usage||{}).total_tokens} tok  ${r.latency_sec}s</span>`;
