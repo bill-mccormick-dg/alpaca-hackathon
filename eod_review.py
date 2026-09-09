@@ -69,7 +69,16 @@ never on the figure the model quoted, and say so when a trade rested on an inven
 "fabricated_urgency" flag is an exit justified by a forced close or backstop that was days \
 away, and a "wrong_direction" flag claims the underlying was above/below its prior close when \
 the tape says the opposite - treat any flagged exit as unjustified unless the journalled \
-numbers independently support it.
+numbers independently support it. "stance_changes" counts entries that reversed this account's \
+own last direction on an underlying (a long call after a long put, or the reverse), with \
+"stance_change_pct" as the share of entries that could have reversed one; \
+"misaligned_actions" counts entries whose reason cited a P(above/below) pointing the OTHER way - \
+a real, correctly quoted figure read backwards, which the citation audit above scores as clean. \
+Both are rates over ~40 events a day, so unlike the day's P&L they carry a usable sample: one \
+session cannot tell two configs apart on equity, and you should not try. Do not recommend \
+lengthening holds or adding stop-loss/take-profit on the strength of losers being held for less \
+time than winners - a position that moves against you is exited quickly BECAUSE it is losing, \
+which is what correct risk management looks like from outside.
 
 Write plain text for the operator - no markdown headings, no JSON:
 1. 3-6 sentences on what actually happened and why, in plain language. Be specific: name the \

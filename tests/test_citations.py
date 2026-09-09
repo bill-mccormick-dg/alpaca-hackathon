@@ -222,3 +222,59 @@ class ExitClaimsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ActionAlignmentTest(unittest.TestCase):
+    """#284: not "was the figure real" but "did the trade go the way it points".
+
+    All three real hits on 2026-09-09 were base_a - the account that finished
+    BEST - which is the same lesson as everything else that day: the pathology
+    does not track the P&L, so it has to be counted directly.
+    """
+
+    def _p(self, symbol, reason, side="buy"):
+        return Proposal(instrument="option", symbol=symbol, side=side, qty=10, reason=reason)
+
+    def test_a_call_citing_a_bearish_p_above_is_flagged(self):
+        """The real 13:10 trade: "aligning with the Kalshi prior P(above prior
+        close) rising to 0.115" - a correctly quoted number giving an 88.5%
+        chance of closing BELOW. The model read the direction the probability
+        had MOVED as the direction it POINTED."""
+        flags = citations.audit_action_alignment([self._p(
+            "SPY260916C00765000",
+            "capture upside momentum, aligning with the Kalshi prior P(above prior close) rising to 0.115")])
+        self.assertEqual(len(flags), 1)
+        self.assertEqual(flags[0]["action"], "bullish")
+        self.assertEqual(flags[0]["points"], "bearish")
+        self.assertEqual(flags[0]["margin"], 0.385)
+
+    def test_a_put_citing_a_bearish_p_above_is_clean(self):
+        self.assertEqual(citations.audit_action_alignment([self._p(
+            "SPY260916P00760000", "Kalshi P(above prior close) at 0.269 supports a bearish thesis")]), [])
+
+    def test_even_money_points_nowhere(self):
+        """0.48 is not a bearish claim and must not be scored as one."""
+        self.assertEqual(citations.audit_action_alignment([self._p(
+            "QQQ260916C00720000", "Kalshi P(above) 0.48 supports a bullish thesis")]), [])
+
+    def test_a_tail_probability_is_never_graded(self):
+        """P(down>1%) at 0.25 is a statement about one tail, not a direction;
+        grading it would manufacture disagreements the model never made."""
+        self.assertEqual(citations.audit_action_alignment([self._p(
+            "QQQ260916C00720000", "Kalshi P(down>1%) at 0.253 and implied median support this call")]), [])
+
+    def test_p_below_is_read_as_the_complement(self):
+        flags = citations.audit_action_alignment([self._p(
+            "QQQ260916C00720000", "the chain gives P(below prior close) of 78%, supporting this call")])
+        self.assertEqual(len(flags), 1)
+        self.assertEqual(flags[0]["points"], "bearish")
+
+    def test_exits_are_not_graded(self):
+        """A sell citing a prior that points away from the position is the
+        thesis being abandoned - correct, not contradictory."""
+        self.assertEqual(citations.audit_action_alignment([self._p(
+            "SPY260916C00765000", "Kalshi P(above) fell to 0.089, invalidating the thesis", side="sell")]), [])
+
+    def test_stock_carries_no_direction_to_contradict(self):
+        self.assertEqual(citations.audit_action_alignment([self._p(
+            "SPY", "Kalshi P(above) at 0.115 says down")]), [])

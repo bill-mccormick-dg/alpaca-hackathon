@@ -106,7 +106,27 @@ def decision_audit(records: list[dict]) -> dict:
         for r in decisions for u in (r.get("exit_claims") or [])
     ]
 
+    # #284: the two measures that carry a usable sample. Day 1 of the baseline
+    # gave 3 account-days of P&L against 27 reversible entries - and the P&L
+    # route needs 25 trading days to resolve 1%/day, while a stance-change
+    # rate resolves a 37% -> 22% shift in about five.
+    from bot import stance as _stance
+
+    stance_summary = _stance.rate(records)
+    # Read off the journaled orders rather than the `decision` event's stored
+    # flags, so the digest grades what actually traded AND can be run over any
+    # day that predates the check.
+    from bot import citations as _citations
+
+    misaligned_examples = _citations.audit_action_alignment_records(records)
+
     return {
+        "stance_changes": stance_summary["changes"],
+        "stance_reversible_entries": stance_summary["reversible"],
+        "stance_change_pct": stance_summary["pct"],
+        "stance_examples": stance_summary["details"][:8],
+        "misaligned_actions": len(misaligned_examples),
+        "misaligned_examples": misaligned_examples[:8],
         "decisions": len(decisions),
         "holds": holds,
         "proposals": proposals,
@@ -315,6 +335,21 @@ def render_markdown(d: dict) -> str:
                      "could fire; wrong_direction: an above/below-prior-close claim the tape disproves - #188)")
         for u in a.get("exit_claim_examples") or []:
             lines.append(f"  - {str(u['ts'])[11:16]} {u['symbol']} said \"{u['quoted']}\" but {u['fact']}")
+    if a.get("stance_reversible_entries"):
+        lines.append(f"- **stance changes**: {a['stance_changes']} in {a['stance_reversible_entries']} reversible "
+                     f"entr(ies) ({a['stance_change_pct']}%)"
+                     "  (an entry that reverses this account's own last direction on that underlying - long call after "
+                     "long put, or the reverse. The rate, not the P&L, is what a run this short can resolve - #284)")
+        for u in a.get("stance_examples") or []:
+            lines.append(f"  - {str(u.get('to_ts'))[11:16]} {u['underlying']} {u['from_direction']} -> "
+                         f"{u['to_direction']} after {u['minutes_since']}m: \"{str(u.get('reason') or '')[:120]}\"")
+    if a.get("misaligned_actions"):
+        lines.append(f"- **actions contradicting their own citation**: {a['misaligned_actions']}"
+                     "  (an entry citing a P(above/below) that points the other way - a real, correctly quoted figure "
+                     "read backwards. `margin` is the distance past even money, so a 0.115 outranks a 0.44 - #284)")
+        for u in a.get("misaligned_examples") or []:
+            lines.append(f"  - {str(u['ts'])[11:16]} {u['symbol']} is {u['action']} but cited \"{u['quoted']}\" "
+                         f"({u['points']}, margin {u['margin']})")
     lines.append(f"- models: {a['models']}; {a['tokens_in']:,} in / {a['tokens_out']:,} out tokens; "
                  f"latency avg {a['latency_avg_sec']}s max {a['latency_max_sec']}s; truncated outputs {a['truncated_outputs']}"
                  + (f"; est. cost ${d['cost_usd']}" if d.get("cost_usd") is not None else ""))

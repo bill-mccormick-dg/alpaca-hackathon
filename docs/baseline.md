@@ -140,6 +140,50 @@ means `bot/citations.py::audit` is skipped fleet-wide, because it does not run
 when research tools ran. The baseline's citation data will be thinner than the
 judged week's, and that is a known hole (backlog item 30), not a surprise.
 
+## Day 1 result: what this run can and cannot measure (#284)
+
+The pair reported on its first day, and the answer changes what the run is for.
+
+`base_a` −814.88, `base_b` −2,239.53, `base_mixed` −2,118.56. The two accounts
+sharing one `config.yaml` finished **$1,424.65 apart — 1.42% of capital, 71% of
+the daily-loss budget** — and `base_b` breached the 2% cutoff at 12:40 while
+`base_a` never did. They agreed for three cycles, then bought opposite option
+types on the same NVDA strike, and twenty minutes later took opposite sides of
+the same QQQ contract at the same price. `base_mixed`, the only arm that
+actually differs, finished *between* the two controls.
+
+σ over the pair is about **$1,790/day** (n=1, so an order of magnitude — 95%
+band $640–$22,700, and biased *low*, because the halt truncated the
+divergence). Paired, at 80% power: detecting **1%/day needs 25 trading days**;
+0.5%/day needs 100. The run does not have them, and the halt is worse than a
+wide error bar — it ended one arm's session three hours early, so the two stop
+being comparable mid-day.
+
+**So the run's output is not a P&L comparison.** It is (a) a noise floor every
+future A/B must clear, which is the number this run was opened to get, and (b)
+per-decision behaviour, which carries ~27 events a day instead of 3 — see
+**Stance changes** in `docs/strategy.md`.
+
+### Balances are not being reset
+
+`max_position_usd` is a fixed $5,000 cap and equity now differs, so `base_b`
+opens 1.46% more levered than `base_a` — the same defect that disqualified the
+`official`/`test` pair, which had reached 13%. It is left alone deliberately:
+
+- at 1.46% it is **an order of magnitude below the noise it sits inside**, which
+  is 1.42% of capital *per day*, and on today's σ it takes ~79 trading days to
+  reach 13%;
+- changing the cap to a percentage is a config change that **ends the replicate
+  pair** — the very thing a reset would be trying to protect;
+- a reset would force-flatten the overnight 7DTE positions the strategy holds
+  by design, which is a strategy change, not a clean slate.
+
+Instead `cycle_start` now journals `position_cap_pct`
+(`max_position_usd / start_of_day_equity`) per account per day, so the drift is
+measured rather than silently accumulating. Treat it as a tripwire: when the
+spread across the pair approaches the 13% that killed `official`/`test`, the
+pair is over and should be restarted on fresh accounts rather than nursed.
+
 ## What may ship during the run
 
 The test is not "is it safe" — it is **"would it change what the bot trades?"**
