@@ -376,6 +376,52 @@ yesterday's close for every whitelisted underlying, so the check covers NVDA,
 AAPL and MSFT and not only the two names with a prediction-market prior — the
 gap that let the 2026-09-02 NVDA exit cite 228.00 against a real 217.49 (#226).
 
+A third check asks a different question again. The first two grade whether a
+figure was **real**; `audit_action_alignment` grades whether the trade went the
+way the figure **points** (#284). On 2026-09-09 `base_a` bought a SPY call
+"aligning with the Kalshi prior P(above prior close) rising to 0.115" — a real
+number, correctly quoted, giving an 88.5% chance of closing *below*. The model
+read the direction the probability had *moved* as the direction it *pointed*,
+and did it twice more that afternoon on QQQ calls "aligning with" P(above)
+0.440. A citation audit that only checks arithmetic scores all three as clean.
+
+Only `P(above)` and `P(below)` are graded, because they have a natural 0.5
+midpoint. A tail probability does not — `P(down>1%)` at 0.25 is a statement
+about one tail, not a bearish signal — and grading it would manufacture
+disagreements the model never made. Entries only, too: a *sell* citing a prior
+that points away from the position is the thesis being abandoned, which is
+correct rather than contradictory. There is a ±0.05 dead band around even
+money, and each flag carries the `margin` past it, so 0.115 outranks 0.440.
+
+### Stance changes
+
+The other half of #284, and the reason it exists. Day 1 of the baseline run
+established that end-of-day equity cannot compare two configs: `base_a` and
+`base_b` share one `config.yaml` and finished **$1,424.65 apart** — 71% of the
+daily-loss budget — with `base_b` halted and `base_a` not. Resolving a 1%/day
+difference through P&L needs about **25 trading days**.
+
+What reproduces is conduct. A `stance_change` event is journaled when an entry
+reverses the account's own last direction on an underlying — a long call after
+a long put, or the reverse. `base_a` ran QQQ put → call → put in forty minutes;
+`base_b` flipped NVDA in ten. Across the three accounts that was **10 changes
+in 27 reversible entries (37%)**, and a rate over ~27 events a day resolves a
+37% → 22% shift in about **five** trading days.
+
+Three counting rules carry the meaning, and each excludes something that would
+otherwise move the number for reasons unrelated to the model:
+
+| Excluded | Why |
+|---|---|
+| Sells | An exit ends a thesis; it does not open the opposite one. Counting them would make every close-and-reassess a reversal. |
+| Rejections and dry runs | They never reached the market — and they are not evenly spread: 9 rejections on `base_a`, 0 on `base_b`, same file, same day. Counting intent would measure the funnel, not the model. |
+| First entry on an underlying | It had no stance to turn, so it does not belong in the denominator. Dividing by all 38 entries instead of the 27 reversible ones understates the rate as 27%. |
+
+Like the citation audits, this is **reporting only** — nothing here is
+consulted by the funnel. That is what lets it ship mid-run: `docs/baseline.md`
+allows journaling and measurement precisely because recording a decision cannot
+change it, while a guard or a prompt change would end the replicate pair.
+
 ### When it is withheld
 
 A range market that has barely traded still quotes every bucket, and the

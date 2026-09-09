@@ -27,6 +27,7 @@ from bot import (
     overrides,
     predictions,
     stale_orders,
+    stance,
 )
 from bot.alpaca_mcp import AlpacaMCPClient
 from bot.config import config_provenance, load_config
@@ -254,6 +255,15 @@ async def run(args: argparse.Namespace) -> int:
             positions=acct.open_position_count,
             dry_run=args.dry_run,
             chain_coverage=coverage,
+            # max_position_usd is a fixed dollar cap and equity drifts, so two
+            # accounts on ONE config are not equally levered for long. Day 1 of
+            # the baseline opened a 1.46% spread; docs/baseline.md killed the
+            # official/test pair over the same defect at 13%. Recorded, not
+            # corrected - changing the cap would end the replicate (#284).
+            position_cap_pct=(
+                round(100.0 * float(config.get("max_position_usd", 0)) / acct.start_of_day_equity, 3)
+                if acct.start_of_day_equity else None
+            ),
         )
         # What this cycle actually ran with (git config + active overrides),
         # so a P&L change can be attributed to the config change behind it.
@@ -419,6 +429,12 @@ async def run(args: argparse.Namespace) -> int:
         exit_claims = citations.audit_exit_claims(proposals, dtes, spot_ref, config)
         if exit_claims:
             print(f"WARNING: {citations.describe_exit_claims(exit_claims)}", file=sys.stderr)
+        # #284: not "was the figure real" (that is `audit`, and it is skipped
+        # whenever research tools ran) but "did the trade go the way the figure
+        # points". Reads the reason alone, so it runs on every account.
+        misaligned = citations.audit_action_alignment(proposals)
+        if misaligned:
+            print(f"WARNING: {citations.describe_alignment(misaligned)}", file=sys.stderr)
         # The candidate menu, to its own file (bot/journal.py::log_menu explains
         # why not through journal.log). Observer only: it records what the model
         # was shown and gates nothing, so it is safe to land mid-baseline. The
@@ -431,6 +447,7 @@ async def run(args: argparse.Namespace) -> int:
             raw=raw,
             citations=cited,
             exit_claims=exit_claims or None,
+            misaligned_actions=misaligned or None,
             count=len(proposals),
             model=decision.model,
             usage=decision.usage,
@@ -467,7 +484,12 @@ async def run(args: argparse.Namespace) -> int:
         # the pattern visible to the model and the digest.
         entries_today = {}
         blocked_today: dict[str, int] = {}
-        for rec in journal.read_events(events=("order_submitted", "order_rejected")):
+        # Same records, second consumer (#284): the account's own last entry
+        # direction per underlying, so an entry that turns it round can be
+        # journaled as it happens rather than reconstructed later.
+        today_records = list(journal.read_events(events=("order_submitted", "order_rejected")))
+        stances = stance.entry_stances(today_records)
+        for rec in today_records:
             sym = rec.get("symbol")
             if not sym:
                 continue
@@ -538,8 +560,27 @@ async def run(args: argparse.Namespace) -> int:
                 journal.log("dry_run", **fields)
                 print(f"DRY-RUN would {label} @ ~{price or 0:.2f}: {p.reason}")
             elif r.status == execute.SUBMITTED:
-                journal.log("order_submitted", order_id=r.order_id, **fields)
+                submitted = journal.log("order_submitted", order_id=r.order_id, **fields)
                 print(f"SUBMITTED {label} (order {r.order_id}): {p.reason}")
+                # Only a filled-through entry counts. Rejections are not
+                # stances, and they are not evenly distributed between
+                # accounts running the same file - 9 on base_a, 0 on base_b
+                # on 2026-09-09 - so counting intent would make the rate an
+                # artefact of the funnel rather than of the model.
+                turn = stance.stance_change(
+                    stances.get(stance.underlying_of(p.symbol) or ""),
+                    p.symbol, p.side, submitted.get("ts"), p.reason,
+                )
+                if turn:
+                    journal.log("stance_change", model=decision.model, **turn)
+                    print(f"STANCE {turn['underlying']} {turn['from_direction']} -> "
+                          f"{turn['to_direction']} after {turn['minutes_since']} min")
+                moved = stance.direction_of(p.symbol, p.side)
+                if moved:
+                    stances[stance.underlying_of(p.symbol)] = {
+                        "direction": moved, "symbol": p.symbol,
+                        "ts": submitted.get("ts"), "reason": p.reason,
+                    }
             elif r.status == execute.ERROR:
                 journal.log("order_error", detail=r.detail, **fields)
                 print(f"submit failed for {label}: {r.detail}", file=sys.stderr)

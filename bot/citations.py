@@ -38,6 +38,16 @@ close/backstop when the contract's DTE puts it days beyond any code
 action; and `wrong_direction`, an above/below-prior-close claim the tape
 contradicts. Same posture as the prior audit: journal and digest only.
 
+Since #284 there is a third check, and it grades a different failure from
+the first two. `audit` asks whether a quoted figure was real; this asks
+whether the model then ACTED the way the figure points. On 2026-09-09
+base_a bought a SPY call "aligning with the Kalshi prior P(above prior
+close) rising to 0.115" - a real number, correctly quoted, that gives an
+88.5% chance of closing BELOW. The model read the direction the probability
+had MOVED and called it the direction it POINTED. Twice more the same
+afternoon it bought QQQ calls "aligning with" P(above) 0.440. A citation
+audit that only checks arithmetic scores all three as clean.
+
 Deliberately reporting only. The funnel keeps bounding what can be traded;
 prose is not an order parameter, and check_order does not grade rhetoric.
 """
@@ -200,6 +210,94 @@ def audit_exit_claims(proposals: list[Proposal], dte_by_symbol: dict[str, int],
                     flags.append({"symbol": p.symbol, "kind": "wrong_direction", "quoted": m.group(0),
                                   "fact": f"{p.whitelist_symbol} {spot:g} is {actually} prior close {ref:g}"})
     return flags
+
+
+# "P(above prior close) at 0.269", "Kalshi P(above) 0.534", "P(below) of 62%".
+# Only above/below is graded: those have a natural 0.5 midpoint, so the
+# direction they point is unambiguous. A tail probability does not - P(up>1%)
+# at 0.25 is not a bearish signal, it is a statement about one tail - and
+# grading it would manufacture disagreements the model never claimed.
+ALIGNMENT_CLAIM = re.compile(
+    r"P\(\s*(above|below)[^)]*\)\s*(?:prior close\s*)?"
+    r"(?:is |at |of |rose to |risen to |dropped to |fell to |shifted to )?[^\d\-]{0,12}"
+    r"(0?\.\d+|\d{1,3}(?:\.\d+)?\s?%)",
+    re.IGNORECASE)
+# A probability this close to even money points nowhere; 0.48 is not a
+# bearish claim and must not be scored as one.
+ALIGNMENT_DEADBAND = 0.05
+
+
+def _as_fraction(text: str) -> float | None:
+    text = text.strip()
+    try:
+        return float(text[:-1].strip()) / 100.0 if text.endswith("%") else float(text)
+    except ValueError:
+        return None
+
+
+def _alignment_flags(symbol: str, side: str | None, reason: str | None) -> list[dict]:
+    """The check itself, over one order's (symbol, side, reason)."""
+    from bot import stance
+
+    direction = stance.direction_of(symbol, side)
+    if direction is None:
+        return []
+    flags = []
+    for kind, quoted in ALIGNMENT_CLAIM.findall(reason or ""):
+        value = _as_fraction(quoted)
+        if value is None:
+            continue
+        above = value if kind.lower() == "above" else 1.0 - value
+        if abs(above - 0.5) <= ALIGNMENT_DEADBAND:
+            continue
+        points = stance.BULLISH if above > 0.5 else stance.BEARISH
+        if points != direction:
+            flags.append({
+                "symbol": symbol,
+                "kind": "contradicted_own_citation",
+                "quoted": f"P({kind.lower()}) {quoted}",
+                "action": direction,
+                "points": points,
+                "margin": round(abs(above - 0.5), 3),
+            })
+    return flags
+
+
+def audit_action_alignment_records(records) -> list[dict]:
+    """The same check over journaled `order_submitted` events, so the digest
+    grades what actually traded and can be run over any past day. The live
+    path below grades proposals, which is what the cycle-time warning needs;
+    this one is what the review reports."""
+    flags = []
+    for record in records or []:
+        if record.get("event") != "order_submitted":
+            continue
+        for flag in _alignment_flags(record.get("symbol") or "", record.get("side"), record.get("reason")):
+            flags.append({**flag, "ts": record.get("ts")})
+    return flags
+
+
+def audit_action_alignment(proposals: list[Proposal]) -> list[dict]:
+    """Entries whose own cited P(above/below) points the other way (#284).
+
+    Reads the reason only - no prior block needed, because the claim being
+    graded is internal: the model said this number supports this trade. Buys
+    of long options only, since that is where a call/put carries a direction;
+    an exit cites a prior to say a thesis is over, which is the number
+    pointing away from the position and is correct rather than contradictory.
+
+    Reports `margin`, how far past the deadband the figure sits, so the
+    digest can separate 0.115-called-bullish from a marginal 0.44."""
+    flags = []
+    for p in proposals:
+        flags += _alignment_flags(p.symbol, p.side, p.reason)
+    return flags
+
+
+def describe_alignment(flags: list[dict]) -> str:
+    """One line for the terminal / digest."""
+    bits = [f"{f['symbol']} is {f['action']} but cited {f['quoted']} ({f['points']})" for f in flags]
+    return f"actions contradicting their own citation: {len(flags)} - " + "; ".join(bits)
 
 
 def _number(text: str) -> float | None:
