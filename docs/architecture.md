@@ -116,7 +116,7 @@ and deploys itself from a runner living on that same container.
   the trading host have diverged.
 - **Journal viewer**: [`journal_viewer.py`](https://github.com/bill-mccormick-dg/alpaca-hackathon/blob/main/journal_viewer.py)
   is the journal's third consumer (after MQTT and the report scripts) - a
-  stdlib-only page streaming all three accounts' journals live, read-only by
+  stdlib-only page streaming every account's journal live, read-only by
   construction: it opens the journal files and nothing else, loads no
   credentials, and has no POST route. It binds a LAN port (`:8300`) on CT 108
   and is published at **<https://bot.wpmccormick.pw>** through a Cloudflare

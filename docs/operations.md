@@ -103,10 +103,17 @@ Sessions last six hours. The Access policy deliberately accepts any working
 email rather than a list of addresses - a judge cannot be pre-registered.
 
 What it shows, live: every cycle as it happens, the model's full reasoning, the
-orders and the rule behind each rejection. Controls are checkboxes for the three
-accounts, a toggle for tool-call and config chatter, and a date picker that
+orders and the rule behind each rejection. Controls are one checkbox per
+account, a toggle for tool-call and config chatter, and a date picker that
 replays an earlier day. There is nothing else - no halt, no override, no
 button that reaches the trading path at all.
+
+The account checkboxes are built from the feed, not from a list in the source:
+an account appears in the bar the first time it journals, already ticked, and
+keeps its colour for the session. That is deliberate - the filter used to name
+the three accounts of the day, so the baseline lineup traded a whole morning
+behind a page that hid it and offered no way to unhide it (#281). Unticking an
+account survives a reconnect and a day replay, but not a reload.
 
 `journal_viewer.py` tails `logs/journal*.jsonl` and pushes them over
 server-sent events, bound to the LAN on :8300; `cloudflared` publishes that
